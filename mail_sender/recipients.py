@@ -7,6 +7,7 @@ from pathlib import Path
 
 EMAIL_KEYS = {"email", "e-mail", "mail", "emailadresse", "e-mail-adresse", "emailaddress"}
 COMPANY_KEYS = {"company", "unternehmen", "firma", "organisation", "organization"}
+RECIPIENT_FILE_SUFFIXES = {".csv", ".txt"}
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,37 @@ def read_recipients(path: Path) -> list[Recipient]:
     return _read_with_header(rows)
 
 
+def read_recipients_from_dir(directory: Path) -> list[Recipient]:
+    if not directory.exists():
+        raise FileNotFoundError(f"Recipient input directory not found: {directory}")
+    if not directory.is_dir():
+        raise NotADirectoryError(f"Recipient input path is not a directory: {directory}")
+
+    files = sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.suffix.lower() in RECIPIENT_FILE_SUFFIXES
+    )
+    if not files:
+        raise FileNotFoundError(f"No .csv or .txt recipient files found in {directory}")
+
+    recipients: list[Recipient] = []
+    for path in files:
+        recipients.extend(read_recipients(path))
+    return recipients
+
+
+def list_recipient_files(directory: Path) -> list[Path]:
+    if not directory.exists() or not directory.is_dir():
+        return []
+
+    return sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.suffix.lower() in RECIPIENT_FILE_SUFFIXES
+    )
+
+
 def _detect_dialect(text: str) -> csv.Dialect:
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
@@ -68,7 +100,7 @@ def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
 
     for line_number, row in enumerate(rows[1:], start=2):
         values = {header[index]: value.strip() for index, value in enumerate(row) if index < len(header)}
-        email = _first_value(values, EMAIL_KEYS)
+        email = normalize_email(_first_value(values, EMAIL_KEYS))
         if not email:
             raise ValueError(f"Missing email address in recipients.csv line {line_number}.")
         _validate_email(email, line_number)
@@ -93,6 +125,13 @@ def _first_value(values: dict[str, str], keys: set[str]) -> str:
 
 def normalize_key(value: str) -> str:
     return value.strip().lower().replace("_", "-").replace(" ", "")
+
+
+def normalize_email(value: str) -> str:
+    email = value.strip()
+    if email.lower().startswith("mailto:"):
+        email = email[7:].strip()
+    return email
 
 
 def _validate_email(email: str, line_number: int) -> None:

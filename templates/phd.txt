@@ -14,10 +14,10 @@ AI governance, responsible AI, and enterprise GenAI risk - specifically how orga
 
 The project is intentionally designed as an applied collaboration with industry rather than a purely academic exercise. It focuses on questions such as:
 
-how organisations can operationalise governance for GenAI at scale,
-where risk concentrations and control gaps emerge in real-world deployments,
-how to balance productivity gains with compliance and accountability,
-and how AI can be deployed to increase value without weakening trust or oversight.
+    - how organisations can operationalise governance for GenAI at scale,
+    - where risk concentrations and control gaps emerge in real-world deployments,
+    - how to balance productivity gains with compliance and accountability,
+    - and how AI can be deployed to increase value without weakening trust or oversight.
 
 Given your organisation's involvement in technology, data, and/or innovation, I believe there could be strong alignment with this work.
 

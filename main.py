@@ -4,8 +4,8 @@ from mail_sender.cli import main
 
 
 # Stelle hier ein, welchen Batch du starten willst.
-# Erlaubt: "PhD", "Freelance_German" oder "Freelance_English"
-MODE = "Freelance_German"
+# Erlaubt: "PhD", "Freelance_German", "Freelance_English" oder "Auto"
+MODE = "PhD"
 
 # Sicherheits-Schalter:
 # False = nur Probelauf, keine echten Mails
@@ -15,16 +15,13 @@ SEND = True
 # Viele Ausgaben im Terminal.
 VERBOSE = True
 
-# Empfaengerdatei im Schema: company,mail
-RECIPIENTS_FILE = "recipients.csv"
-
 # Standard: vorhandene Adressen in send_phd.xlsx / send_freelance.xlsx werden geskippt.
 # Nur auf True setzen, wenn du bewusst erneut an bereits geloggte Adressen senden willst.
 RESEND_EXISTING = False
 
 # Standardlogo fuer die Signatur. Lege dein Logo dort ab oder passe den Pfad an.
 SIGNATURE_LOGO = "templates/signature-logo.png"
-SIGNATURE_LOGO_WIDTH = 350
+SIGNATURE_LOGO_WIDTH = 325
 
 # Nur fuer Tests ohne Anhaenge auf True setzen. Fuer echte Mails besser False lassen.
 ALLOW_EMPTY_ATTACHMENTS = False
@@ -41,8 +38,6 @@ if __name__ == "__main__":
     args = [
         "--mode",
         MODE,
-        "--recipients",
-        RECIPIENTS_FILE,
         "--signature-logo",
         SIGNATURE_LOGO,
         "--signature-logo-width",

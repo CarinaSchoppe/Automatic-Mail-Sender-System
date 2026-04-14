@@ -14,7 +14,13 @@ pip install -r requirements.txt
 
 2. `.env.example` nach `.env` kopieren und `SMTP_PASSWORD` lokal eintragen.
 
-3. Im Projektordner eine `recipients.csv` anlegen. Empfohlenes Format:
+3. Empfaengerdateien im passenden `input`-Unterordner ablegen. Es werden alle `.csv` und `.txt` Dateien im gewaehlten Modusordner eingelesen:
+
+- `input/PhD`
+- `input/Freelance_German`
+- `input/Freelance_English`
+
+Empfohlenes Format:
 
 ```csv
 company,mail
@@ -73,7 +79,7 @@ Die erste Zeile darf `Subject: ...` sein. Diese Platzhalter sind verfuegbar:
 Der Standardweg ist `main.py`. Stelle oben in `main.py` ein:
 
 ```python
-MODE = "PhD"        # oder "Freelance_German" oder "Freelance_English"
+MODE = "PhD"        # oder "Freelance_German", "Freelance_English", "Auto"
 SEND = False        # False = Probelauf, True = echt senden
 VERBOSE = True
 LOG_DRY_RUN = False # False = Probelauf nicht in Excel schreiben
@@ -93,7 +99,10 @@ Du kannst die Einstellungen alternativ weiterhin per CLI uebergeben:
 python main.py --mode PhD
 python main.py --mode Freelance_German
 python main.py --mode Freelance_English
+python main.py --mode Auto
 ```
+
+`Auto` verarbeitet alle Modus-Unterordner in `input`, in denen `.csv` oder `.txt` Dateien liegen.
 
 Mit vielen Detailausgaben:
 
@@ -123,11 +132,11 @@ Nur wenn du bewusst erneut an bereits protokollierte Adressen senden willst, kan
 
 Das Script schreibt jeden verarbeiteten Empfaenger in:
 
-- `send_phd.xlsx` fuer den PhD-Modus
-- `send_freelance.xlsx` fuer den Freelance-Modus
+- `output/send_phd.xlsx` fuer den PhD-Modus
+- `output/send_freelance.xlsx` fuer beide Freelance-Modi
 
-Statuswerte:
+In diese Excel-Dateien werden nur diese Spalten geschrieben:
 
-- `DRY_RUN`: vorbereitet, aber nicht verschickt
-- `SENT`: verschickt
-- `ERROR`: fuer diesen Empfaenger fehlgeschlagen
+- `Unternehmen`
+- `mail`
+- `sent_at`

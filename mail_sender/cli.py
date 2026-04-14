@@ -5,8 +5,9 @@ from pathlib import Path
 
 from mail_sender.attachments import list_attachments
 from mail_sender.config import ConfigError, load_smtp_config
+from mail_sender.modes import MODE_NAMES
 from mail_sender.modes import get_mode
-from mail_sender.recipients import read_recipients
+from mail_sender.recipients import list_recipient_files, read_recipients_from_dir
 from mail_sender.sent_log import append_log, read_logged_emails
 from mail_sender.smtp_sender import SmtpMailer
 from mail_sender.templates import render_mail
@@ -19,8 +20,7 @@ def _verbose(enabled: bool, message: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Send PhD or Freelance mail batches via SMTPS.")
-    parser.add_argument("--mode", required=True, choices=["PhD", "phd", "Freelance_German", "freelance_german", "Freelance_English", "freelance_english"], help="Mail mode.")
-    parser.add_argument("--recipients", default="recipients.csv", help="Path to recipients CSV.")
+    parser.add_argument("--mode", required=True, choices=["Auto", "auto", "PhD", "phd", "Freelance_German", "freelance_german", "Freelance_English", "freelance_english"], help="Mail mode.")
     parser.add_argument("--base-dir", default=".", help="Project base directory.")
     parser.add_argument("--send", action="store_true", help="Actually send the emails. Without this flag, dry-run only.")
     parser.add_argument("--log-dry-run", action="store_true", help="Write dry-run rows to the Excel log. Off by default.")
@@ -33,119 +33,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     base_dir = Path(args.base_dir).resolve()
-    recipients_path = (base_dir / args.recipients).resolve() if not Path(args.recipients).is_absolute() else Path(args.recipients)
     signature_path = base_dir / "templates" / "signature.txt"
     signature_logo_path = (base_dir / args.signature_logo).resolve() if not Path(args.signature_logo).is_absolute() else Path(args.signature_logo)
 
     try:
-        mode = get_mode(args.mode, base_dir)
-        _verbose(args.verbose, f"Base directory: {base_dir}")
-        _verbose(args.verbose, f"Recipients CSV: {recipients_path}")
-        _verbose(args.verbose, f"Mode template: {mode.template_path}")
-        _verbose(args.verbose, f"Signature template: {signature_path}")
-        _verbose(args.verbose, f"Signature logo: {signature_logo_path}")
-        _verbose(args.verbose, f"Signature logo width: {args.signature_logo_width}px")
-        _verbose(args.verbose, f"Attachment directory: {mode.attachments_dir}")
-        _verbose(args.verbose, f"Excel log file: {mode.log_path}")
-
-        recipients = read_recipients(recipients_path)
-        _verbose(args.verbose, f"Loaded recipients: {[recipient.email for recipient in recipients]}")
-
-        attachments = list_attachments(mode.attachments_dir)
-        if attachments:
-            for attachment in attachments:
-                _verbose(args.verbose, f"Attachment queued: {attachment}")
-        else:
-            _verbose(args.verbose, "No attachments found.")
-
-        if not attachments and not args.allow_empty_attachments:
-            raise RuntimeError(
-                f"No attachments found in {mode.attachments_dir}. "
-                "Add files there or use --allow-empty-attachments."
-            )
-
-        logged_emails = set() if args.resend_existing else read_logged_emails(mode.log_path)
-        if args.resend_existing:
-            _verbose(args.verbose, "Existing Excel log addresses will be ignored because --resend-existing is set.")
-        elif mode.log_path.exists():
-            _verbose(args.verbose, f"Loaded {len(logged_emails)} existing email address(es) from {mode.log_path}.")
-        else:
-            _verbose(args.verbose, "Excel log does not exist yet, so no existing addresses were loaded.")
-
-        recipients_to_process = []
-        skipped_before_send = 0
-        seen_in_this_run = set()
-        for recipient in recipients:
-            email_key = recipient.email.lower()
-            if email_key in logged_emails:
-                skipped_before_send += 1
-                print(f"[SKIP] {recipient.email} is already in {mode.log_path.name}; no mail will be created or sent.")
-                continue
-            if email_key in seen_in_this_run:
-                skipped_before_send += 1
-                print(f"[SKIP] {recipient.email} appears more than once in this CSV run; duplicate skipped.")
-                continue
-            seen_in_this_run.add(email_key)
-            recipients_to_process.append(recipient)
-
-        print(f"Mode: {mode.label}")
-        print(f"Recipients loaded: {len(recipients)}")
-        print(f"Recipients skipped before sending: {skipped_before_send}")
-        print(f"Recipients to process: {len(recipients_to_process)}")
-        print(f"Attachments: {len(attachments)}")
-        print(f"Log file: {mode.log_path}")
-        print("Existing Excel check: disabled (--resend-existing)" if args.resend_existing else "Existing Excel check: enabled")
-        print("Sending: yes" if args.send else "Sending: no (dry-run)")
-        print("Dry-run Excel logging: yes" if args.log_dry_run else "Dry-run Excel logging: no")
-
-        if not recipients_to_process:
-            print("Nothing to process.")
+        modes = _select_modes(args.mode, base_dir)
+        if not modes:
+            print("No input files found in input/PhD, input/Freelance_German, or input/Freelance_English.")
             return 0
 
-        smtp_config = load_smtp_config(require_password=args.send)
-        _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
-        _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
-        _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
-        errors = 0
+        total_errors = 0
+        for mode in modes:
+            total_errors += _run_mode(args, mode, base_dir, signature_path, signature_logo_path)
 
-        if args.send:
-            _verbose(args.verbose, "Opening SMTPS connection.")
-            with SmtpMailer(smtp_config) as mailer:
-                _verbose(args.verbose, "SMTPS connection opened and login completed.")
-                errors = _process_recipients(
-                    mailer=mailer,
-                    mode_label=mode.label,
-                    template_path=mode.template_path,
-                    signature_path=signature_path,
-                    log_path=mode.log_path,
-                    recipients=recipients_to_process,
-                    attachments=attachments,
-                    subject_override=args.subject,
-                    signature_image_path=signature_logo_path,
-                    signature_image_width=args.signature_logo_width,
-                    dry_run=False,
-                    log_dry_run=args.log_dry_run,
-                    verbose=args.verbose,
-                )
-        else:
-            errors = _process_recipients(
-                mailer=None,
-                mode_label=mode.label,
-                template_path=mode.template_path,
-                signature_path=signature_path,
-                log_path=mode.log_path,
-                recipients=recipients_to_process,
-                attachments=attachments,
-                subject_override=args.subject,
-                signature_image_path=signature_logo_path,
-                signature_image_width=args.signature_logo_width,
-                dry_run=True,
-                log_dry_run=args.log_dry_run,
-                verbose=args.verbose,
-            )
-
-        if errors:
-            print(f"Finished with {errors} error(s).")
+        if total_errors:
+            print(f"Finished with {total_errors} total error(s).")
             return 1
 
         print("Finished successfully.")
@@ -155,9 +57,135 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+def _select_modes(mode_name: str, base_dir: Path):
+    normalized = mode_name.strip().lower()
+    if normalized != "auto":
+        return [get_mode(mode_name, base_dir)]
+
+    modes = [get_mode(name, base_dir) for name in MODE_NAMES]
+    return [mode for mode in modes if list_recipient_files(mode.recipients_dir)]
+
+
+def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
+    _verbose(args.verbose, f"Base directory: {base_dir}")
+    _verbose(args.verbose, f"Recipient input directory: {mode.recipients_dir}")
+    _verbose(args.verbose, f"Mode template: {mode.template_path}")
+    _verbose(args.verbose, f"Signature template: {signature_path}")
+    _verbose(args.verbose, f"Signature logo: {signature_logo_path}")
+    _verbose(args.verbose, f"Signature logo width: {args.signature_logo_width}px")
+    _verbose(args.verbose, f"Attachment directory: {mode.attachments_dir}")
+    _verbose(args.verbose, f"Excel log file: {mode.log_path}")
+
+    recipient_files = list_recipient_files(mode.recipients_dir)
+    if recipient_files:
+        for recipient_file in recipient_files:
+            _verbose(args.verbose, f"Recipient file queued: {recipient_file}")
+    else:
+        _verbose(args.verbose, "No recipient files found.")
+
+    recipients = read_recipients_from_dir(mode.recipients_dir)
+    _verbose(args.verbose, f"Loaded recipients: {[recipient.email for recipient in recipients]}")
+
+    attachments = list_attachments(mode.attachments_dir)
+    if attachments:
+        for attachment in attachments:
+            _verbose(args.verbose, f"Attachment queued: {attachment}")
+    else:
+        _verbose(args.verbose, "No attachments found.")
+
+    if not attachments and not args.allow_empty_attachments:
+        raise RuntimeError(
+            f"No attachments found in {mode.attachments_dir}. "
+            "Add files there or use --allow-empty-attachments."
+        )
+
+    logged_emails = set() if args.resend_existing else read_logged_emails(mode.log_path)
+    if args.resend_existing:
+        _verbose(args.verbose, "Existing Excel log addresses will be ignored because --resend-existing is set.")
+    elif mode.log_path.exists():
+        _verbose(args.verbose, f"Loaded {len(logged_emails)} existing email address(es) from {mode.log_path}.")
+    else:
+        _verbose(args.verbose, "Excel log does not exist yet, so no existing addresses were loaded.")
+
+    recipients_to_process = []
+    skipped_before_send = 0
+    seen_in_this_run = set()
+    for recipient in recipients:
+        email_key = recipient.email.lower()
+        if email_key in logged_emails:
+            skipped_before_send += 1
+            print(f"[SKIP] {recipient.email} is already in {mode.log_path.name}; no mail will be created or sent.")
+            continue
+        if email_key in seen_in_this_run:
+            skipped_before_send += 1
+            print(f"[SKIP] {recipient.email} appears more than once in this CSV run; duplicate skipped.")
+            continue
+        seen_in_this_run.add(email_key)
+        recipients_to_process.append(recipient)
+
+    print(f"Mode: {mode.label}")
+    print(f"Recipients loaded: {len(recipients)}")
+    print(f"Recipients skipped before sending: {skipped_before_send}")
+    print(f"Recipients to process: {len(recipients_to_process)}")
+    print(f"Attachments: {len(attachments)}")
+    print(f"Log file: {mode.log_path}")
+    print("Existing Excel check: disabled (--resend-existing)" if args.resend_existing else "Existing Excel check: enabled")
+    print("Sending: yes" if args.send else "Sending: no (dry-run)")
+    print("Dry-run Excel logging: yes" if args.log_dry_run else "Dry-run Excel logging: no")
+
+    if not recipients_to_process:
+        print("Nothing to process.")
+        return 0
+
+    smtp_config = load_smtp_config(require_password=args.send)
+    _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
+    _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
+    _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
+    errors = 0
+
+    if args.send:
+        _verbose(args.verbose, "Opening SMTPS connection.")
+        with SmtpMailer(smtp_config) as mailer:
+            _verbose(args.verbose, "SMTPS connection opened and login completed.")
+            errors = _process_recipients(
+                mailer=mailer,
+                template_path=mode.template_path,
+                signature_path=signature_path,
+                log_path=mode.log_path,
+                recipients=recipients_to_process,
+                attachments=attachments,
+                subject_override=args.subject,
+                signature_image_path=signature_logo_path,
+                signature_image_width=args.signature_logo_width,
+                dry_run=False,
+                log_dry_run=args.log_dry_run,
+                verbose=args.verbose,
+            )
+    else:
+        errors = _process_recipients(
+            mailer=None,
+            template_path=mode.template_path,
+            signature_path=signature_path,
+            log_path=mode.log_path,
+            recipients=recipients_to_process,
+            attachments=attachments,
+            subject_override=args.subject,
+            signature_image_path=signature_logo_path,
+            signature_image_width=args.signature_logo_width,
+            dry_run=True,
+            log_dry_run=args.log_dry_run,
+            verbose=args.verbose,
+        )
+
+    if errors:
+        print(f"Finished {mode.label} with {errors} error(s).")
+    else:
+        print(f"Finished {mode.label} successfully.")
+    return errors
+
+
 def _process_recipients(
     mailer: SmtpMailer | None,
-    mode_label: str,
     template_path: Path,
     signature_path: Path,
     log_path: Path,
@@ -191,7 +219,7 @@ def _process_recipients(
             if dry_run:
                 print(f"[DRY_RUN] {recipient.email} | {rendered.subject}")
                 if log_dry_run:
-                    append_log(log_path, mode_label, "DRY_RUN", recipient, rendered.subject, attachments)
+                    append_log(log_path, recipient)
                     _verbose(verbose, f"Dry-run logged to {log_path}.")
                 else:
                     _verbose(verbose, "Dry-run was not written to Excel because --log-dry-run is not set.")
@@ -210,12 +238,10 @@ def _process_recipients(
                 rendered.inline_images,
             )
             print(f"[SENT] {recipient.email} | {rendered.subject}")
-            append_log(log_path, mode_label, "SENT", recipient, rendered.subject, attachments)
+            append_log(log_path, recipient)
             _verbose(verbose, f"Sent mail logged to {log_path}.")
         except Exception as exc:  # Keep the batch moving and log the failed recipient.
             errors += 1
             print(f"[ERROR] {recipient.email} | {exc}")
-            append_log(log_path, mode_label, "ERROR", recipient, "", attachments, error=str(exc))
-            _verbose(verbose, f"Error logged to {log_path}.")
 
     return errors

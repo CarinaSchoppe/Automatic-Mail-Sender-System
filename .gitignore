@@ -7,6 +7,14 @@ __pycache__/
 recipients.csv
 Send_*.xlsx
 send_*.xlsx
+input/PhD/*
+input/Freelance_German/*
+input/Freelance_English/*
+output/*
+!input/PhD/.gitkeep
+!input/Freelance_German/.gitkeep
+!input/Freelance_English/.gitkeep
+!output/.gitkeep
 *.iml
 # Real attachments can contain private documents. Keep only folder placeholders.
 attachments/PhD/*
@@ -14,5 +22,6 @@ attachments/Freelance/*
 attachments/Freelance_German/*
 attachments/Freelance_English/*
 !attachments/PhD/.gitkeep
+!attachments/Freelance/.gitkeep
 !attachments/Freelance_German/.gitkeep
 !attachments/Freelance_English/.gitkeep

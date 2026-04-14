@@ -1,49 +1,37 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from mail_sender.recipients import Recipient
 from mail_sender.recipients import EMAIL_KEYS
+from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
 
 
 HEADERS = [
     "Unternehmen",
     "mail",
-    "sent_at_utc",
-    "mode",
-    "status",
-    "subject",
-    "attachments",
-    "error",
+    "sent_at",
 ]
 
 
 def append_log(
     log_path: Path,
-    mode: str,
-    status: str,
     recipient: Recipient,
-    subject: str,
-    attachments: list[Path],
-    error: str = "",
 ) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     workbook, sheet = _open_or_create_workbook(log_path)
     _ensure_headers(sheet)
     sheet.append(
         [
             recipient.company,
             recipient.email,
-            datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            mode,
-            status,
-            subject,
-            "; ".join(path.name for path in attachments),
-            error,
+            datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
         ]
     )
     workbook.save(log_path)
@@ -62,7 +50,7 @@ def read_logged_emails(log_path: Path) -> set[str]:
 
     emails: set[str] = set()
     for row in sheet.iter_rows(min_row=2):
-        email = str(row[email_index - 1].value or "").strip().lower()
+        email = normalize_email(str(row[email_index - 1].value or "")).lower()
         if email:
             emails.add(email)
     return emails
@@ -81,13 +69,11 @@ def _open_or_create_workbook(log_path: Path) -> tuple[Workbook, Worksheet]:
 
 
 def _ensure_headers(sheet: Worksheet) -> None:
-    existing = [str(cell.value or "") for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
-    normalized_existing = {normalize_key(value) for value in existing}
+    if sheet.max_column > len(HEADERS):
+        sheet.delete_cols(len(HEADERS) + 1, sheet.max_column - len(HEADERS))
 
-    for header in HEADERS:
-        if normalize_key(header) not in normalized_existing:
-            sheet.cell(row=1, column=sheet.max_column + 1, value=header)
-            normalized_existing.add(normalize_key(header))
+    for column, header in enumerate(HEADERS, start=1):
+        sheet.cell(row=1, column=column, value=header)
 
 
 def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
