@@ -41,7 +41,6 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     for key in [
         "RESEARCH_AI_PROVIDER",
         "RESEARCH_MODE",
-        "RESEARCH_MODEL",
         "GEMINI_MODEL",
         "OPENAI_MODEL",
         "RESEARCH_MIN_COMPANIES",
@@ -96,7 +95,6 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     monkeypatch.setenv("RESEARCH_AI_PROVIDER", "openai")
     monkeypatch.setenv("RESEARCH_MODE", "Freelance_German")
     monkeypatch.setenv("GEMINI_MODEL", "custom-model")
-    monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
     monkeypatch.setenv("RESEARCH_MIN_COMPANIES", "2")
     monkeypatch.setenv("RESEARCH_MAX_COMPANIES", "7")
     monkeypatch.setenv("RESEARCH_PERSON_EMAILS_PER_COMPANY", "1")
@@ -384,7 +382,7 @@ def test_needs_retry_handles_invalid_csv() -> None:
 
 
 def test_model_for_provider_prefers_generic_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RESEARCH_MODEL", "generic-model")
+    monkeypatch.setenv("GEMINI_MODEL", "generic-model")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
 
     assert research_leads._model_for_provider("openai") == "generic-model"

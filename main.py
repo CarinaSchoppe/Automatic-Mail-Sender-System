@@ -15,8 +15,7 @@ MODE = globals().get("MODE", "Freelance_German")
 
 # AI research Settings, nur relevant wenn RUN_AI_RESEARCH = True ist.
 # Leere Werte nehmen die Defaults aus .env / .env.example.
-RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "gemini")  # "gemini" oder "openai"
-RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "gemini-3-flash-preview")
+RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "openai")  # "gemini" oder "openai"
 RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", 15)
 RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", 50)
 RESEARCH_PERSON_EMAILS_PER_COMPANY = globals().get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 2)
@@ -52,8 +51,7 @@ WRITE_SENT_LOG = globals().get("WRITE_SENT_LOG", True)
 
 # True = nach erfolgreichem echtem Versand die verarbeiteten .csv/.txt Dateien aus input/<Mode> loeschen
 # False = Input-Dateien nach dem Versand liegen lassen
-DELETE_INPUT_AFTER_SUCCESS = globals().get("DELETE_INPUT_AFTER_SUCCESS", True)
-
+DELETE_INPUT_AFTER_SUCCESS = globals().get("DELETE_INPUT_AFTER_SUCCESS", False)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -66,8 +64,6 @@ if __name__ == "__main__":
             "--mode",
             MODE,
         ]
-        if RESEARCH_MODEL:
-            research_args.extend(["--model", RESEARCH_MODEL])
         if RESEARCH_MIN_COMPANIES is not None:
             research_args.extend(["--min-companies", str(RESEARCH_MIN_COMPANIES)])
         if RESEARCH_MAX_COMPANIES is not None:
