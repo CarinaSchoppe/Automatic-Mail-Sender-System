@@ -28,6 +28,7 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "RUN_AI_RESEARCH": True,
                 "RESEARCH_AI_PROVIDER": "openai",
                 "MODE": "Freelance_English",
+                "RESEARCH_MODEL": "custom-model",
                 "RESEARCH_MIN_COMPANIES": 2,
                 "RESEARCH_MAX_COMPANIES": 4,
                 "RESEARCH_PERSON_EMAILS_PER_COMPANY": 1,

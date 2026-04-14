@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from dotenv import load_dotenv
 
 from mail_sender.attachments import list_attachments
 from mail_sender.modes import MODE_NAMES, MailMode, get_mode
+from mail_sender.recipients import COMPANY_KEYS
+from mail_sender.recipients import EMAIL_KEYS
 from mail_sender.recipients import Recipient
 from mail_sender.recipients import list_recipient_files
 from mail_sender.recipients import normalize_email
@@ -29,6 +32,7 @@ PERSON_EMAILS_PER_COMPANY = 3
 WRITE_OUTPUT = True
 UPLOAD_ATTACHMENTS = True
 BASE_DIR = Path(__file__).resolve().parents[1]
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @dataclass(frozen=True)
@@ -245,7 +249,7 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
         ),
         "Freelance German": (
             "Find German-language organisations that may collaborate with a remote freelance lecturer or trainer. "
-            "Prioritise education providers, AZAV or publicly funded training organisations, vocational education "
+            "Prioritise education providers, AVGS/AZAV or publicly funded training organisations, vocational education "
             "providers, corporate training providers, reskilling or apprenticeship providers, and companies offering "
             "remote or home-office compatible training. The fit should be IT, business, AI, digital skills, software, "
             "cybersecurity, IT security, or related professional education. One general or relevant contact email per "
@@ -471,26 +475,76 @@ def _verbose_gemini_candidates(verbose: bool, response) -> None:
 
 
 def parse_recipients(raw_response: str, existing_emails: set[str]) -> list[Recipient]:
-    rows = raw_response.split("\n")
-    _verbose(globals().get("VERBOSE", True), f"Raw response rows: {len(rows)}")
-    if not rows:
-        raise ValueError("No rows returned from AI provider.")
-    recipients = []
-    #delete first row
-    rows.pop(0)
-    rows = set(rows)
-    for row in rows:
-        _verbose(globals().get("VERBOSE", True), f"Raw response row: {row}")
-        contents = row.split(",")
-        email_cand = contents[-1].strip()
-        company_cand = ", ".join(contents[:-1])
-        if email_cand not in existing_emails:
-            recipients.append(Recipient(email=email_cand, company=company_cand.strip()))
-            _verbose(globals().get("VERBOSE", True), f"Recipient: {email_cand}, {company_cand}")
-        else:
-            _verbose(globals().get("VERBOSE", True), f"Skipping existing email: {email_cand}")
+    csv_text = _strip_csv_fence(raw_response)
+    rows = list(csv.DictReader(csv_text.splitlines(), dialect=_detect_dialect(csv_text))) if csv_text.strip() else []
+    if rows:
+        company_field = _find_field(rows[0], COMPANY_KEYS)
+        email_field = _find_field(rows[0], EMAIL_KEYS)
+        if company_field and email_field:
+            recipients = _extract_from_rows(rows, company_field, email_field, existing_emails)
+            _verbose(globals().get("VERBOSE", True), f"Parsed CSV recipients: {len(recipients)}")
+            return recipients
 
-    return recipients
+    recipients = _parse_headerless_csv_recipients(csv_text, existing_emails)
+    if recipients:
+        _verbose(globals().get("VERBOSE", True), f"Parsed headerless CSV recipients: {len(recipients)}")
+        return recipients
+
+    recipients = _parse_json_recipients(raw_response, existing_emails)
+    if recipients:
+        _verbose(globals().get("VERBOSE", True), f"Parsed JSON recipients: {len(recipients)}")
+        return recipients
+
+    return []
+
+
+def _parse_headerless_csv_recipients(raw_text: str, existing_emails: set[str]) -> list[Recipient]:
+    text = raw_text.strip().strip("'\"`").replace("\\n", "\n")
+    if not text:
+        return []
+
+    try:
+        rows = list(csv.reader(text.splitlines(), dialect=_detect_dialect(text)))
+    except csv.Error:
+        return []
+
+    parsed_rows: list[dict[str, str]] = []
+    for row in rows:
+        cells = [cell.strip().strip("'\"`") for cell in row if cell.strip()]
+        if len(cells) < 2:
+            continue
+        email = cells[-1]
+        company = ", ".join(cells[:-1]).strip()
+        parsed_rows.append({"company": company, "mail": email})
+
+    return _extract_from_rows(parsed_rows, "company", "mail", existing_emails)
+
+
+def _parse_json_recipients(raw_response: str, existing_emails: set[str]) -> list[Recipient]:
+    payload_text = _strip_json_fence(raw_response)
+    try:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError:
+        return []
+
+    if isinstance(payload, dict):
+        lead_rows = payload.get("leads", [])
+    elif isinstance(payload, list):
+        lead_rows = payload
+    else:
+        return []
+
+    rows: list[dict[str, str]] = []
+    for lead in lead_rows:
+        if not isinstance(lead, dict):
+            continue
+        company = str(lead.get("company", "")).strip()
+        emails = lead.get("emails", lead.get("mail", lead.get("email", "")))
+        email_values = emails if isinstance(emails, list) else [emails]
+        for email in email_values:
+            rows.append({"company": company, "mail": str(email)})
+
+    return _extract_from_rows(rows, "company", "mail", existing_emails)
 
 
 def _extract_from_rows(
@@ -535,8 +589,27 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
 
 def _strip_csv_fence(text: str) -> str:
     stripped = text.strip()
+    matches = re.findall(r"```csv\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
+    for match in matches:
+        candidate = match.strip()
+        first_line = candidate.splitlines()[0].strip().lower() if candidate.splitlines() else ""
+        if "company" in first_line and ("mail" in first_line or "email" in first_line):
+            return candidate
+    if matches:
+        return matches[0].strip()
     if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:csv)?\s*", "", stripped, flags=re.IGNORECASE)
+        stripped = re.sub(r"^```(?:csv|json)?\s*", "", stripped, flags=re.IGNORECASE)
+        stripped = re.sub(r"\s*```$", "", stripped)
+    return stripped
+
+
+def _strip_json_fence(text: str) -> str:
+    stripped = text.strip()
+    matches = re.findall(r"```json\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
+    if matches:
+        return matches[0].strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json|csv)?\s*", "", stripped, flags=re.IGNORECASE)
         stripped = re.sub(r"\s*```$", "", stripped)
     return stripped
 

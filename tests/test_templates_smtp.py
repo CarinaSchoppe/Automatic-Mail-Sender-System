@@ -32,7 +32,7 @@ def test_render_mail_subject_fallback_and_override(tmp_path: Path) -> None:
     signature.write_text("", encoding="utf-8")
 
     rendered = render_mail(template, signature, Recipient(email="a@example.com", company="ACME"))
-    assert rendered.subject == "Nachricht fuer ACME"
+    assert rendered.subject == "Message for ACME"
 
     rendered = render_mail(template, signature, Recipient(email="a@example.com"), subject_override="Hi {mail}")
     assert rendered.subject == "Hi a@example.com"

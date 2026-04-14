@@ -4,53 +4,54 @@ from research.research_leads import main as research_main
 from mail_sender.cli import main as mail_main
 
 
-# True = AI research starten und neue Lead-CSV in input/<Mode> erzeugen
-# False = Mail-Sender starten
+# True = run AI research first and create a new lead CSV in input/<Mode>.
+# False = start the mail sender only.
 RUN_AI_RESEARCH = globals().get("RUN_AI_RESEARCH", True)
 
 
-# Stelle hier ein, welchen Batch du starten willst.
-# Erlaubt: "PhD", "Freelance_German", "Freelance_English" oder "Auto"
+# Select the batch to run.
+# Allowed: "PhD", "Freelance_German", "Freelance_English", or "Auto".
 MODE = globals().get("MODE", "Freelance_German")
 
-# AI research Settings, nur relevant wenn RUN_AI_RESEARCH = True ist.
-# Leere Werte nehmen die Defaults aus .env / .env.example.
-RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "openai")  # "gemini" oder "openai"
+# AI research settings. Only used when RUN_AI_RESEARCH = True.
+# Empty values use the defaults from .env / .env.example.
+RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "openai")  # "gemini" or "openai"
+RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "")
 RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", 15)
 RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", 50)
 RESEARCH_PERSON_EMAILS_PER_COMPANY = globals().get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 2)
 RESEARCH_WRITE_OUTPUT = globals().get("RESEARCH_WRITE_OUTPUT", True)
 RESEARCH_UPLOAD_ATTACHMENTS = globals().get("RESEARCH_UPLOAD_ATTACHMENTS", True)
 
-# Sicherheits-Schalter:
-# False = nur Probelauf, keine echten Mails
-# True = echte Mails per SMTP senden
+# Safety switch:
+# False = dry run only, no real emails.
+# True = send real emails via SMTP.
 SEND = globals().get("SEND", True)
 
-# Viele Ausgaben im Terminal.
+# Print detailed terminal output.
 VERBOSE = globals().get("VERBOSE", True)
 
-# Standard: vorhandene Adressen in send_phd.xlsx / send_freelance.xlsx werden geskippt.
-# Nur auf True setzen, wenn du bewusst erneut an bereits geloggte Adressen senden willst.
+# Default: skip addresses already present in send_phd.xlsx / send_freelance.xlsx.
+# Only set this to True when you intentionally want to contact already logged addresses again.
 RESEND_EXISTING = globals().get("RESEND_EXISTING", False)
 
-# Standardlogo fuer die Signatur. Lege dein Logo dort ab oder passe den Pfad an.
+# Default logo for the email signature. Place the logo there or adjust the path.
 SIGNATURE_LOGO = globals().get("SIGNATURE_LOGO", "templates/signature-logo.png")
 SIGNATURE_LOGO_WIDTH = globals().get("SIGNATURE_LOGO_WIDTH", 325)
 
-# Nur fuer Tests ohne Anhaenge auf True setzen. Fuer echte Mails besser False lassen.
+# Only set this to True for tests without attachments. Keep it False for real emails.
 ALLOW_EMPTY_ATTACHMENTS = globals().get("ALLOW_EMPTY_ATTACHMENTS", False)
 
-# False = Probelauf schreibt nicht in send_phd.xlsx / send_freelance.xlsx
-# True = Probelauf wird in Excel protokolliert
+# False = dry runs are not written to send_phd.xlsx / send_freelance.xlsx.
+# True = dry runs are logged in Excel.
 LOG_DRY_RUN = globals().get("LOG_DRY_RUN", False)
 
-# True = erfolgreich gesendete Mails in output/send_*.xlsx eintragen
-# False = erfolgreiche Sendungen nicht in Excel eintragen
+# True = write successfully sent emails to output/send_*.xlsx.
+# False = do not write successful sends to Excel.
 WRITE_SENT_LOG = globals().get("WRITE_SENT_LOG", True)
 
-# True = nach erfolgreichem echtem Versand die verarbeiteten .csv/.txt Dateien aus input/<Mode> loeschen
-# False = Input-Dateien nach dem Versand liegen lassen
+# True = delete processed .csv/.txt files from input/<Mode> after a successful real send run.
+# False = keep input files after sending.
 DELETE_INPUT_AFTER_SUCCESS = globals().get("DELETE_INPUT_AFTER_SUCCESS", False)
 
 if __name__ == "__main__":
@@ -64,6 +65,8 @@ if __name__ == "__main__":
             "--mode",
             MODE,
         ]
+        if RESEARCH_MODEL:
+            research_args.extend(["--model", RESEARCH_MODEL])
         if RESEARCH_MIN_COMPANIES is not None:
             research_args.extend(["--min-companies", str(RESEARCH_MIN_COMPANIES)])
         if RESEARCH_MAX_COMPANIES is not None:

@@ -14,7 +14,7 @@ from mail_sender.recipients import normalize_key
 
 
 HEADERS = [
-    "Unternehmen",
+    "company",
     "mail",
     "sent_at",
 ]

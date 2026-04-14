@@ -82,7 +82,7 @@ def _split_subject(text: str) -> tuple[str, str]:
             body_lines.pop(0)
         return subject, "\n".join(body_lines)
 
-    return "Nachricht fuer {company_or_email}", text
+    return "Message for {company_or_email}", text
 
 
 def _render_text_signature(signature: str) -> str:

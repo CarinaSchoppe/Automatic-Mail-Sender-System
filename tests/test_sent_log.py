@@ -15,7 +15,7 @@ def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
 
     sheet = load_workbook(log_path).active
     assert sheet.max_column == 3
-    assert [sheet.cell(1, column).value for column in range(1, 4)] == ["Unternehmen", "mail", "sent_at"]
+    assert [sheet.cell(1, column).value for column in range(1, 4)] == ["company", "mail", "sent_at"]
     assert [sheet.cell(2, column).value for column in range(1, 3)] == ["ACME", "person@example.com"]
     assert "+10:00" in sheet.cell(2, 3).value
     assert read_logged_emails(log_path) == {"person@example.com"}
@@ -27,7 +27,7 @@ def test_read_logged_emails_normalizes_mailto_and_handles_missing_headers(tmp_pa
     log_path = tmp_path / "send.xlsx"
     workbook = Workbook()
     sheet = workbook.active
-    sheet.append(["Unternehmen", "mail"])
+    sheet.append(["company", "mail"])
     sheet.append(["ACME", "mailto:person@example.com"])
     sheet.append(["Blank", ""])
     workbook.save(log_path)
@@ -36,7 +36,7 @@ def test_read_logged_emails_normalizes_mailto_and_handles_missing_headers(tmp_pa
 
     no_mail = tmp_path / "no-mail.xlsx"
     workbook = Workbook()
-    workbook.active.append(["Unternehmen"])
+    workbook.active.append(["company"])
     workbook.save(no_mail)
     assert read_logged_emails(no_mail) == set()
 
@@ -45,7 +45,7 @@ def test_append_log_truncates_old_extra_columns(tmp_path: Path) -> None:
     log_path = tmp_path / "send.xlsx"
     workbook = Workbook()
     sheet = workbook.active
-    sheet.append(["Unternehmen", "mail", "sent_at_utc", "mode", "status"])
+    sheet.append(["company", "mail", "sent_at_utc", "mode", "status"])
     sheet.append(["Old", "old@example.com", "old", "PhD", "SENT"])
     workbook.save(log_path)
 
@@ -53,4 +53,4 @@ def test_append_log_truncates_old_extra_columns(tmp_path: Path) -> None:
 
     sheet = load_workbook(log_path).active
     assert sheet.max_column == 3
-    assert [sheet.cell(1, column).value for column in range(1, 4)] == ["Unternehmen", "mail", "sent_at"]
+    assert [sheet.cell(1, column).value for column in range(1, 4)] == ["company", "mail", "sent_at"]

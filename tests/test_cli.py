@@ -40,7 +40,7 @@ def test_cli_skips_logged_and_duplicate_addresses(project: Path, capsys) -> None
     write_recipient(project / "input/PhD/one.csv", "One", "one@example.com")
     (project / "input/PhD/two.csv").write_text("company,mail\nTwo,one@example.com\nLogged,logged@example.com\n", encoding="utf-8")
     workbook = Workbook()
-    workbook.active.append(["Unternehmen", "mail", "sent_at"])
+    workbook.active.append(["company", "mail", "sent_at"])
     workbook.active.append(["Logged", "mailto:logged@example.com", "2026-04-14T10:00+10:00"])
     workbook.save(project / "output/send_phd.xlsx")
 
@@ -56,7 +56,7 @@ def test_cli_skips_logged_and_duplicate_addresses(project: Path, capsys) -> None
 def test_cli_returns_zero_when_all_recipients_are_logged(project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/one.csv", "One", "one@example.com")
     workbook = Workbook()
-    workbook.active.append(["Unternehmen", "mail", "sent_at"])
+    workbook.active.append(["company", "mail", "sent_at"])
     workbook.active.append(["One", "one@example.com", "2026-04-14T10:00+10:00"])
     workbook.save(project / "output/send_phd.xlsx")
 
@@ -234,7 +234,7 @@ def test_cli_deletes_input_files_when_everything_was_already_logged(project: Pat
     input_file = project / "input/PhD/phd.csv"
     write_recipient(input_file, "PhD Co", "phd@example.com")
     workbook = Workbook()
-    workbook.active.append(["Unternehmen", "mail", "sent_at"])
+    workbook.active.append(["company", "mail", "sent_at"])
     workbook.active.append(["PhD Co", "phd@example.com", "2026-04-14T10:00+10:00"])
     workbook.save(project / "output/send_phd.xlsx")
 

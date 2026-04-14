@@ -95,6 +95,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     monkeypatch.setenv("RESEARCH_AI_PROVIDER", "openai")
     monkeypatch.setenv("RESEARCH_MODE", "Freelance_German")
     monkeypatch.setenv("GEMINI_MODEL", "custom-model")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
     monkeypatch.setenv("RESEARCH_MIN_COMPANIES", "2")
     monkeypatch.setenv("RESEARCH_MAX_COMPANIES", "7")
     monkeypatch.setenv("RESEARCH_PERSON_EMAILS_PER_COMPANY", "1")
@@ -221,6 +222,26 @@ def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:
     assert recipients == [
         Recipient(email="info@aiengineers.com", company="AI Engineers, Inc."),
         Recipient(email="info@pwc.com", company="PwC"),
+    ]
+
+
+def test_parse_recipients_prefers_csv_block_from_mixed_gemini_output() -> None:
+    raw = """```json
+[
+  {"company": "Wrong", "mail": "wrong@example.com"}
+]
+``````csv
+company,mail
+CSIRO,industry.phd@csiro.au
+The University of Queensland,enquire@uq.edu.au
+```
+"""
+
+    recipients = research_leads.parse_recipients(raw, set())
+
+    assert recipients == [
+        Recipient(email="industry.phd@csiro.au", company="CSIRO"),
+        Recipient(email="enquire@uq.edu.au", company="The University of Queensland"),
     ]
 
 
@@ -381,11 +402,11 @@ def test_needs_retry_handles_invalid_csv() -> None:
     assert research_leads._needs_retry("not,csv\nonly-one-value\n", set()) is True
 
 
-def test_model_for_provider_prefers_generic_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_model_for_provider_uses_provider_specific_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_MODEL", "generic-model")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
 
-    assert research_leads._model_for_provider("openai") == "generic-model"
+    assert research_leads._model_for_provider("openai") == "gpt-test"
 
 
 def test_generate_with_provider_selects_openai_and_rejects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
