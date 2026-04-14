@@ -80,6 +80,7 @@ Der Standardweg ist `main.py`. Stelle oben in `main.py` ein:
 
 ```python
 MODE = "PhD"        # oder "Freelance_German", "Freelance_English", "Auto"
+RUN_AI_RESEARCH = False # False = Mail-Sender, True = AI Research
 SEND = False        # False = Probelauf, True = echt senden
 VERBOSE = True
 LOG_DRY_RUN = False # False = Probelauf nicht in Excel schreiben
@@ -147,7 +148,14 @@ In diese Excel-Dateien werden nur diese Spalten geschrieben:
 
 Das Research-Tool liegt in `Research/research_leads.py`. Es nutzt Gemini mit Google-Search-Grounding, laedt die passenden Dateien aus `attachments/<Mode>` als Kontext hoch, liest bestehende Adressen aus `output/send_*.xlsx` und vorhandenen `input`-Dateien als Ausschlussliste und schreibt neue Leads als CSV in den passenden `input/<Mode>` Ordner.
 
-Vorher `GEMINI_API_KEY` in deiner Umgebung setzen.
+Du kannst Research auch direkt ueber `main.py` starten:
+
+```python
+RUN_AI_RESEARCH = True
+MODE = "PhD"  # oder "Freelance_German" / "Freelance_English"
+```
+
+Vorher `GEMINI_API_KEY` in `.env` setzen. Das Layout steht in `.env.example`.
 
 Beispiele:
 

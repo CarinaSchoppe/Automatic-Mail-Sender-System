@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import sys
 import types as py_types
 from pathlib import Path
@@ -24,7 +25,19 @@ def config(project: Path, mode: str = "PhD", write_output: bool = True) -> Resea
     )
 
 
-def test_default_config_and_parse_args(project: Path) -> None:
+def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    for key in [
+        "RESEARCH_MODE",
+        "GEMINI_MODEL",
+        "RESEARCH_MIN_COMPANIES",
+        "RESEARCH_MAX_COMPANIES",
+        "RESEARCH_PERSON_EMAILS_PER_COMPANY",
+        "RESEARCH_WRITE_OUTPUT",
+        "RESEARCH_BASE_DIR",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
     default = research_leads.default_config()
     assert default.mode_name == "PhD"
     assert default.model == "gemini-2.5-flash-lite"
@@ -54,6 +67,27 @@ def test_default_config_and_parse_args(project: Path) -> None:
     assert parsed.write_output is False
 
 
+def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    monkeypatch.setenv("RESEARCH_MODE", "Freelance_German")
+    monkeypatch.setenv("GEMINI_MODEL", "custom-model")
+    monkeypatch.setenv("RESEARCH_MIN_COMPANIES", "2")
+    monkeypatch.setenv("RESEARCH_MAX_COMPANIES", "7")
+    monkeypatch.setenv("RESEARCH_PERSON_EMAILS_PER_COMPANY", "1")
+    monkeypatch.setenv("RESEARCH_WRITE_OUTPUT", "false")
+    monkeypatch.setenv("RESEARCH_BASE_DIR", str(project))
+
+    cfg = research_leads.default_config()
+
+    assert cfg.mode_name == "Freelance_German"
+    assert cfg.model == "custom-model"
+    assert cfg.min_companies == 2
+    assert cfg.max_companies == 7
+    assert cfg.person_emails_per_company == 1
+    assert cfg.write_output is False
+    assert cfg.base_dir == project
+
+
 def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
     append_log(project / "output/send_phd.xlsx", Recipient(email="logged@example.com", company="Logged"))
     (project / "input/Freelance_German/existing.csv").write_text(
@@ -65,7 +99,12 @@ def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
 
 
 def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
-    phd_prompt = research_leads.build_prompt(config(project), research_leads.get_mode("PhD", project), {"old@example.com"})
+    phd_prompt = research_leads.build_prompt(
+        config(project),
+        research_leads.get_mode("PhD", project),
+        {"old@example.com"},
+        "company,mail\nExample GmbH,example@example.com",
+    )
     german_prompt = research_leads.build_prompt(
         config(project, mode="Freelance_German"),
         research_leads.get_mode("Freelance_German", project),
@@ -79,22 +118,44 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
 
     assert "Industry PhD" in phd_prompt
     assert "old@example.com" in phd_prompt
+    assert "company,mail" in phd_prompt
+    assert "Example GmbH" in phd_prompt
     assert "AVGS" in german_prompt
     assert "Luxembourg" in english_prompt
 
 
+def test_read_input_context_reads_mode_files_and_truncates(project: Path) -> None:
+    (project / "input/PhD/example.csv").write_text("company,mail\nA,a@example.com\n", encoding="utf-8")
+    (project / "input/PhD/notes.txt").write_text("lead style note", encoding="utf-8")
+
+    context = research_leads.read_input_context(project / "input/PhD", max_chars=45)
+
+    assert "example.csv" in context
+    assert "company,mail" in context
+    assert context.endswith("...[truncated]")
+
+
+def test_read_input_context_replaces_invalid_bytes(project: Path) -> None:
+    (project / "input/PhD/broken.csv").write_bytes(b"\xffcompany,mail\nA,a@example.com\n")
+
+    context = research_leads.read_input_context(project / "input/PhD")
+
+    assert "broken.csv" in context
+    assert "company,mail" in context
+
+
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
     raw = """
-```json
-{
-  "leads": [
-    {"company": "A", "emails": ["mailto:a@example.com", "bad"]},
-    {"company": "A", "emails": ["other@example.com"]},
-    {"company": "B", "emails": "existing@example.com"},
-    {"company": "C", "emails": ["c@example.com"]},
-    {"company": "D", "emails": ["d@example.com"]}
-  ]
-}
+```csv
+company,mail
+A,mailto:a@example.com
+A,bad
+A,other@example.com
+B,existing@example.com
+,missing-company@example.com
+Missing Email,
+C,c@example.com
+D,d@example.com
 ```
 """
 
@@ -102,8 +163,17 @@ def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limi
 
     assert recipients == [
         Recipient(email="a@example.com", company="A"),
+        Recipient(email="other@example.com", company="A"),
         Recipient(email="c@example.com", company="C"),
     ]
+
+
+def test_parse_recipients_requires_company_and_mail_columns() -> None:
+    with pytest.raises(ValueError, match="company and mail"):
+        research_leads.parse_recipients("name,address\nA,a@example.com", set(), max_companies=1)
+
+    assert research_leads.parse_recipients("", set(), max_companies=1) == []
+    assert research_leads._detect_dialect("") == csv.excel
 
 
 def test_write_recipients_csv(project: Path) -> None:
@@ -124,7 +194,8 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
         assert model == "gemini-2.5-flash-lite"
         assert attachments == [project / "attachments/PhD/context.pdf"]
         assert "Existing email exclusion list" in prompt
-        return '{"leads": [{"company": "A", "emails": ["a@example.com"]}]}'
+        assert "Mode-specific input CSV/TXT context" in prompt
+        return "company,mail\nA,a@example.com\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
 
@@ -140,7 +211,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         research_leads,
         "generate_with_gemini",
-        lambda model, prompt, attachments: '{"leads": [{"company": "A", "emails": ["a@example.com"]}]}',
+        lambda model, prompt, attachments: "company,mail\nA,a@example.com\n",
     )
 
     output_path, recipients = research_leads.run_research(config(project, write_output=False))
@@ -151,7 +222,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
     with pytest.raises(ValueError, match="Company limits"):
         research_leads.run_research(bad_config)
 
-    monkeypatch.setattr(research_leads, "generate_with_gemini", lambda model, prompt, attachments: '{"leads": []}')
+    monkeypatch.setattr(research_leads, "generate_with_gemini", lambda model, prompt, attachments: "company,mail\n")
     with pytest.raises(RuntimeError, match="no new usable"):
         research_leads.run_research(config(project))
 
@@ -176,6 +247,7 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
 
 
 def test_generate_with_gemini_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
@@ -183,6 +255,7 @@ def test_generate_with_gemini_requires_api_key(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_generate_with_gemini_uses_google_search_and_uploaded_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     uploaded = object()
     attachment = tmp_path / "context.pdf"
     attachment.write_text("context", encoding="utf-8")
