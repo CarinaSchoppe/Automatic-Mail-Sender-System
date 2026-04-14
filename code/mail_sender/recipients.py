@@ -81,7 +81,7 @@ def list_recipient_files(directory: Path) -> list[Path]:
     )
 
 
-def _detect_dialect(text: str) -> csv.Dialect:
+def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:

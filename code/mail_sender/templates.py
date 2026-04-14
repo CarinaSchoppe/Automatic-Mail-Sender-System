@@ -33,7 +33,6 @@ def render_mail(
         signature_image_path: Path | None = None,
         signature_image_width: int = 180,
 ) -> RenderedMail:
-    global signature_text
     if not template_path.exists():
         raise FileNotFoundError(f"Mail template not found: {template_path}")
     if not signature_path.exists():
@@ -50,6 +49,7 @@ def render_mail(
     subject = subject_template.format_map(context).strip()
     body_text = body_template.format_map(context).strip()
     inline_images: list[InlineImage] = []
+    signature_text = ""
 
     if signature:
         signature_text = signature.format_map(context)

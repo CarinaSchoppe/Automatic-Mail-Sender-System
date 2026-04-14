@@ -191,6 +191,46 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
     assert sheet.cell(2, 2).value == "phd@example.com"
 
 
+def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsys) -> None:
+    (project / "input/PhD/phd.csv").write_text(
+        "company,mail\nA,a@example.com\nB,b@example.com\nC,c@example.com\n",
+        encoding="utf-8",
+    )
+    (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
+    sent = []
+
+    class FakeMailer:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
+            sent.append(recipient.email)
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send", "--max-send-count", "2"])
+
+    assert result == 0
+    assert sent == ["a@example.com", "b@example.com"]
+    assert "Limiting this run to 2 recipient(s)." in capsys.readouterr().out
+    sheet = load_workbook(project / "output/send_phd.xlsx").active
+    assert sheet.max_row == 3
+
+
+def test_cli_rejects_invalid_max_send_count(project: Path, capsys) -> None:
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--max-send-count", "0"])
+
+    assert result == 1
+    assert "--max-send-count must be at least 1" in capsys.readouterr().out
+
+
 def test_cli_can_disable_sent_excel_logging(monkeypatch, project: Path) -> None:
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")

@@ -6,6 +6,7 @@ import ssl
 from email.message import EmailMessage
 from email.utils import formataddr
 from pathlib import Path
+from typing import cast
 
 from mail_sender.config import SmtpConfig
 from mail_sender.recipients import Recipient
@@ -47,7 +48,8 @@ class SmtpMailer:
         message.set_content(text_body)
         message.add_alternative(html_body, subtype="html")
 
-        html_part = message.get_payload()[-1]
+        payload = cast(list[EmailMessage], message.get_payload())
+        html_part = payload[-1]
         for inline_image in inline_images:
             main_type, sub_type = guess_content_type(inline_image.path, fallback=("image", "png"))
             html_part.add_related(

@@ -96,13 +96,18 @@ The first template line may be `Subject: ...`. These placeholders are available:
 
 ## Dry Run
 
-The default entry point is `code/main.py`. Configure normal runs in `settings.toml`:
+The default entry point is `code/main.py`. Configure normal runs in `settings.toml`.
+Every setting in that file has a short explanation and its default value directly above it, so normal behavior can be changed without touching Python code.
 
 ```toml
 MODE = "PhD"
 RUN_AI_RESEARCH = true
 SEND = false
 VERBOSE = true
+SAVE_VERBOSE_LOG = true
+VERBOSE_LOG_DIR = "logs"
+SEND_TARGET_COUNT = 0
+SEND_TARGET_MAX_ROUNDS = 0
 LOG_DRY_RUN = false
 WRITE_SENT_LOG = true
 DELETE_INPUT_AFTER_SUCCESS = false
@@ -151,6 +156,20 @@ python code\main.py --mode PhD --send --verbose
 
 Only use `--resend-existing` if you intentionally want to contact already logged addresses again.
 
+For repeated research + sending until a target number is reached, set:
+
+```toml
+RUN_AI_RESEARCH = true
+SEND = true
+RESEARCH_WRITE_OUTPUT = true
+WRITE_SENT_LOG = true
+RESEND_EXISTING = false
+SEND_TARGET_COUNT = 500
+SEND_TARGET_MAX_ROUNDS = 0
+```
+
+`SEND_TARGET_COUNT` counts newly logged sent emails in this run. The system checks the existing `output/*.xlsx` sent logs before it starts, then repeats research and real sending until that many new addresses have been added. The final send round is capped automatically so it does not intentionally send past the remaining target. `SEND_TARGET_MAX_ROUNDS = 0` means unlimited rounds; even then, the loop stops if a round creates no new sent-log entries.
+
 Before rendering or sending, each recipient email is also validated. The pipeline checks email syntax and whether the domain has MX or A DNS records. Invalid addresses are skipped and written to:
 
 ```text
@@ -160,6 +179,17 @@ output/invalid_mails.xlsx
 Future runs skip addresses already listed in `invalid_mails.xlsx`. The sender also checks all `.xlsx` files in `output` for already used addresses, not just the active mode workbook. This reduces false positives, but it is not full mailbox verification: an address can still bounce even if the domain DNS is valid.
 
 ## Logs
+
+Normal runs print status lines such as `[INFO]`, `[DRY_RUN]`, `[SENT]`, `[SKIP]`, and `[ERROR]`.
+Set `VERBOSE = true` in `settings.toml` or pass `--verbose` for detailed step-by-step output about file discovery, filtering, provider calls, generated CLI arguments, validation, and skipped rows.
+
+By default, `SAVE_VERBOSE_LOG = true` mirrors terminal output into timestamped files under:
+
+```text
+logs/
+```
+
+If `VERBOSE = true`, these saved logs also include all `[VERBOSE]` lines. If `VERBOSE = false`, the log file still contains the normal status output.
 
 The script writes processed recipients to:
 
@@ -182,7 +212,18 @@ The invalid email log writes:
 
 ## Research
 
-The research tool is in `code/research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, can upload matching files from `attachments/<Mode>` as context, reads existing addresses from `output/send_*.xlsx` and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
+The research tool is in `code/research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, reads existing addresses from `output/send_*.xlsx` and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
+
+For AI research context upload, only CV/resume/Lebenslauf files from `attachments/<Mode>` plus the matching sent Excel log are uploaded. PhD research uploads `output/send_phd.xlsx` when it exists. Freelance research uploads `output/send_freelance.xlsx` when it exists. Mail sending is separate and still uses the normal attachment folder behavior.
+
+The prompt also tells the AI not to search for or return companies or email addresses already present in the mode-specific sent Excel list. The local parser still filters existing email addresses and mode-specific company names after the AI response.
+
+Gemini research is configured with Google Search grounding, automatic tool use, and high thinking/reasoning. OpenAI research uses the Responses API with `web_search`, automatic tool choice, and high reasoning effort. Provider-specific model names stay in `.env`:
+
+```text
+GEMINI_MODEL=gemini-2.5-flash-lite
+OPENAI_MODEL=gpt-5.4
+```
 
 You can start research through `code/main.py`. If `RUN_AI_RESEARCH = true`, research runs first and the newly found contacts are then processed/sent.
 
@@ -208,4 +249,24 @@ Test without writing output:
 
 ```powershell
 python code\research\research_leads.py --mode PhD --no-write-output
+```
+
+## Quality Checks
+
+Run the full test suite:
+
+```powershell
+python -m pytest
+```
+
+Run source coverage for the application code:
+
+```powershell
+python -m pytest --cov=main --cov=mail_sender --cov=code\research --cov-report=term-missing
+```
+
+Run the focused Ruff check for unused imports and unused production-code arguments:
+
+```powershell
+python -m ruff check code\main.py code\mail_sender code\research --select F,ARG
 ```

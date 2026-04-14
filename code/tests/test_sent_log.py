@@ -5,7 +5,7 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 from mail_sender.recipients import Recipient
-from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails, read_logged_emails
+from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails, read_logged_emails, read_logged_rows
 
 
 def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
@@ -19,6 +19,7 @@ def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
     assert [sheet.cell(2, column).value for column in range(1, 3)] == ["ACME", "person@example.com"]
     assert "+10:00" in sheet.cell(2, 3).value
     assert read_logged_emails(log_path) == {"person@example.com"}
+    assert read_logged_rows(log_path) == [{"company": "ACME", "mail": "person@example.com"}]
 
 
 def test_read_logged_emails_normalizes_mailto_and_handles_missing_headers(tmp_path: Path) -> None:

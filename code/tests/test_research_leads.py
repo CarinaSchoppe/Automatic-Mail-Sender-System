@@ -130,11 +130,23 @@ def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
     assert research_leads.collect_existing_emails(project) == {"logged@example.com", "input@example.com"}
 
 
+def test_collect_mode_existing_companies_reads_mode_log_and_input(project: Path) -> None:
+    mode = research_leads.get_mode("PhD", project)
+    append_log(project / "output/send_phd.xlsx", Recipient(email="old@example.com", company="Old Company GmbH"))
+    (project / "input/PhD/existing.csv").write_text(
+        "company,mail\nInput Company,input@example.com\n",
+        encoding="utf-8",
+    )
+
+    assert research_leads.collect_mode_existing_companies(mode) == {"oldcompanygmbh", "inputcompany"}
+
+
 def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
     phd_prompt = research_leads.build_prompt(
         config(project),
         research_leads.get_mode("PhD", project),
         {"old@example.com"},
+        {"oldcompany"},
         "company,mail,source_url\nExample GmbH,example@example.com,https://example.com/contact",
     )
     german_prompt = research_leads.build_prompt(
@@ -150,10 +162,23 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
 
     assert "Industry PhD" in phd_prompt
     assert "old@example.com" in phd_prompt
+    assert "oldcompany" in phd_prompt
+    assert "uploaded sent-log file" in phd_prompt
     assert "company,mail,source_url" in phd_prompt
     assert "Example GmbH" in phd_prompt
     assert "AVGS" in german_prompt
     assert "remote freelance lecturer" in english_prompt
+
+
+def test_build_prompt_accepts_legacy_input_context_position(project: Path) -> None:
+    prompt = research_leads.build_prompt(
+        config(project),
+        research_leads.get_mode("PhD", project),
+        set(),
+        "legacy context",
+    )
+
+    assert "legacy context" in prompt
 
 
 def test_read_input_context_reads_mode_files_and_truncates(project: Path) -> None:
@@ -190,6 +215,17 @@ def test_list_resume_attachments_only_returns_cv_resume_files(project: Path) -> 
     assert research_leads.list_resume_attachments(attachment_dir) == [cv, nested_resume]
 
 
+def test_list_research_context_files_adds_matching_sent_log(project: Path) -> None:
+    cv = project / "attachments/PhD/CV.pdf"
+    other = project / "attachments/PhD/certificate.pdf"
+    cv.write_text("cv", encoding="utf-8")
+    other.write_text("certificate", encoding="utf-8")
+    append_log(project / "output/send_phd.xlsx", Recipient(email="old@example.com", company="Old"))
+    mode = research_leads.get_mode("PhD", project)
+
+    assert research_leads.list_research_context_files(mode) == [cv, project / "output/send_phd.xlsx"]
+
+
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
     raw = """
 ```csv
@@ -211,6 +247,21 @@ D,d@example.com,
         Recipient(email="a@example.com", company="A"),
         Recipient(email="other@example.com", company="A"),
         Recipient(email="c@example.com", company="C"),
+    ]
+
+
+def test_parse_recipients_filters_existing_company_but_allows_multiple_new_company_emails() -> None:
+    raw = """company,mail,source_url
+Old Company,old-new@example.com,https://old.example/contact
+New Company,one@example.com,https://new.example/contact
+New Company,two@example.com,https://new.example/team
+"""
+
+    recipients = research_leads.parse_recipients(raw, set(), {"oldcompany"})
+
+    assert recipients == [
+        Recipient(email="one@example.com", company="New Company"),
+        Recipient(email="two@example.com", company="New Company"),
     ]
 
 
@@ -308,11 +359,14 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
     cert = project / "attachments/PhD/context.pdf"
     cv.write_text("cv", encoding="utf-8")
     cert.write_text("cert", encoding="utf-8")
+    append_log(project / "output/send_phd.xlsx", Recipient(email="old@example.com", company="Old Co"))
 
     def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         assert model == "gemini-2.5-flash-lite"
-        assert attachments == [cv]
+        assert attachments == [cv, project / "output/send_phd.xlsx"]
         assert "Existing email exclusion list" in prompt
+        assert "Existing company exclusion list for this mode" in prompt
+        assert "oldco" in prompt
         assert "Mode-specific input CSV/TXT context" in prompt
         assert verbose is True
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"

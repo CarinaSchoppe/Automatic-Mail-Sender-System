@@ -1,3 +1,5 @@
+"""Excel log helpers for sent and invalid email tracking."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -59,22 +61,31 @@ def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> N
 
 
 def read_logged_emails(log_path: Path) -> set[str]:
+    rows = read_logged_rows(log_path)
+    return {row["mail"] for row in rows if row["mail"]}
+
+
+def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
+    """Read normalized company/email rows from a sent or invalid Excel log."""
     if not log_path.exists():
-        return set()
+        return []
 
     workbook = load_workbook(log_path)
     sheet = workbook.active
     header = [str(cell.value or "") for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+    company_index = _find_header_index(header, {"company", "organization"})
     email_index = _find_header_index(header, EMAIL_KEYS)
     if email_index is None:
-        return set()
+        return []
 
-    emails: set[str] = set()
+    rows: list[dict[str, str]] = []
     for row in sheet.iter_rows(min_row=2):
+        company = ""
+        if company_index is not None:
+            company = str(row[company_index - 1].value or "").strip()
         email = normalize_email(str(row[email_index - 1].value or "")).lower()
-        if email:
-            emails.add(email)
-    return emails
+        rows.append({"company": company, "mail": email})
+    return rows
 
 
 def read_invalid_emails(log_path: Path) -> set[str]:

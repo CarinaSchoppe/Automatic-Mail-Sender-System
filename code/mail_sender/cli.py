@@ -1,3 +1,5 @@
+"""Command-line mail pipeline: load recipients, validate, render, send, and log."""
+
 from __future__ import annotations
 
 import argparse
@@ -24,6 +26,7 @@ def _info(message: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the mail pipeline for one mode or Auto mode."""
     parser = argparse.ArgumentParser(description="Send PhD or Freelance mail batches via SMTPS.")
     parser.add_argument("--mode", required=True, choices=["Auto", "auto", "PhD", "phd", "Freelance_German", "freelance_german", "Freelance_English", "freelance_english"], help="Mail mode.")
     parser.add_argument("--base-dir", default=".", help="Project base directory.")
@@ -36,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
     parser.add_argument("--signature-logo", default="templates/signature-logo.png", help="Inline logo image used when the signature contains {IMAGE}.")
     parser.add_argument("--signature-logo-width", type=int, default=180, help="Width of the inline signature logo in pixels.")
+    parser.add_argument("--max-send-count", type=int, help="Maximum number of filtered recipients to process in this run.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed pipeline logging.")
     args = parser.parse_args(argv)
 
@@ -44,6 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     signature_logo_path = (base_dir / args.signature_logo).resolve() if not Path(args.signature_logo).is_absolute() else Path(args.signature_logo)
 
     try:
+        if args.max_send_count is not None and args.max_send_count < 1:
+            raise ValueError("--max-send-count must be at least 1.")
+
         _info(f"Starting mail pipeline in mode {args.mode}.")
         _verbose(args.verbose, f"Parsed CLI args: {args}")
         modes = _select_modes(args.mode, base_dir)
@@ -77,7 +84,63 @@ def _select_modes(mode_name: str, base_dir: Path):
 
 
 def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
+    """Process one configured mail mode and return the number of per-recipient errors."""
     _info(f"Starting mode {mode.label}.")
+    invalid_log_path = base_dir / "output" / "invalid_mails.xlsx"
+    _log_mode_paths(args, mode, base_dir, signature_path, signature_logo_path, invalid_log_path)
+
+    recipient_files = _scan_recipient_files(args, mode)
+    _info("Reading recipients.")
+    recipients = read_recipients_from_dir(mode.recipients_dir)
+    _info(f"Recipients loaded: {len(recipients)}.")
+    _verbose(args.verbose, f"Loaded recipients: {[recipient.email for recipient in recipients]}")
+
+    attachments = _load_attachments(args, mode)
+    logged_emails, invalid_emails = _load_exclusion_logs(args, base_dir, invalid_log_path)
+    recipients_to_process, skipped_before_send = _filter_recipients(
+        args,
+        recipients,
+        logged_emails,
+        invalid_emails,
+        invalid_log_path,
+    )
+    recipients_to_process = _apply_max_send_count(args, recipients_to_process)
+    _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send, attachments, invalid_log_path)
+
+    if not recipients_to_process:
+        print("Nothing to process.")
+        if args.send and args.delete_input_after_success:
+            _info("Deleting input files because everything was already handled.")
+            _delete_input_files(recipient_files, args.verbose)
+        return 0
+
+    _info("Loading SMTP configuration.")
+    smtp_config = load_smtp_config(require_password=args.send)
+    _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
+    _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
+    _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
+
+    errors = _send_or_dry_run(
+        args,
+        mode,
+        signature_path,
+        signature_logo_path,
+        recipients_to_process,
+        attachments,
+        smtp_config,
+    )
+
+    if errors:
+        print(f"Finished {mode.label} with {errors} error(s).")
+    else:
+        print(f"Finished {mode.label} successfully.")
+        if args.send and args.delete_input_after_success:
+            _info("Deleting processed input files after successful send.")
+            _delete_input_files(recipient_files, args.verbose)
+    return errors
+
+
+def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:
     _verbose(args.verbose, f"Base directory: {base_dir}")
     _verbose(args.verbose, f"Recipient input directory: {mode.recipients_dir}")
     _verbose(args.verbose, f"Mode template: {mode.template_path}")
@@ -86,9 +149,10 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     _verbose(args.verbose, f"Signature logo width: {args.signature_logo_width}px")
     _verbose(args.verbose, f"Attachment directory: {mode.attachments_dir}")
     _verbose(args.verbose, f"Excel log file: {mode.log_path}")
-    invalid_log_path = base_dir / "output" / "invalid_mails.xlsx"
     _verbose(args.verbose, f"Invalid email log file: {invalid_log_path}")
 
+
+def _scan_recipient_files(args, mode) -> list[Path]:
     _info("Scanning recipient input files.")
     recipient_files = list_recipient_files(mode.recipients_dir)
     if recipient_files:
@@ -98,12 +162,10 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     else:
         _info("No recipient files found for this mode.")
         _verbose(args.verbose, "No recipient files found.")
+    return recipient_files
 
-    _info("Reading recipients.")
-    recipients = read_recipients_from_dir(mode.recipients_dir)
-    _info(f"Recipients loaded: {len(recipients)}.")
-    _verbose(args.verbose, f"Loaded recipients: {[recipient.email for recipient in recipients]}")
 
+def _load_attachments(args, mode) -> list[Path]:
     _info("Scanning attachment files for mail sending.")
     attachments = list_attachments(mode.attachments_dir)
     if attachments:
@@ -119,7 +181,10 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
             f"No attachments found in {mode.attachments_dir}. "
             "Add files there or use --allow-empty-attachments."
         )
+    return attachments
 
+
+def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[set[str], set[str]]:
     _info("Loading sent and invalid email logs.")
     logged_emails = set() if args.resend_existing else read_known_output_emails(base_dir / "output")
     invalid_emails = read_invalid_emails(invalid_log_path)
@@ -130,7 +195,10 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     else:
         _verbose(args.verbose, "No existing sent addresses were loaded from output Excel files.")
     _verbose(args.verbose, f"Loaded {len(invalid_emails)} invalid email address(es) from {invalid_log_path}.")
+    return logged_emails, invalid_emails
 
+
+def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails: set[str], invalid_log_path: Path):
     _info("Validating and filtering recipients.")
     recipients_to_process = []
     skipped_before_send = 0
@@ -150,6 +218,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
             skipped_before_send += 1
             print(f"[SKIP] {recipient.email} appears more than once in this CSV run; duplicate skipped.")
             continue
+
         validation = validate_email_address(recipient.email)
         _verbose(args.verbose, f"Validation result for {recipient.email}: {validation.is_valid} {validation.reason}")
         if not validation.is_valid:
@@ -158,10 +227,26 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
             append_invalid_email(invalid_log_path, recipient, validation.reason)
             print(f"[INVALID] {recipient.email} | {validation.reason}; logged to {invalid_log_path.name}.")
             continue
+
         seen_in_this_run.add(email_key)
         recipients_to_process.append(recipient)
         _verbose(args.verbose, f"Recipient accepted for processing: {recipient.email}")
 
+    return recipients_to_process, skipped_before_send
+
+
+def _apply_max_send_count(args, recipients_to_process):
+    if args.max_send_count is None or len(recipients_to_process) <= args.max_send_count:
+        return recipients_to_process
+
+    _info(f"Limiting this run to {args.max_send_count} recipient(s).")
+    _verbose(args.verbose, f"Recipients before max-send-count limit: {[recipient.email for recipient in recipients_to_process]}")
+    limited_recipients = recipients_to_process[:args.max_send_count]
+    _verbose(args.verbose, f"Recipients after max-send-count limit: {[recipient.email for recipient in limited_recipients]}")
+    return limited_recipients
+
+
+def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send: int, attachments: list[Path], invalid_log_path: Path) -> None:
     print(f"Mode: {mode.label}")
     print(f"Recipients loaded: {len(recipients)}")
     print(f"Recipients skipped before sending: {skipped_before_send}")
@@ -175,43 +260,11 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     print("Sent Excel logging: no" if args.no_write_sent_log else "Sent Excel logging: yes")
     print("Delete input after success: yes" if args.delete_input_after_success else "Delete input after success: no")
 
-    if not recipients_to_process:
-        print("Nothing to process.")
-        if args.send and args.delete_input_after_success:
-            _info("Deleting input files because everything was already handled.")
-            _delete_input_files(recipient_files, args.verbose)
-        return 0
 
-    _info("Loading SMTP configuration.")
-    smtp_config = load_smtp_config(require_password=args.send)
-    _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
-    _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
-    _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
-    0
-
-    if args.send:
-        _info("Opening SMTP connection and sending real emails.")
-        _verbose(args.verbose, "Opening SMTPS connection.")
-        with SmtpMailer(smtp_config) as mailer:
-            _verbose(args.verbose, "SMTPS connection opened and login completed.")
-            errors = _process_recipients(
-                mailer=mailer,
-                template_path=mode.template_path,
-                signature_path=signature_path,
-                log_path=mode.log_path,
-                recipients=recipients_to_process,
-                attachments=attachments,
-                subject_override=args.subject,
-                signature_image_path=signature_logo_path,
-                signature_image_width=args.signature_logo_width,
-                dry_run=False,
-                log_dry_run=args.log_dry_run,
-                write_sent_log=not args.no_write_sent_log,
-                verbose=args.verbose,
-            )
-    else:
+def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config) -> int:
+    if not args.send:
         _info("Running dry-run rendering; no real emails will be sent.")
-        errors = _process_recipients(
+        return _process_recipients(
             mailer=None,
             template_path=mode.template_path,
             signature_path=signature_path,
@@ -227,14 +280,25 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
             verbose=args.verbose,
         )
 
-    if errors:
-        print(f"Finished {mode.label} with {errors} error(s).")
-    else:
-        print(f"Finished {mode.label} successfully.")
-        if args.send and args.delete_input_after_success:
-            _info("Deleting processed input files after successful send.")
-            _delete_input_files(recipient_files, args.verbose)
-    return errors
+    _info("Opening SMTP connection and sending real emails.")
+    _verbose(args.verbose, "Opening SMTPS connection.")
+    with SmtpMailer(smtp_config) as mailer:
+        _verbose(args.verbose, "SMTPS connection opened and login completed.")
+        return _process_recipients(
+            mailer=mailer,
+            template_path=mode.template_path,
+            signature_path=signature_path,
+            log_path=mode.log_path,
+            recipients=recipients_to_process,
+            attachments=attachments,
+            subject_override=args.subject,
+            signature_image_path=signature_logo_path,
+            signature_image_width=args.signature_logo_width,
+            dry_run=False,
+            log_dry_run=args.log_dry_run,
+            write_sent_log=not args.no_write_sent_log,
+            verbose=args.verbose,
+        )
 
 
 def _delete_input_files(files: list[Path], verbose: bool) -> None:
@@ -259,6 +323,7 @@ def _process_recipients(
         write_sent_log: bool,
         verbose: bool,
 ) -> int:
+    """Render and either dry-run or send each recipient while keeping the batch moving."""
     errors = 0
     _info(f"Processing {len(recipients)} recipient(s).")
     for recipient in recipients:

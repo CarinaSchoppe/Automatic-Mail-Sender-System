@@ -1,7 +1,13 @@
+"""AI lead research pipeline with provider calls, context uploads, and local filters."""
+
+# Local imports intentionally come after the direct-script path bootstrap below.
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
 import csv
+import importlib
 import json
 import os
 import re
@@ -26,11 +32,11 @@ from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
 from mail_sender.recipients import read_recipients
 from mail_sender.sent_log import read_logged_emails
+from mail_sender.sent_log import read_logged_rows
 
-try:
-    from . import mode_instructions
-except ImportError:  # Allows running this file directly as python code/research/research_leads.py.
-    import mode_instructions
+mode_instructions = importlib.import_module(
+    f"{__package__}.mode_instructions" if __package__ else "mode_instructions"
+)
 
 SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
 
@@ -45,6 +51,7 @@ WRITE_OUTPUT = True
 UPLOAD_ATTACHMENTS = True
 BASE_DIR = Path(__file__).resolve().parents[2]
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+COMPANY_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 RESUME_ATTACHMENT_PATTERN = re.compile(
     r"(?:^|[\s._-])(cv|resume|lebenslauf|curriculum(?:[\s._-]+vitae)?)(?:$|[\s._-])",
     re.IGNORECASE,
@@ -127,6 +134,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
 
 
 def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
+    """Run one AI research pass and return the optional CSV path plus usable recipients."""
     if config.min_companies < 1 or config.max_companies < config.min_companies:
         raise ValueError("Company limits must satisfy 1 <= min_companies <= max_companies.")
 
@@ -150,29 +158,31 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Mode attachment directory: {mode.attachments_dir}")
     _verbose(config.verbose, f"Mode output Excel log: {mode.log_path}")
 
-    _info("Preparing CV/resume context for AI upload.")
-    attachments = list_resume_attachments(mode.attachments_dir, config.verbose) if config.upload_attachments else []
+    _info("Preparing CV/resume and sent-log context for AI upload.")
+    attachments = list_research_context_files(mode, config.verbose) if config.upload_attachments else []
     if not config.upload_attachments:
-        _info("CV/resume upload disabled; AI will use prompt, input context, and web search only.")
+        _info("Research context upload disabled; AI will use prompt, input context, and web search only.")
         _verbose(config.verbose, "Attachment upload disabled; the provider will use prompt, input context, and web search only.")
     if attachments:
-        _info(f"CV/resume context files queued: {len(attachments)}.")
+        _info(f"Research context files queued: {len(attachments)}.")
         for attachment in attachments:
             _verbose(config.verbose, f"Attachment context queued for provider upload: {attachment}")
     elif config.upload_attachments:
-        _info("No CV/resume context files found for this mode.")
-        _verbose(config.verbose, "No CV/resume attachment context files found for this mode.")
+        _info("No CV/resume or sent-log context files found for this mode.")
+        _verbose(config.verbose, "No CV/resume or sent-log attachment context files found for this mode.")
 
-    _info("Loading existing email exclusions from input files and output logs.")
+    _info("Loading existing email and company exclusions from input files and output logs.")
     existing_emails = collect_existing_emails(config.base_dir, config.verbose)
+    existing_companies = collect_mode_existing_companies(mode, config.verbose)
     _verbose(config.verbose, f"Existing email exclusions loaded: {len(existing_emails)}")
+    _verbose(config.verbose, f"Existing company exclusions loaded for this mode: {len(existing_companies)}")
 
     _info("Reading mode-specific input context.")
     input_context = read_input_context(mode.recipients_dir, verbose=config.verbose)
     _verbose(config.verbose, f"Mode-specific input context characters: {len(input_context)}")
 
     _info("Building AI research prompt.")
-    prompt = build_prompt(config, mode, existing_emails, input_context)
+    prompt = build_prompt(config, mode, existing_emails, existing_companies, input_context)
     _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
 
     _info("Calling AI provider now; this can take a moment.")
@@ -182,7 +192,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
         raw_response = generate_with_provider(config.provider, config.model, prompt, [], config.verbose)
     if _needs_retry(raw_response, existing_emails, config.verbose):
-        retry_prompt = build_prompt(config, mode, set(), input_context)
+        retry_prompt = build_prompt(config, mode, set(), set(), input_context)
         _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
         _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
         _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
@@ -190,7 +200,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
 
     _info("Parsing and filtering AI response.")
-    recipients = parse_recipients(raw_response, existing_emails, config.verbose)
+    recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
     _info(f"Usable new recipients found: {len(recipients)}.")
     _verbose(config.verbose, f"Usable new recipients after CSV parsing and exclusion filtering: {len(recipients)}")
     if not recipients:
@@ -221,12 +231,23 @@ def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path
     return resume_attachments
 
 
+def list_research_context_files(mode: MailMode, verbose: bool = False) -> list[Path]:
+    """Return the files safe to upload as research context for the selected mode."""
+    context_files = list_resume_attachments(mode.attachments_dir, verbose)
+    if mode.log_path.exists():
+        context_files.append(mode.log_path)
+        _verbose(verbose, f"Sent-log context queued for provider upload: {mode.log_path}")
+    else:
+        _verbose(verbose, f"Sent-log context file does not exist yet and will not be uploaded: {mode.log_path}")
+    return context_files
+
+
 def _needs_retry(raw_response: str, existing_emails: set[str], verbose: bool = False) -> bool:
     if _is_model_error(raw_response, verbose):
         return True
     _verbose(verbose, "No Model error")
     try:
-        return not parse_recipients(raw_response, existing_emails, verbose)
+        return not parse_recipients(raw_response, existing_emails, verbose=verbose)
     except ValueError as error:
         _verbose(verbose, "Failed to parse CSV")
         _verbose(verbose, f"{error}")
@@ -266,6 +287,26 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     return emails
 
 
+def collect_mode_existing_companies(mode: MailMode, verbose: bool = False) -> set[str]:
+    """Collect normalized company names already present in this mode's logs and inputs."""
+    companies = {
+        _normalize_company(row["company"])
+        for row in read_logged_rows(mode.log_path)
+        if _normalize_company(row["company"])
+    }
+    _verbose(verbose, f"Loaded {len(companies)} logged company exclusion(s) from {mode.log_path}.")
+    recipient_files = list_recipient_files(mode.recipients_dir)
+    for path in recipient_files:
+        recipients = read_recipients(path)
+        companies.update(_normalize_company(recipient.company) for recipient in recipients if _normalize_company(recipient.company))
+        _verbose(verbose, f"Loaded company exclusions from input file: {path}.")
+    return companies
+
+
+def _normalize_company(company: str) -> str:
+    return COMPANY_NORMALIZE_PATTERN.sub("", company.strip().lower())
+
+
 def read_input_context(directory: Path, max_chars: int = 6000, verbose: bool = False) -> str:
     parts: list[str] = []
     files = list_recipient_files(directory)
@@ -291,8 +332,19 @@ def read_input_context(directory: Path, max_chars: int = 6000, verbose: bool = F
     return context
 
 
-def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[str], input_context: str = "") -> str:
+def build_prompt(
+        config: ResearchConfig,
+        mode: MailMode,
+        existing_emails: set[str],
+        existing_companies: set[str] | None = None,
+        input_context: str = "",
+) -> str:
+    """Build the provider prompt while preserving compatibility with older call sites."""
+    if isinstance(existing_companies, str) and not input_context:
+        input_context = existing_companies
+        existing_companies = None
     excluded = "\n".join(sorted(existing_emails)) or "(none)"
+    excluded_companies = "\n".join(sorted(existing_companies or set())) or "(none)"
     input_reference = input_context.strip() or "(no mode-specific input files found)"
     contact_requirement = (
         f"- For PhD, include the general company contact email plus up to {config.person_emails_per_company} "
@@ -316,6 +368,7 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
     Requirements:
     - Find leads from {config.min_companies} to {config.max_companies} relevant companies.
     - Do not include any email address already listed in the exclusion list.
+    - Do not search for or return a company if the company name or email address already appears in the mode-specific sent Excel list, uploaded sent-log file, or exclusions.
     - Use the mode-specific input CSV/TXT context only as background for fit and targeting.
     - Prefer official company websites and publicly visible work email addresses.
     - Only include an email address if it is explicitly shown on a public webpage.
@@ -337,6 +390,9 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
 
     Existing email exclusion list:
     {excluded}
+
+    Existing company exclusion list for this mode:
+    {excluded_companies}
 
     Mode-specific input CSV/TXT context:
     {input_reference}
@@ -381,7 +437,7 @@ def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], 
     _verbose(verbose, "Gemini config: google_search enabled, tool auto mode enabled, thinking_level=HIGH, temperature=0.2.")
     response = client.models.generate_content(
         model=model,
-        contents=[prompt, *uploaded_files],
+        contents=[prompt, *uploaded_files],  # type: ignore[arg-type]
         config=types.GenerateContentConfig(
             tools=[types.Tool(google_search=types.GoogleSearch())],
             tool_config=types.ToolConfig(
@@ -430,7 +486,7 @@ def generate_with_openai(model: str, prompt: str, attachment_paths: list[Path], 
     content.extend({"type": "input_file", "file_id": uploaded_file.id} for uploaded_file in uploaded_files)
     _verbose(verbose, "Calling OpenAI Responses API with web_search enabled.")
     _verbose(verbose, "OpenAI config: web_search enabled, tool_choice=auto, reasoning_effort=high.")
-    response = client.responses.create(
+    response = client.responses.create(  # type: ignore[call-overload]
         model=model,
         input=[
             {
@@ -530,7 +586,16 @@ def _verbose_gemini_candidates(verbose: bool, response) -> None:
             _verbose(verbose, f"Gemini candidate {index} content parts: none")
 
 
-def parse_recipients(raw_response: str, existing_emails: set[str], verbose: bool = False) -> list[Recipient]:
+def parse_recipients(
+        raw_response: str,
+        existing_emails: set[str],
+        existing_companies: set[str] | None = None,
+        verbose: bool = False,
+) -> list[Recipient]:
+    """Parse AI output into recipients and apply local email/company exclusion filters."""
+    if isinstance(existing_companies, bool):
+        verbose = existing_companies
+        existing_companies = None
     _verbose(verbose, f"Parsing AI response with {len(raw_response)} character(s).")
     csv_text = _strip_csv_fence(raw_response)
     _verbose(verbose, f"CSV candidate text length after fence stripping: {len(csv_text)}.")
@@ -543,16 +608,16 @@ def parse_recipients(raw_response: str, existing_emails: set[str], verbose: bool
         if company_field and email_field:
             source_field = _find_field(rows[0], SOURCE_KEYS)
             _verbose(verbose, f"Detected CSV source field: {source_field!r}.")
-            recipients = _extract_from_rows(rows, company_field, email_field, existing_emails, source_field, verbose)
+            recipients = _extract_from_rows(rows, company_field, email_field, existing_emails, existing_companies, source_field, verbose)
             _verbose(verbose, f"Parsed CSV recipients: {len(recipients)}")
             return recipients
 
-    recipients = _parse_headerless_csv_recipients(csv_text, existing_emails, verbose)
+    recipients = _parse_headerless_csv_recipients(csv_text, existing_emails, existing_companies, verbose)
     if recipients:
         _verbose(verbose, f"Parsed headerless CSV recipients: {len(recipients)}")
         return recipients
 
-    recipients = _parse_json_recipients(raw_response, existing_emails, verbose)
+    recipients = _parse_json_recipients(raw_response, existing_emails, existing_companies, verbose)
     if recipients:
         _verbose(verbose, f"Parsed JSON recipients: {len(recipients)}")
         return recipients
@@ -561,7 +626,15 @@ def parse_recipients(raw_response: str, existing_emails: set[str], verbose: bool
     return []
 
 
-def _parse_headerless_csv_recipients(raw_text: str, existing_emails: set[str], verbose: bool = False) -> list[Recipient]:
+def _parse_headerless_csv_recipients(
+        raw_text: str,
+        existing_emails: set[str],
+        existing_companies: set[str] | None = None,
+        verbose: bool = False,
+) -> list[Recipient]:
+    if isinstance(existing_companies, bool):
+        verbose = existing_companies
+        existing_companies = None
     text = raw_text.strip().strip("'\"`").replace("\\n", "\n")
     if not text:
         _verbose(verbose, "Headerless CSV parser skipped empty text.")
@@ -584,10 +657,18 @@ def _parse_headerless_csv_recipients(raw_text: str, existing_emails: set[str], v
         company = ", ".join(cells[:-1]).strip()
         parsed_rows.append({"company": company, "mail": email})
 
-    return _extract_from_rows(parsed_rows, "company", "mail", existing_emails, verbose=verbose)
+    return _extract_from_rows(parsed_rows, "company", "mail", existing_emails, existing_companies, verbose=verbose)
 
 
-def _parse_json_recipients(raw_response: str, existing_emails: set[str], verbose: bool = False) -> list[Recipient]:
+def _parse_json_recipients(
+        raw_response: str,
+        existing_emails: set[str],
+        existing_companies: set[str] | None = None,
+        verbose: bool = False,
+) -> list[Recipient]:
+    if isinstance(existing_companies, bool):
+        verbose = existing_companies
+        existing_companies = None
     payload_text = _strip_json_fence(raw_response)
     try:
         payload = json.loads(payload_text)
@@ -617,7 +698,7 @@ def _parse_json_recipients(raw_response: str, existing_emails: set[str], verbose
         for email in email_values:
             rows.append({"company": company, "mail": str(email), "source_url": source})
 
-    return _extract_from_rows(rows, "company", "mail", existing_emails, "source_url", verbose)
+    return _extract_from_rows(rows, "company", "mail", existing_emails, existing_companies, "source_url", verbose)
 
 
 def _extract_from_rows(
@@ -625,14 +706,17 @@ def _extract_from_rows(
         company_field: str,
         email_field: str,
         existing_emails: set[str],
+        existing_companies: set[str] | None = None,
         source_field: str | None = None,
         verbose: bool = False,
 ) -> list[Recipient]:
     recipients: list[Recipient] = []
     seen_emails = {email.lower() for email in existing_emails}
+    seen_companies = {company for company in existing_companies or set() if company}
 
     for row in rows:
         company = str(row.get(company_field, "")).strip()
+        company_key = _normalize_company(company)
         email = normalize_email(str(row.get(email_field, ""))).lower()
         source_url = str(row.get(source_field, "")).strip() if source_field else ""
         if not company or not email:
@@ -640,6 +724,9 @@ def _extract_from_rows(
             continue
         if source_field and not source_url:
             _verbose(verbose, f"Recipient row skipped because source URL is missing: {row!r}.")
+            continue
+        if company_key in seen_companies:
+            _verbose(verbose, f"Recipient row skipped because company already exists for this mode: {company}.")
             continue
         if email in seen_emails or not EMAIL_PATTERN.match(email):
             reason = "duplicate/existing" if email in seen_emails else "invalid email format"
@@ -694,7 +781,7 @@ def _strip_json_fence(text: str) -> str:
     return stripped
 
 
-def _detect_dialect(text: str) -> csv.Dialect:
+def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:

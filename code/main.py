@@ -1,3 +1,5 @@
+"""Settings-driven entry point for research, sending, logging, and target loops."""
+
 import sys
 import tomllib
 from contextlib import redirect_stderr, redirect_stdout
@@ -5,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from mail_sender.cli import main as mail_main
+from mail_sender.sent_log import read_known_output_emails
 from research.research_leads import main as research_main
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +37,8 @@ RESEARCH_PERSON_EMAILS_PER_COMPANY = _setting("RESEARCH_PERSON_EMAILS_PER_COMPAN
 RESEARCH_WRITE_OUTPUT = _setting("RESEARCH_WRITE_OUTPUT", True)
 RESEARCH_UPLOAD_ATTACHMENTS = _setting("RESEARCH_UPLOAD_ATTACHMENTS", True)
 SEND = _setting("SEND", False)
+SEND_TARGET_COUNT = _setting("SEND_TARGET_COUNT", 0)
+SEND_TARGET_MAX_ROUNDS = _setting("SEND_TARGET_MAX_ROUNDS", 0)
 VERBOSE = _setting("VERBOSE", False)
 SAVE_VERBOSE_LOG = _setting("SAVE_VERBOSE_LOG", True)
 VERBOSE_LOG_DIR = _setting("VERBOSE_LOG_DIR", "logs")
@@ -103,10 +108,12 @@ def _print_effective_settings() -> None:
     _info(f"Settings file: {SETTINGS_PATH if SETTINGS_PATH.exists() else 'not found; using built-in defaults'}.")
     _info(f"Mode: {MODE}. AI research: {'on' if RUN_AI_RESEARCH else 'off'}. Provider: {RESEARCH_AI_PROVIDER}.")
     _info(f"Mail sending: {'real send enabled' if SEND else 'dry-run / no mail send unless research is disabled'}.")
+    _info(f"Send target: {SEND_TARGET_COUNT if SEND_TARGET_COUNT else 'disabled'}.")
     _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
     _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
+    _verbose(VERBOSE, f"Target loop max rounds: {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited'}.")
     _verbose(VERBOSE, f"Signature logo: {SIGNATURE_LOGO}, width={SIGNATURE_LOGO_WIDTH}.")
     _verbose(VERBOSE, f"Verbose log directory: {_resolve_log_dir()}.")
 
@@ -128,7 +135,7 @@ def _build_research_args() -> list[str]:
     return args
 
 
-def _build_mail_args() -> list[str]:
+def _build_mail_args(max_send_count: int | None = None) -> list[str]:
     args = [
         "--mode",
         MODE,
@@ -147,7 +154,107 @@ def _build_mail_args() -> list[str]:
         ("--delete-input-after-success", DELETE_INPUT_AFTER_SUCCESS),
     ]:
         _add_flag(args, enabled, flag)
+    _add_value(args, "--max-send-count", max_send_count)
     return args
+
+
+def _target_send_enabled() -> bool:
+    return int(SEND_TARGET_COUNT) > 0
+
+
+def _count_logged_sent_emails() -> int:
+    return len(read_known_output_emails(PROJECT_ROOT / "output"))
+
+
+def _validate_target_send_settings() -> bool:
+    """Validate the only configuration combination that can safely run target sending."""
+    if not _target_send_enabled():
+        return True
+
+    problems = []
+    if not RUN_AI_RESEARCH:
+        problems.append("RUN_AI_RESEARCH must be true")
+    if not SEND:
+        problems.append("SEND must be true")
+    if not RESEARCH_WRITE_OUTPUT:
+        problems.append("RESEARCH_WRITE_OUTPUT must be true")
+    if not WRITE_SENT_LOG:
+        problems.append("WRITE_SENT_LOG must be true")
+    if RESEND_EXISTING:
+        problems.append("RESEND_EXISTING must be false")
+    if str(MODE).strip().lower() == "auto":
+        problems.append('MODE must be a concrete mode, not "Auto"')
+
+    if problems:
+        print("Error: SEND_TARGET_COUNT can only run when " + ", ".join(problems) + ".")
+        return False
+    return True
+
+
+def _run_research_once(round_number: int | None = None) -> int:
+    label = f" round {round_number}" if round_number is not None else ""
+    _info(f"Starting AI research{label} for mode {MODE} with {RESEARCH_AI_PROVIDER}.")
+    research_args = _build_research_args()
+    _verbose(VERBOSE, f"Research CLI args: {research_args}.")
+    research_status = research_main(research_args)
+    if research_status != 0:
+        _info("AI research failed; stopping before mail sender.")
+    return research_status
+
+
+def _run_mail_once(max_send_count: int | None = None) -> int:
+    _info(f"Starting mail sender for mode {MODE}; sending is {'enabled' if SEND else 'disabled (dry-run)'}.")
+    mail_args = _build_mail_args(max_send_count=max_send_count)
+    _verbose(VERBOSE, f"Mail CLI args: {mail_args}.")
+    return mail_main(mail_args)
+
+
+def _run_target_send_loop() -> int:
+    """Repeat research and capped sending until the configured sent-log target is reached."""
+    if not _validate_target_send_settings():
+        return 1
+
+    target_count = int(SEND_TARGET_COUNT)
+    max_rounds = int(SEND_TARGET_MAX_ROUNDS)
+    start_count = _count_logged_sent_emails()
+    target_total = start_count + target_count
+    current_count = start_count
+    round_number = 0
+
+    _info(f"Target send loop enabled: send and log {target_count} new email(s).")
+    _info(f"Logged sent emails at start: {start_count}. Target logged total: {target_total}.")
+
+    while current_count < target_total:
+        round_number += 1
+        if max_rounds and round_number > max_rounds:
+            _info(f"Stopping before target because SEND_TARGET_MAX_ROUNDS={max_rounds} was reached.")
+            return 1
+
+        remaining = target_total - current_count
+        _info(f"Target loop round {round_number}: {remaining} email(s) still needed.")
+        research_status = _run_research_once(round_number)
+        if research_status != 0:
+            return research_status
+
+        print("\n" + "=" * 50)
+        print(f"AI Research round {round_number} finished. Now sending up to {remaining} email(s)...")
+        print("=" * 50 + "\n")
+
+        before_mail_count = current_count
+        mail_status = _run_mail_once(max_send_count=remaining)
+        current_count = _count_logged_sent_emails()
+        sent_this_round = current_count - before_mail_count
+        _info(f"Target loop round {round_number} logged {sent_this_round} new email(s). Total new this run: {current_count - start_count}/{target_count}.")
+
+        if mail_status != 0:
+            _info("Mail sender returned an error; stopping target loop.")
+            return mail_status
+        if sent_this_round <= 0:
+            _info("No new sent-log entries were created in this round; stopping to avoid an endless loop.")
+            return 1
+
+    _info(f"Target reached: {current_count - start_count}/{target_count} new email(s) logged.")
+    return 0
 
 
 def _run() -> int:
@@ -158,13 +265,12 @@ def _run() -> int:
 
     _print_effective_settings()
 
+    if _target_send_enabled():
+        return _run_target_send_loop()
+
     if RUN_AI_RESEARCH:
-        _info(f"Starting AI research for mode {MODE} with {RESEARCH_AI_PROVIDER}.")
-        research_args = _build_research_args()
-        _verbose(VERBOSE, f"Research CLI args: {research_args}.")
-        research_status = research_main(research_args)
+        research_status = _run_research_once()
         if research_status != 0:
-            _info("AI research failed; stopping before mail sender.")
             sys.exit(research_status)
 
         if SEND:
@@ -178,10 +284,7 @@ def _run() -> int:
     else:
         _info("AI research disabled; starting mail sender only.")
 
-    _info(f"Starting mail sender for mode {MODE}; sending is {'enabled' if SEND else 'disabled (dry-run)'}.")
-    mail_args = _build_mail_args()
-    _verbose(VERBOSE, f"Mail CLI args: {mail_args}.")
-    return mail_main(mail_args)
+    return _run_mail_once()
 
 
 def _run_with_optional_log() -> int:

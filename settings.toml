@@ -24,12 +24,12 @@ RESEARCH_AI_PROVIDER = "gemini"
 # RESEARCH_MIN_COMPANIES
 # What it does: Minimum number of companies the AI should try to find.
 # Default: 25
-RESEARCH_MIN_COMPANIES = 25
+RESEARCH_MIN_COMPANIES = 15
 
 # RESEARCH_MAX_COMPANIES
 # What it does: Maximum number of companies the AI should try to find.
 # Default: 50
-RESEARCH_MAX_COMPANIES = 50
+RESEARCH_MAX_COMPANIES = 35
 
 # RESEARCH_PERSON_EMAILS_PER_COMPANY
 # What it does: For research modes that allow named contacts, this is the target number
@@ -44,7 +44,8 @@ RESEARCH_PERSON_EMAILS_PER_COMPANY = 3
 RESEARCH_WRITE_OUTPUT = true
 
 # RESEARCH_UPLOAD_ATTACHMENTS
-# What it does: Uploads only CV/resume/Lebenslauf files as AI context for research.
+# What it does: Uploads only CV/resume/Lebenslauf files plus the mode-specific sent Excel log
+# as AI context for research. PhD uses output/send_phd.xlsx. Freelance uses output/send_freelance.xlsx.
 # Important: Mail sending still uses all files in the attachment folder.
 # Default: true
 RESEARCH_UPLOAD_ATTACHMENTS = true
@@ -54,7 +55,22 @@ RESEARCH_UPLOAD_ATTACHMENTS = true
 # false = dry-run/no real emails.
 # true = send real emails via SMTP after successful research or when research is disabled.
 # Default: false
-SEND = false
+SEND = true
+
+# SEND_TARGET_COUNT
+# What it does: Sends in repeated research + real-send rounds until this many new emails
+# were successfully written to the sent Excel logs during this run.
+# Only works when RUN_AI_RESEARCH = true, SEND = true, RESEARCH_WRITE_OUTPUT = true,
+# WRITE_SENT_LOG = true, RESEND_EXISTING = false, and MODE is not "Auto".
+# 0 = disabled; run only one normal research/mail pass.
+# Default: 0
+SEND_TARGET_COUNT = 100
+
+# SEND_TARGET_MAX_ROUNDS
+# What it does: Optional safety limit for the repeated target-send loop.
+# 0 = unlimited rounds, but the system still stops if one round logs no new sent emails.
+# Default: 0
+SEND_TARGET_MAX_ROUNDS = 0
 
 # VERBOSE
 # What it does: Enables very detailed debug-style output for files, parsing, filters,
@@ -62,7 +78,7 @@ SEND = false
 # false = normal status output only.
 # true = detailed [VERBOSE] output.
 # Default: false
-VERBOSE = false
+VERBOSE = true
 
 # SAVE_VERBOSE_LOG
 # What it does: Saves a copy of the terminal output into a timestamped log file.
