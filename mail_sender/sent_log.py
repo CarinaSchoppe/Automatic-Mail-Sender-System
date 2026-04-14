@@ -18,6 +18,13 @@ HEADERS = [
     "sent_at",
 ]
 
+INVALID_HEADERS = [
+    "company",
+    "mail",
+    "invalid_reason",
+    "detected_at",
+]
+
 
 def append_log(
         log_path: Path,
@@ -30,6 +37,21 @@ def append_log(
         [
             recipient.company,
             recipient.email,
+            datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
+        ]
+    )
+    workbook.save(log_path)
+
+
+def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    workbook, sheet = _open_or_create_workbook(log_path, INVALID_HEADERS, "Invalid")
+    _ensure_headers(sheet, INVALID_HEADERS)
+    sheet.append(
+        [
+            recipient.company,
+            recipient.email,
+            reason,
             datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
         ]
     )
@@ -55,23 +77,45 @@ def read_logged_emails(log_path: Path) -> set[str]:
     return emails
 
 
-def _open_or_create_workbook(log_path: Path) -> tuple[Workbook, Worksheet]:
+def read_invalid_emails(log_path: Path) -> set[str]:
+    return read_logged_emails(log_path)
+
+
+def read_known_output_emails(output_dir: Path) -> set[str]:
+    if not output_dir.exists() or not output_dir.is_dir():
+        return set()
+
+    emails: set[str] = set()
+    for path in output_dir.glob("*.xlsx"):
+        if path.name.lower() == "invalid_mails.xlsx":
+            continue
+        emails.update(read_logged_emails(path))
+    return emails
+
+
+def _open_or_create_workbook(
+        log_path: Path,
+        headers: list[str] | None = None,
+        title: str = "Sent",
+) -> tuple[Workbook, Worksheet]:
+    headers = headers or HEADERS
     if log_path.exists():
         workbook = load_workbook(log_path)
         return workbook, workbook.active
 
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Sent"
-    sheet.append(HEADERS)
+    sheet.title = title
+    sheet.append(headers)
     return workbook, sheet
 
 
-def _ensure_headers(sheet: Worksheet) -> None:
-    if sheet.max_column > len(HEADERS):
-        sheet.delete_cols(len(HEADERS) + 1, sheet.max_column - len(HEADERS))
+def _ensure_headers(sheet: Worksheet, headers: list[str] | None = None) -> None:
+    headers = headers or HEADERS
+    if sheet.max_column > len(headers):
+        sheet.delete_cols(len(headers) + 1, sheet.max_column - len(headers))
 
-    for column, header in enumerate(HEADERS, start=1):
+    for column, header in enumerate(headers, start=1):
         sheet.cell(row=1, column=column, value=header)
 
 

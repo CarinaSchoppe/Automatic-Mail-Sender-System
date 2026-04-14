@@ -17,7 +17,7 @@ from mail_sender.recipients import (
 def test_recipient_context_and_normalizers() -> None:
     recipient = Recipient(email="a@example.com", company="ACME")
 
-    assert recipient.greeting == "Guten Tag"
+    assert recipient.greeting == "Hello"
     assert recipient.company_or_email == "ACME"
     assert Recipient(email="b@example.com").company_or_email == "b@example.com"
     assert recipient.template_context()["mail"] == "a@example.com"
@@ -28,7 +28,7 @@ def test_recipient_context_and_normalizers() -> None:
 
 def test_reads_csv_and_txt_from_directory(tmp_path: Path) -> None:
     (tmp_path / "one.csv").write_text("company,mail\nOne,mailto:one@example.com\n", encoding="utf-8")
-    (tmp_path / "two.txt").write_text("Unternehmen;mail\nTwo;two@example.com\n", encoding="utf-8")
+    (tmp_path / "two.txt").write_text("company;mail\nTwo;two@example.com\n", encoding="utf-8")
     (tmp_path / "ignore.md").write_text("company,mail\nNo,no@example.com\n", encoding="utf-8")
 
     recipients = read_recipients_from_dir(tmp_path)

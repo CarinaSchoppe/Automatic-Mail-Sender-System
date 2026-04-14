@@ -29,6 +29,15 @@ Example GmbH,max@example.com
 
 CSV files exported from Excel with semicolons also work as long as they contain a `mail` column. `email` is accepted for compatibility.
 
+AI research output additionally includes a `source_url` column:
+
+```csv
+company,mail,source_url
+Example GmbH,max@example.com,https://example.com/contact
+```
+
+The mail sender only needs `company` and `mail`, but research rows without `source_url` are rejected so AI-generated addresses must point to a public source.
+
 1. Place all PhD attachments in `attachments/PhD`.
 
 2. Place all German freelance attachments in `attachments/Freelance_German`.
@@ -131,18 +140,34 @@ python main.py --mode PhD --send --verbose
 
 Only use `--resend-existing` if you intentionally want to contact already logged addresses again.
 
+Before rendering or sending, each recipient email is also validated. The pipeline checks email syntax and whether the domain has MX or A DNS records. Invalid addresses are skipped and written to:
+
+```text
+output/invalid_mails.xlsx
+```
+
+Future runs skip addresses already listed in `invalid_mails.xlsx`. The sender also checks all `.xlsx` files in `output` for already used addresses, not just the active mode workbook. This reduces false positives, but it is not full mailbox verification: an address can still bounce even if the domain DNS is valid.
+
 ## Logs
 
 The script writes processed recipients to:
 
 - `output/send_phd.xlsx` for PhD mode
 - `output/send_freelance.xlsx` for both freelance modes
+- `output/invalid_mails.xlsx` for invalid addresses found before rendering/sending
 
 Only these columns are written:
 
 - `company`
 - `mail`
 - `sent_at`
+
+The invalid email log writes:
+
+- `company`
+- `mail`
+- `invalid_reason`
+- `detected_at`
 
 ## Research
 

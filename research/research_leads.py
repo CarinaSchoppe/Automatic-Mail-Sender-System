@@ -22,6 +22,8 @@ from mail_sender.recipients import normalize_key
 from mail_sender.recipients import read_recipients
 from mail_sender.sent_log import read_logged_emails
 
+SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
+
 RESEARCH_MODE = "PhD"
 AI_PROVIDER = "gemini"
 GEMINI_MODEL = "gemini-2.5-flash-lite"
@@ -291,15 +293,17 @@ Requirements:
 - Do not include any email address already listed in the exclusion list.
 - Use the mode-specific input CSV/TXT context below as examples and extra context, but do not repeat excluded emails.
 - Prefer directly verified, public company or work email addresses.
-- Do not invent email addresses.
+- Only include an email address when it is visibly found on a public website or public source page.
+- Do not invent, infer, guess, or pattern-generate email addresses.
+- Do not use placeholder addresses such as contact@company.com unless that exact address appears on a public source page.
 - Do not include generic consumer contact forms without an email address.
 {contact_requirement}
 - Output CSV only, no markdown, no commentary, no quotes around fields unless necessary.
 - Search deeply in the web to find matching candidates
-- Find as many as I requested
+- Find as many verified email rows as I requested; if you cannot verify enough emails, return fewer rows instead of guessing.
 - Think deeply about the results and check them double that you found as many as Ive requested
 - CSV header must be exactly:
-  company,mail
+  company,mail,source_url
 - Use one row per email address. If you find multiple contacts for one company, repeat the company name on separate rows.
 - If no results found, return an empty CSV with only the header.
 - Do NOT output a Python list or any other format.
@@ -481,7 +485,8 @@ def parse_recipients(raw_response: str, existing_emails: set[str]) -> list[Recip
         company_field = _find_field(rows[0], COMPANY_KEYS)
         email_field = _find_field(rows[0], EMAIL_KEYS)
         if company_field and email_field:
-            recipients = _extract_from_rows(rows, company_field, email_field, existing_emails)
+            source_field = _find_field(rows[0], SOURCE_KEYS)
+            recipients = _extract_from_rows(rows, company_field, email_field, existing_emails, source_field)
             _verbose(globals().get("VERBOSE", True), f"Parsed CSV recipients: {len(recipients)}")
             return recipients
 
@@ -541,17 +546,21 @@ def _parse_json_recipients(raw_response: str, existing_emails: set[str]) -> list
         company = str(lead.get("company", "")).strip()
         emails = lead.get("emails", lead.get("mail", lead.get("email", "")))
         email_values = emails if isinstance(emails, list) else [emails]
+        sources = lead.get("source_urls", lead.get("source_url", lead.get("source", "")))
+        source_values = sources if isinstance(sources, list) else [sources]
+        source = str(source_values[0]) if source_values else ""
         for email in email_values:
-            rows.append({"company": company, "mail": str(email)})
+            rows.append({"company": company, "mail": str(email), "source_url": source})
 
-    return _extract_from_rows(rows, "company", "mail", existing_emails)
+    return _extract_from_rows(rows, "company", "mail", existing_emails, "source_url")
 
 
 def _extract_from_rows(
         rows: list[dict[str, str]],
         company_field: str,
         email_field: str,
-        existing_emails: set[str]
+        existing_emails: set[str],
+        source_field: str | None = None,
 ) -> list[Recipient]:
     recipients: list[Recipient] = []
     seen_emails = {email.lower() for email in existing_emails}
@@ -561,7 +570,10 @@ def _extract_from_rows(
         company = str(row.get(company_field, "")).strip()
         company_key = company.lower()
         email = normalize_email(str(row.get(email_field, ""))).lower()
+        source_url = str(row.get(source_field, "")).strip() if source_field else ""
         if not company or not email:
+            continue
+        if source_field and not source_url:
             continue
         if email in seen_emails or not EMAIL_PATTERN.match(email):
             continue
@@ -581,9 +593,9 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
 
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["company", "mail"])
+        writer.writerow(["company", "mail", "source_url"])
         for recipient in recipients:
-            writer.writerow([recipient.company, recipient.email])
+            writer.writerow([recipient.company, recipient.email, ""])
     return path
 
 

@@ -133,7 +133,7 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
         config(project),
         research_leads.get_mode("PhD", project),
         {"old@example.com"},
-        "company,mail\nExample GmbH,example@example.com",
+        "company,mail,source_url\nExample GmbH,example@example.com,https://example.com/contact",
     )
     german_prompt = research_leads.build_prompt(
         config(project, mode="Freelance_German"),
@@ -148,7 +148,7 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
 
     assert "Industry PhD" in phd_prompt
     assert "old@example.com" in phd_prompt
-    assert "company,mail" in phd_prompt
+    assert "company,mail,source_url" in phd_prompt
     assert "Example GmbH" in phd_prompt
     assert "AVGS" in german_prompt
     assert "Luxembourg" in english_prompt
@@ -177,15 +177,15 @@ def test_read_input_context_replaces_invalid_bytes(project: Path) -> None:
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
     raw = """
 ```csv
-company,mail
-A,mailto:a@example.com
-A,bad
-A,other@example.com
-B,existing@example.com
-,missing-company@example.com
-Missing Email,
-C,c@example.com
-D,d@example.com
+company,mail,source_url
+A,mailto:a@example.com,https://a.example/contact
+A,bad,https://a.example/contact
+A,other@example.com,https://a.example/team
+B,existing@example.com,https://b.example/contact
+,missing-company@example.com,https://missing.example/contact
+Missing Email,,https://missing.example/contact
+C,c@example.com,https://c.example/contact
+D,d@example.com,
 ```
 """
 
@@ -195,7 +195,6 @@ D,d@example.com
         Recipient(email="a@example.com", company="A"),
         Recipient(email="other@example.com", company="A"),
         Recipient(email="c@example.com", company="C"),
-        Recipient(email="d@example.com", company="D"),
     ]
 
 
@@ -231,9 +230,9 @@ def test_parse_recipients_prefers_csv_block_from_mixed_gemini_output() -> None:
   {"company": "Wrong", "mail": "wrong@example.com"}
 ]
 ``````csv
-company,mail
-CSIRO,industry.phd@csiro.au
-The University of Queensland,enquire@uq.edu.au
+company,mail,source_url
+CSIRO,industry.phd@csiro.au,https://csiro.au/contact
+The University of Queensland,enquire@uq.edu.au,https://uq.edu.au/contact
 ```
 """
 
@@ -285,7 +284,7 @@ def test_write_recipients_csv(project: Path) -> None:
     )
 
     assert path.name.startswith("research_phd_")
-    assert path.read_text(encoding="utf-8").splitlines() == ["company,mail", "A,a@example.com"]
+    assert path.read_text(encoding="utf-8").splitlines() == ["company,mail,source_url", "A,a@example.com,"]
 
 
 def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
@@ -297,7 +296,7 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
         assert "Existing email exclusion list" in prompt
         assert "Mode-specific input CSV/TXT context" in prompt
         assert verbose is True
-        return "company,mail\nA,a@example.com\n"
+        return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
 
@@ -313,7 +312,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         research_leads,
         "generate_with_gemini",
-        lambda model, prompt, attachments, verbose=False: "company,mail\nA,a@example.com\n",
+        lambda model, prompt, attachments, verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
     )
 
     output_path, recipients = research_leads.run_research(config(project, write_output=False))
@@ -327,7 +326,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         research_leads,
         "generate_with_gemini",
-        lambda model, prompt, attachments, verbose=False: "company,mail\n",
+        lambda model, prompt, attachments, verbose=False: "company,mail,source_url\n",
     )
     with pytest.raises(RuntimeError, match="no new usable"):
         research_leads.run_research(config(project))
@@ -336,10 +335,10 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
-    def fake_generate(attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         assert attachments == []
         assert verbose is True
-        return "company,mail\nA,a@example.com\n"
+        return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
 
@@ -358,11 +357,11 @@ def test_run_research_retries_without_attachments_after_empty_response(
     attachment.write_text("context", encoding="utf-8")
     calls = []
 
-    def fake_generate( attachments: list[Path]) -> str:
+    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         calls.append(attachments)
         if attachments:
             return ""
-        return "company,mail\nA,a@example.com\n"
+        return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
 
@@ -380,12 +379,12 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
 ) -> None:
     calls = []
 
-    def fake_generate(prompt: str) -> str:
+    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
         assert "Existing email exclusion list:\n(none)" in prompt
-        return "company,mail\nA,a@example.com\n"
+        return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
 
@@ -413,11 +412,11 @@ def test_generate_with_provider_selects_openai_and_rejects_unknown(monkeypatch: 
     monkeypatch.setattr(
         research_leads,
         "generate_with_openai",
-        lambda model, prompt, attachments, verbose=False: "company,mail\nA,a@example.com\n",
+        lambda model, prompt, attachments, verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
     )
 
     assert research_leads.generate_with_provider("openai", "gpt-5.4", "prompt", [], True) == (
-        "company,mail\nA,a@example.com\n"
+        "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
 
     with pytest.raises(ValueError, match="Unknown research provider"):
@@ -434,7 +433,7 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
     assert result == 0
     assert "New recipients: 1" in capsys.readouterr().out
 
-    def broken_run():
+    def broken_run(cfg):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(research_leads, "run_research", broken_run)
@@ -490,7 +489,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
             ]
             assert tools == [{"type": "web_search"}]
             output_item = py_types.SimpleNamespace(type="message", status="completed", content=[])
-            return py_types.SimpleNamespace(output_text="company,mail\nA,a@example.com\n", output=[output_item])
+            return py_types.SimpleNamespace(output_text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n", output=[output_item])
 
     class FakeOpenAI:
         def __init__(self, api_key: str) -> None:
@@ -504,7 +503,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
     monkeypatch.setenv("OPENAI_API_KEY", "key")
 
     assert research_leads.generate_with_openai("gpt-5.4", "prompt", [attachment], True) == (
-        "company,mail\nA,a@example.com\n"
+        "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
     output = capsys.readouterr().out
     assert "Calling OpenAI Responses API with web_search enabled." in output
@@ -521,13 +520,13 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
 
     class FakeResponses:
         @staticmethod
-        def create():
-            content = [py_types.SimpleNamespace(text="company,mail\nA,a@example.com\n")]
+        def create(*args, **kwargs):
+            content = [py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")]
             output = [py_types.SimpleNamespace(type="message", status="completed", content=content)]
             return py_types.SimpleNamespace(output_text="", output=output)
 
     class FakeOpenAI:
-        def __init__(self) -> None:
+        def __init__(self, api_key: str) -> None:
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -537,7 +536,7 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
     monkeypatch.setenv("OPENAI_API_KEY", "key")
 
     assert research_leads.generate_with_openai("gpt-5.4", "prompt", [], False) == (
-        "company,mail\nA,a@example.com\n"
+        "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
 
 
@@ -611,7 +610,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
     class FakeModels:
         @staticmethod
-        def generate_content():
+        def generate_content(*args, **kwargs):
             part = py_types.SimpleNamespace(text=None)
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -622,7 +621,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             return py_types.SimpleNamespace(text="", candidates=[candidate], prompt_feedback="ok")
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, api_key: str) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -662,8 +661,8 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
 
     class FakeModels:
         @staticmethod
-        def generate_content():
-            part = py_types.SimpleNamespace(text="company,mail\nA,a@example.com\n")
+        def generate_content(*args, **kwargs):
+            part = py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
                 finish_reason="STOP",
@@ -673,7 +672,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             return py_types.SimpleNamespace(text="", candidates=[candidate])
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, api_key: str) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -693,7 +692,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
     monkeypatch.setenv("GEMINI_API_KEY", "key")
 
     assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [], False) == (
-        "company,mail\nA,a@example.com\n"
+        "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
 
 

@@ -5,10 +5,11 @@ from pathlib import Path
 
 from mail_sender.attachments import list_attachments
 from mail_sender.config import ConfigError, load_smtp_config
+from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MODE_NAMES
 from mail_sender.modes import get_mode
 from mail_sender.recipients import list_recipient_files, read_recipients_from_dir
-from mail_sender.sent_log import append_log, read_logged_emails
+from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails, read_logged_emails
 from mail_sender.smtp_sender import SmtpMailer
 from mail_sender.templates import render_mail
 
@@ -77,6 +78,8 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     _verbose(args.verbose, f"Signature logo width: {args.signature_logo_width}px")
     _verbose(args.verbose, f"Attachment directory: {mode.attachments_dir}")
     _verbose(args.verbose, f"Excel log file: {mode.log_path}")
+    invalid_log_path = base_dir / "output" / "invalid_mails.xlsx"
+    _verbose(args.verbose, f"Invalid email log file: {invalid_log_path}")
 
     recipient_files = list_recipient_files(mode.recipients_dir)
     if recipient_files:
@@ -101,13 +104,15 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
             "Add files there or use --allow-empty-attachments."
         )
 
-    logged_emails = set() if args.resend_existing else read_logged_emails(mode.log_path)
+    logged_emails = set() if args.resend_existing else read_known_output_emails(base_dir / "output")
+    invalid_emails = read_invalid_emails(invalid_log_path)
     if args.resend_existing:
         _verbose(args.verbose, "Existing Excel log addresses will be ignored because --resend-existing is set.")
-    elif mode.log_path.exists():
-        _verbose(args.verbose, f"Loaded {len(logged_emails)} existing email address(es) from {mode.log_path}.")
+    elif logged_emails:
+        _verbose(args.verbose, f"Loaded {len(logged_emails)} existing email address(es) from output Excel files.")
     else:
-        _verbose(args.verbose, "Excel log does not exist yet, so no existing addresses were loaded.")
+        _verbose(args.verbose, "No existing sent addresses were loaded from output Excel files.")
+    _verbose(args.verbose, f"Loaded {len(invalid_emails)} invalid email address(es) from {invalid_log_path}.")
 
     recipients_to_process = []
     skipped_before_send = 0
@@ -116,11 +121,22 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
         email_key = recipient.email.lower()
         if email_key in logged_emails:
             skipped_before_send += 1
-            print(f"[SKIP] {recipient.email} is already in {mode.log_path.name}; no mail will be created or sent.")
+            print(f"[SKIP] {recipient.email} is already present in an output Excel log; no mail will be created or sent.")
+            continue
+        if email_key in invalid_emails:
+            skipped_before_send += 1
+            print(f"[SKIP_INVALID] {recipient.email} is already listed in invalid_mails.xlsx; no mail will be created or sent.")
             continue
         if email_key in seen_in_this_run:
             skipped_before_send += 1
             print(f"[SKIP] {recipient.email} appears more than once in this CSV run; duplicate skipped.")
+            continue
+        validation = validate_email_address(recipient.email)
+        if not validation.is_valid:
+            skipped_before_send += 1
+            invalid_emails.add(email_key)
+            append_invalid_email(invalid_log_path, recipient, validation.reason)
+            print(f"[INVALID] {recipient.email} | {validation.reason}; logged to {invalid_log_path.name}.")
             continue
         seen_in_this_run.add(email_key)
         recipients_to_process.append(recipient)
@@ -131,6 +147,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     print(f"Recipients to process: {len(recipients_to_process)}")
     print(f"Attachments: {len(attachments)}")
     print(f"Log file: {mode.log_path}")
+    print(f"Invalid email log file: {invalid_log_path}")
     print("Existing Excel check: disabled (--resend-existing)" if args.resend_existing else "Existing Excel check: enabled")
     print("Sending: yes" if args.send else "Sending: no (dry-run)")
     print("Dry-run Excel logging: yes" if args.log_dry_run else "Dry-run Excel logging: no")

@@ -49,8 +49,61 @@ def test_cli_skips_logged_and_duplicate_addresses(project: Path, capsys) -> None
     assert result == 0
     output = capsys.readouterr().out
     assert "duplicate skipped" in output
-    assert "already in send_phd.xlsx" in output
+    assert "already present in an output Excel log" in output
     assert "[DRY_RUN] one@example.com" in output
+
+
+def test_cli_skips_invalid_addresses_and_persists_invalid_log(monkeypatch, project: Path, capsys) -> None:
+    write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
+    write_recipient(project / "input/PhD/good.csv", "Good", "good@example.com")
+
+    def fake_validate(email: str):
+        if email == "bad@example.invalid":
+            return type("Result", (), {"is_valid": False, "reason": "domain has no MX or A record"})()
+        return type("Result", (), {"is_valid": True, "reason": ""})()
+
+    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "[INVALID] bad@example.invalid | domain has no MX or A record" in output
+    assert "[DRY_RUN] good@example.com" in output
+    sheet = load_workbook(project / "output/invalid_mails.xlsx").active
+    assert [sheet.cell(2, column).value for column in range(1, 4)] == [
+        "Bad",
+        "bad@example.invalid",
+        "domain has no MX or A record",
+    ]
+
+
+def test_cli_skips_addresses_already_in_invalid_log(project: Path, capsys) -> None:
+    write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["company", "mail", "invalid_reason", "detected_at"])
+    sheet.append(["Bad", "bad@example.invalid", "domain has no MX or A record", "2026-04-14T10:00+10:00"])
+    workbook.save(project / "output/invalid_mails.xlsx")
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
+
+    assert result == 0
+    assert "already listed in invalid_mails.xlsx" in capsys.readouterr().out
+
+
+def test_cli_checks_all_output_excel_logs(project: Path, capsys) -> None:
+    write_recipient(project / "input/PhD/phd.csv", "Existing", "existing@example.com")
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["company", "mail", "sent_at"])
+    sheet.append(["Existing", "existing@example.com", "2026-04-14T10:00+10:00"])
+    workbook.save(project / "output/send_freelance.xlsx")
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
+
+    assert result == 0
+    assert "already present in an output Excel log" in capsys.readouterr().out
 
 
 def test_cli_returns_zero_when_all_recipients_are_logged(project: Path, capsys) -> None:
@@ -124,7 +177,7 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
 
-        def send(self, recipient, subject, attachments, inline_images) -> None:
+        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
             sent.append((recipient.email, subject, len(attachments), len(inline_images)))
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -152,7 +205,7 @@ def test_cli_can_disable_sent_excel_logging(monkeypatch, project: Path) -> None:
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
 
-        def send(self) -> None:
+        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
             return None
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -179,7 +232,7 @@ def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
 
-        def send(self) -> None:
+        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
             return None
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -213,7 +266,7 @@ def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Pat
     assert result == 0
     assert input_file.exists()
 
-    def broken_render():
+    def broken_render(*args, **kwargs):
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)
@@ -255,7 +308,7 @@ def test_cli_deletes_input_files_when_everything_was_already_logged(project: Pat
 def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
 
-    def broken_render():
+    def broken_render(*args, **kwargs):
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)
