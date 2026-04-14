@@ -15,11 +15,13 @@ MODE = globals().get("MODE", "PhD")
 
 # AI Research Settings, nur relevant wenn RUN_AI_RESEARCH = True ist.
 # Leere Werte nehmen die Defaults aus .env / .env.example.
+RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "gemini")  # "gemini" oder "openai"
 RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "")
 RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", None)
 RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", None)
 RESEARCH_PERSON_EMAILS_PER_COMPANY = globals().get("RESEARCH_PERSON_EMAILS_PER_COMPANY", None)
 RESEARCH_WRITE_OUTPUT = globals().get("RESEARCH_WRITE_OUTPUT", True)
+RESEARCH_UPLOAD_ATTACHMENTS = globals().get("RESEARCH_UPLOAD_ATTACHMENTS", True)
 
 # Sicherheits-Schalter:
 # False = nur Probelauf, keine echten Mails
@@ -59,6 +61,8 @@ if __name__ == "__main__":
 
     if RUN_AI_RESEARCH:
         research_args = [
+            "--provider",
+            RESEARCH_AI_PROVIDER,
             "--mode",
             MODE,
         ]
@@ -72,6 +76,10 @@ if __name__ == "__main__":
             research_args.extend(["--person-emails-per-company", str(RESEARCH_PERSON_EMAILS_PER_COMPANY)])
         if not RESEARCH_WRITE_OUTPUT:
             research_args.append("--no-write-output")
+        if not RESEARCH_UPLOAD_ATTACHMENTS:
+            research_args.append("--no-upload-attachments")
+        if VERBOSE:
+            research_args.append("--verbose")
 
         raise SystemExit(research_main(research_args))
 

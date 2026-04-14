@@ -3,3 +3,4 @@ python-dotenv>=1.0.1
 coverage>=7.6.0
 pytest>=8.3.0
 google-genai>=1.0.0
+openai>=1.0.0

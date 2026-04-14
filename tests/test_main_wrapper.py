@@ -26,12 +26,15 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
             run_name="__main__",
             init_globals={
                 "RUN_AI_RESEARCH": True,
+                "RESEARCH_AI_PROVIDER": "openai",
                 "MODE": "Freelance_English",
                 "RESEARCH_MODEL": "custom-model",
                 "RESEARCH_MIN_COMPANIES": 2,
                 "RESEARCH_MAX_COMPANIES": 4,
                 "RESEARCH_PERSON_EMAILS_PER_COMPANY": 1,
                 "RESEARCH_WRITE_OUTPUT": False,
+                "RESEARCH_UPLOAD_ATTACHMENTS": False,
+                "VERBOSE": True,
             },
         )
 
@@ -40,6 +43,8 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
         (
             "research",
             [
+                "--provider",
+                "openai",
                 "--mode",
                 "Freelance_English",
                 "--model",
@@ -51,12 +56,14 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "--person-emails-per-company",
                 "1",
                 "--no-write-output",
+                "--no-upload-attachments",
+                "--verbose",
             ],
         )
     ]
 
 
-def test_main_wrapper_defaults_to_mail(monkeypatch) -> None:
+def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
     calls = []
 
     def fake_research_main(args):
@@ -75,7 +82,7 @@ def test_main_wrapper_defaults_to_mail(monkeypatch) -> None:
         runpy.run_path("main.py", run_name="__main__")
 
     assert exc_info.value.code == 0
-    assert calls[0][0] == "mail"
+    assert calls[0][0] == "research"
     assert "--mode" in calls[0][1]
 
 

@@ -146,16 +146,18 @@ In diese Excel-Dateien werden nur diese Spalten geschrieben:
 
 ## Research
 
-Das Research-Tool liegt in `Research/research_leads.py`. Es nutzt Gemini mit Google-Search-Grounding, laedt die passenden Dateien aus `attachments/<Mode>` als Kontext hoch, liest bestehende Adressen aus `output/send_*.xlsx` und vorhandenen `input`-Dateien als Ausschlussliste und schreibt neue Leads als CSV in den passenden `input/<Mode>` Ordner.
+Das Research-Tool liegt in `Research/research_leads.py`. Es nutzt je nach Einstellung Gemini oder OpenAI mit Websuche, kann die passenden Dateien aus `attachments/<Mode>` als Kontext hochladen, liest bestehende Adressen aus `output/send_*.xlsx` und vorhandenen `input`-Dateien als Ausschlussliste und schreibt neue Leads als CSV in den passenden `input/<Mode>` Ordner.
 
 Du kannst Research auch direkt ueber `main.py` starten:
 
 ```python
 RUN_AI_RESEARCH = True
 MODE = "PhD"  # oder "Freelance_German" / "Freelance_English"
+RESEARCH_AI_PROVIDER = "openai" # oder "gemini"
+RESEARCH_UPLOAD_ATTACHMENTS = False # True = Attachments an den AI Provider hochladen
 ```
 
-Vorher `GEMINI_API_KEY` in `.env` setzen. Das Layout steht in `.env.example`.
+Vorher je nach Provider `GEMINI_API_KEY` oder `OPENAI_API_KEY` in `.env` setzen. Das Layout steht in `.env.example`. Fuer OpenAI ist `OPENAI_MODEL=gpt-5.4` voreingestellt.
 
 Beispiele:
 
@@ -163,6 +165,7 @@ Beispiele:
 python Research\research_leads.py --mode PhD
 python Research\research_leads.py --mode Freelance_German
 python Research\research_leads.py --mode Freelance_English
+python Research\research_leads.py --provider openai --mode PhD --no-upload-attachments
 ```
 
 Ohne Schreiben testen:
