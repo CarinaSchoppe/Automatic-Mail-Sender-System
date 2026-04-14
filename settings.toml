@@ -21,6 +21,16 @@ MODE = "Freelance_German"
 # Default: "gemini"
 RESEARCH_AI_PROVIDER = "gemini"
 
+# GEMINI_MODEL
+# What it does: The Gemini model name to use for research.
+# Default: "gemini-3-flash-preview"
+GEMINI_MODEL = "gemini-3-flash-preview"
+
+# OPENAI_MODEL
+# What it does: The OpenAI model name to use for research.
+# Default: "gpt-5.4-mini-2026-03-17"
+OPENAI_MODEL = "gpt-5.4-mini-2026-03-17"
+
 # RESEARCH_MIN_COMPANIES
 # What it does: Minimum number of companies the AI should try to find.
 # Default: 25
@@ -139,3 +149,31 @@ WRITE_SENT_LOG = true
 # true = delete processed input files after successful real sends.
 # Default: false
 DELETE_INPUT_AFTER_SUCCESS = false
+
+# SMTP settings.
+
+# SMTP_HOST
+# What it does: The hostname of your SMTPS server.
+# Default: "smtp.hostinger.com"
+SMTP_HOST = "smtp.hostinger.com"
+
+# SMTP_PORT
+# What it does: The port of your SMTPS server.
+# Default: 465
+SMTP_PORT = 465
+
+# SMTP_ENCRYPTION
+# What it does: The encryption method used for SMTP.
+# Only "ssl" is currently supported.
+# Default: "ssl"
+SMTP_ENCRYPTION = "ssl"
+
+# SMTP_FROM_NAME
+# What it does: The name displayed as the sender of the emails.
+# Default: "Carina Sophie Schoppe"
+SMTP_FROM_NAME = "Carina Sophie Schoppe"
+
+# SMTP_FROM_EMAIL
+# What it does: The email address displayed as the sender of the emails.
+# Default: "info@carinaschoppe.com"
+SMTP_FROM_EMAIL = "info@carinaschoppe.com"

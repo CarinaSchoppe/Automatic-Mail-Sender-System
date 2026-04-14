@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from mail_sender.cli import main as mail_main
-from mail_sender.sent_log import read_known_output_emails
+from mail_sender.sent_log import read_known_output_emails, read_logged_rows
 from research.research_leads import main as research_main
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +36,8 @@ RESEARCH_MAX_COMPANIES = _setting("RESEARCH_MAX_COMPANIES", 50)
 RESEARCH_PERSON_EMAILS_PER_COMPANY = _setting("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3)
 RESEARCH_WRITE_OUTPUT = _setting("RESEARCH_WRITE_OUTPUT", True)
 RESEARCH_UPLOAD_ATTACHMENTS = _setting("RESEARCH_UPLOAD_ATTACHMENTS", True)
+GEMINI_MODEL = _setting("GEMINI_MODEL", "gemini-3-flash-preview")
+OPENAI_MODEL = _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
 SEND = _setting("SEND", False)
 SEND_TARGET_COUNT = _setting("SEND_TARGET_COUNT", 0)
 SEND_TARGET_MAX_ROUNDS = _setting("SEND_TARGET_MAX_ROUNDS", 0)
@@ -119,7 +121,18 @@ def _print_effective_settings() -> None:
 
 
 def _build_research_args() -> list[str]:
-    args = ["--provider", RESEARCH_AI_PROVIDER, "--mode", MODE, "--base-dir", str(PROJECT_ROOT)]
+    args = [
+        "--provider",
+        str(RESEARCH_AI_PROVIDER),
+        "--mode",
+        str(MODE),
+        "--base-dir",
+        str(PROJECT_ROOT),
+        "--gemini-model",
+        str(GEMINI_MODEL),
+        "--openai-model",
+        str(OPENAI_MODEL),
+    ]
     for flag, value in [
         ("--min-companies", RESEARCH_MIN_COMPANIES),
         ("--max-companies", RESEARCH_MAX_COMPANIES),
@@ -166,6 +179,33 @@ def _target_send_enabled() -> bool:
 
 def _count_logged_sent_emails() -> int:
     return len(read_known_output_emails(PROJECT_ROOT / "output"))
+
+
+def _get_logged_entries() -> set[tuple[str, str]]:
+    output_dir = PROJECT_ROOT / "output"
+    if not output_dir.exists() or not output_dir.is_dir():
+        return set()
+
+    entries: set[tuple[str, str]] = set()
+    for path in output_dir.glob("*.csv"):
+        if path.name.lower() == "invalid_mails.csv":
+            continue
+        rows = read_logged_rows(path)
+        for row in rows:
+            entries.add((row["company"], row["mail"]))
+    return entries
+
+
+def _print_run_summary(sent_recipients: list[tuple[str, str]]) -> None:
+    if not sent_recipients:
+        return
+
+    print("\n" + "=" * 60)
+    print(f"Summary: {len(sent_recipients)} email(s) sent to these recipients:")
+    for company, email in sorted(sent_recipients):
+        company_label = company if company else "(No Company)"
+        print(f"- {company_label}: {email}")
+    print("=" * 60 + "\n")
 
 
 def _validate_target_send_settings() -> bool:
@@ -222,6 +262,7 @@ def _run_target_send_loop() -> int:
     target_total = start_count + target_count
     current_count = start_count
     round_number = 0
+    all_sent_recipients: list[tuple[str, str]] = []
 
     _info(f"Target send loop enabled: send and log {target_count} new email(s).")
     _info(f"Logged sent emails at start: {start_count}. Target logged total: {target_total}.")
@@ -230,12 +271,14 @@ def _run_target_send_loop() -> int:
         round_number += 1
         if max_rounds and round_number > max_rounds:
             _info(f"Stopping before target because SEND_TARGET_MAX_ROUNDS={max_rounds} was reached.")
+            _print_run_summary(all_sent_recipients)
             return 1
 
         remaining = target_total - current_count
         _info(f"Target loop round {round_number}: {remaining} email(s) still needed.")
         research_status = _run_research_once(round_number)
         if research_status != 0:
+            _print_run_summary(all_sent_recipients)
             return research_status
 
         print("\n" + "=" * 50)
@@ -243,19 +286,30 @@ def _run_target_send_loop() -> int:
         print("=" * 50 + "\n")
 
         before_mail_count = current_count
+        entries_before = _get_logged_entries()
         mail_status = _run_mail_once(max_send_count=remaining)
+        entries_after = _get_logged_entries()
         current_count = _count_logged_sent_emails()
         sent_this_round = current_count - before_mail_count
+        
+        new_entries = entries_after - entries_before
+        for entry in sorted(new_entries):
+            if entry not in all_sent_recipients:
+                all_sent_recipients.append(entry)
+
         _info(f"Target loop round {round_number} logged {sent_this_round} new email(s). Total new this run: {current_count - start_count}/{target_count}.")
 
         if mail_status != 0:
             _info("Mail sender returned an error; stopping target loop.")
+            _print_run_summary(all_sent_recipients)
             return mail_status
         if sent_this_round <= 0:
             _info("No new sent-log entries were created in this round; stopping to avoid an endless loop.")
+            _print_run_summary(all_sent_recipients)
             return 1
 
     _info(f"Target reached: {current_count - start_count}/{target_count} new email(s) logged.")
+    _print_run_summary(all_sent_recipients)
     return 0
 
 
@@ -270,6 +324,7 @@ def _run() -> int:
     if _target_send_enabled():
         return _run_target_send_loop()
 
+    all_sent_recipients: list[tuple[str, str]] = []
     if RUN_AI_RESEARCH:
         research_status = _run_research_once()
         if research_status != 0:
@@ -286,7 +341,16 @@ def _run() -> int:
     else:
         _info("AI research disabled; starting mail sender only.")
 
-    return _run_mail_once()
+    entries_before = _get_logged_entries()
+    mail_status = _run_mail_once()
+    entries_after = _get_logged_entries()
+    
+    new_entries = entries_after - entries_before
+    for entry in sorted(new_entries):
+        all_sent_recipients.append(entry)
+
+    _print_run_summary(all_sent_recipients)
+    return mail_status
 
 
 def _run_with_optional_log() -> int:

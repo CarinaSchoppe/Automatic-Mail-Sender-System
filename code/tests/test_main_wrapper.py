@@ -53,6 +53,10 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "Freelance_English",
                 "--base-dir",
                 str(app_main.PROJECT_ROOT),
+                "--gemini-model",
+                "gemini-3-flash-preview",
+                "--openai-model",
+                "gpt-5.4-mini-2026-03-17",
                 "--min-companies",
                 "2",
                 "--max-companies",
@@ -107,6 +111,84 @@ def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
     assert exc_info.value.code == 0
     assert [call[0] for call in calls] == ["research"]
     assert "--mode" in calls[0][1]
+
+
+def test_main_summary_output(monkeypatch, capsys) -> None:
+    # Mock sys.argv to avoid CLI argument detection
+    monkeypatch.setattr("sys.argv", ["code/main.py"])
+
+    # Mock _get_logged_entries to simulate new recipients
+    entry_state = {"calls": 0}
+    def fake_get_logged_entries():
+        entry_state["calls"] += 1
+        if entry_state["calls"] == 1:
+            return set() # Before mail run
+        return {("Test Company", "test@example.com")} # After mail run
+
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(
+            "code/main.py",
+            run_name="__main__",
+            init_globals={
+                "research_main": lambda args: 0,
+                "mail_main": lambda args=None: 0,
+                "_get_logged_entries": fake_get_logged_entries,
+                "RUN_AI_RESEARCH": True,
+                "SEND": True,
+                "SEND_TARGET_COUNT": 0,
+                "SAVE_VERBOSE_LOG": False,
+            },
+        )
+
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "Summary: 1 email(s) sent to these recipients:" in captured.out
+    assert "- Test Company: test@example.com" in captured.out
+
+
+def test_target_loop_summary_output(monkeypatch, capsys) -> None:
+    # Mock sys.argv to avoid CLI argument detection
+    monkeypatch.setattr("sys.argv", ["code/main.py"])
+
+    # Mock _get_logged_entries
+    entry_state = {"calls": 0}
+    def fake_get_logged_entries():
+        entry_state["calls"] += 1
+        if entry_state["calls"] % 2 == 1:
+            return set() # Round X before
+        return {("Loop Company", "loop@example.com")} # Round X after
+
+    # Mock read_known_output_emails to increment count
+    count_state = {"val": 0}
+    def fake_read_emails(path):
+        ret = ["e" * i for i in range(count_state["val"])]
+        count_state["val"] += 1
+        return ret
+
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(
+            "code/main.py",
+            run_name="__main__",
+            init_globals={
+                "research_main": lambda args: 0,
+                "mail_main": lambda args=None: 0,
+                "_get_logged_entries": fake_get_logged_entries,
+                "read_known_output_emails": fake_read_emails,
+                "RUN_AI_RESEARCH": True,
+                "SEND": True,
+                "SEND_TARGET_COUNT": 1,
+                "RESEARCH_WRITE_OUTPUT": True,
+                "WRITE_SENT_LOG": True,
+                "RESEND_EXISTING": False,
+                "MODE": "PhD",
+                "SAVE_VERBOSE_LOG": False,
+            },
+        )
+
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "Summary: 1 email(s) sent to these recipients:" in captured.out
+    assert "- Loop Company: loop@example.com" in captured.out
 
 
 def test_main_wrapper_forwards_explicit_cli_args_to_mail(monkeypatch) -> None:

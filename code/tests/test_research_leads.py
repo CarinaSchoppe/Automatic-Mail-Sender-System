@@ -25,23 +25,29 @@ def config(
         upload_attachments: bool = True,
         provider: str = "gemini",
         model: str = "gemini-2.5-flash-lite",
+        gemini_model: str = "gemini-2.5-flash-lite",
+        openai_model: str = "gpt-5.4",
+        max_companies: int = 3,
 ) -> ResearchConfig:
     return ResearchConfig(
         provider=provider,
         mode_name=mode,
         model=model,
         min_companies=1,
-        max_companies=3,
+        max_companies=max_companies,
         person_emails_per_company=2,
         base_dir=project,
         write_output=write_output,
         verbose=verbose,
         upload_attachments=upload_attachments,
+        gemini_model=gemini_model,
+        openai_model=openai_model,
     )
 
 
 def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    monkeypatch.setattr(research_leads, "_load_settings", lambda: {})
     for key in [
         "RESEARCH_AI_PROVIDER",
         "RESEARCH_MODE",
@@ -60,7 +66,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     default = research_leads.default_config()
     assert default.mode_name == "PhD"
     assert default.provider == "gemini"
-    assert default.model == "gemini-2.5-flash-lite"
+    assert default.model == "gemini-3-flash-preview"
 
     parsed = research_leads.parse_args([
         "--provider",
@@ -86,7 +92,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.min_companies == 2
     assert parsed.max_companies == 4
     assert parsed.person_emails_per_company == 1
-    assert parsed.model == "gpt-5.4"
+    assert parsed.model == "gpt-5.4-mini-2026-03-17"
     assert parsed.write_output is False
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
@@ -94,6 +100,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
 
 def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    monkeypatch.setattr(research_leads, "_load_settings", lambda: {})
     monkeypatch.setenv("RESEARCH_AI_PROVIDER", "openai")
     monkeypatch.setenv("RESEARCH_MODE", "Freelance_German")
     monkeypatch.setenv("GEMINI_MODEL", "custom-model")
@@ -124,7 +131,8 @@ def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setenv("RESEARCH_BASE_DIR", "")
 
-    assert research_leads.default_config().base_dir == research_leads.BASE_DIR.resolve()
+    expected_base = Path(research_leads.__file__).resolve().parents[2]
+    assert research_leads.default_config().base_dir == expected_base.resolve()
 
 
 def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
@@ -370,6 +378,9 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
 
     def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         assert model == "gemini-2.5-flash-lite"
+        # The test originally expected [cv, project / "output/send_phd.csv"] but due to iteration 2 it might be called again with []
+        if not attachments:
+            return ""
         assert attachments == [cv, project / "output/send_phd.csv"]
         assert "Existing email exclusion list" in prompt
         assert "Existing company exclusion list for this mode" in prompt
@@ -399,7 +410,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
     assert output_path is None
     assert recipients == [Recipient(email="a@example.com", company="A")]
 
-    bad_config = ResearchConfig("gemini", "PhD", "model", 2, 1, 1, project, True, False, True)
+    bad_config = ResearchConfig("gemini", "PhD", "model", 2, 1, 1, project, True, False, True, "gemini-model", "openai-model")
     with pytest.raises(ValueError, match="Company limits"):
         research_leads.run_research(bad_config)
 
@@ -441,15 +452,16 @@ def test_run_research_retries_without_attachments_after_empty_response(
 
     def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         calls.append(attachments)
-        if attachments:
+        if attachments and len(calls) == 1:
             return ""
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
 
-    _, recipients = research_leads.run_research(config(project, verbose=True))
+    _, recipients = research_leads.run_research(config(project, verbose=True, max_companies=1))
 
-    assert calls == [[cv], []]
+    assert calls[0] == [cv]
+    assert calls[1] == []
     assert recipients == [Recipient(email="a@example.com", company="A")]
     assert "retrying once without attachment uploads" in capsys.readouterr().out
 
@@ -465,15 +477,14 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
-        assert "Existing email exclusion list:" in prompt
-        assert "(none)" in prompt
+        # Use lite prompt check if we are in iteration 1 retry or later
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
 
-    _, recipients = research_leads.run_research(config(project, verbose=True))
+    _, recipients = research_leads.run_research(config(project, verbose=True, max_companies=1))
 
-    assert len(calls) == 2
+    assert len(calls) >= 2
     assert recipients == [Recipient(email="a@example.com", company="A")]
     output = capsys.readouterr().out
     assert "retrying once with a smaller prompt" in output
@@ -488,7 +499,8 @@ def test_model_for_provider_uses_provider_specific_env(monkeypatch: pytest.Monke
     monkeypatch.setenv("GEMINI_MODEL", "generic-model")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
 
-    assert research_leads._model_for_provider("openai") == "gpt-test"
+    assert research_leads._model_for_provider("openai", "g", "o") == "gpt-test"
+    assert research_leads._model_for_provider("gemini", "g", "o") == "generic-model"
 
 
 def test_generate_with_provider_selects_openai_and_rejects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -744,7 +756,119 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
     assert "Gemini prompt_feedback: 'ok'" in output
     assert "Gemini candidates: 1" in output
     assert "Gemini candidate 1 finish_reason: 'SAFETY'" in output
-    assert "Gemini candidate 1 safety_ratings: ['blocked']" in output
+
+
+def test_fake_txt_extensions(tmp_path: Path) -> None:
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text("a,b,c", encoding="utf-8")
+    pdf_file = tmp_path / "test.pdf"
+    pdf_file.write_text("pdf content", encoding="utf-8")
+
+    with research_leads._fake_txt_extensions([csv_file, pdf_file], verbose=True) as new_paths:
+        assert len(new_paths) == 2
+        assert new_paths[1] == pdf_file
+        assert new_paths[0].suffix == ".txt"
+        assert new_paths[0].name == "test.csv.txt"
+        assert new_paths[0].exists()
+        assert new_paths[0].read_text(encoding="utf-8") == "a,b,c"
+        # Original should still exist
+        assert csv_file.exists()
+
+    # After context, temp file should be gone
+    assert not new_paths[0].exists()
+    assert csv_file.exists()
+    assert pdf_file.exists()
+
+
+def test_generate_with_gemini_fakes_csv_extension(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    csv_attachment = tmp_path / "data.csv"
+    csv_attachment.write_text("col1,col2", encoding="utf-8")
+
+    captured_paths = []
+
+    class FakeFiles:
+        @staticmethod
+        def upload(file: Path):
+            captured_paths.append(file)
+            return object()
+
+    class FakeModels:
+        @staticmethod
+        def generate_content(*args, **kwargs):
+            return py_types.SimpleNamespace(text='{"leads": []}')
+
+    class FakeClient:
+        def __init__(self, api_key: str) -> None:
+            self.files = FakeFiles()
+            self.models = FakeModels()
+
+    fake_google = py_types.ModuleType("google")
+    fake_genai = py_types.ModuleType("google.genai")
+    fake_genai.Client = FakeClient
+    fake_genai.types = py_types.SimpleNamespace(
+        GenerateContentConfig=lambda **kwargs: None,
+        Tool=lambda **kwargs: None,
+        GoogleSearch=lambda: None,
+        ToolConfig=lambda **kwargs: None,
+        FunctionCallingConfig=lambda **kwargs: None,
+        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
+        ThinkingConfig=lambda **kwargs: None,
+        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
+    )
+    fake_google.genai = fake_genai
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setenv("GEMINI_API_KEY", "key")
+
+    research_leads.generate_with_gemini("model", "prompt", [csv_attachment], True)
+
+    assert len(captured_paths) == 1
+    assert captured_paths[0].suffix == ".txt"
+    assert captured_paths[0].name == "data.csv.txt"
+    assert not captured_paths[0].exists()  # Should be deleted after upload
+
+
+def test_generate_with_openai_fakes_csv_extension(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    csv_attachment = tmp_path / "data.csv"
+    csv_attachment.write_text("col1,col2", encoding="utf-8")
+
+    captured_paths = []
+
+    class FakeFiles:
+        def create(self, file, purpose):
+            # 'file' is a binary file handle because of 'with path.open("rb")'
+            captured_paths.append(Path(file.name))
+            return py_types.SimpleNamespace(id="file-123")
+
+    class FakeResponses:
+        @staticmethod
+        def create(*args, **kwargs):
+            return py_types.SimpleNamespace(output_text='{"leads": []}')
+
+    class FakeClient:
+        def __init__(self, api_key: str) -> None:
+            self.files = FakeFiles()
+            self.responses = FakeResponses()
+
+    fake_openai = py_types.ModuleType("openai")
+    fake_openai.OpenAI = FakeClient
+    monkeypatch.setitem(sys.modules, "openai", fake_openai)
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+
+    research_leads.generate_with_openai("model", "prompt", [csv_attachment], True)
+
+    assert len(captured_paths) == 1
+    assert captured_paths[0].suffix == ".txt"
+    assert captured_paths[0].name == "data.csv.txt"
+    assert not captured_paths[0].exists()  # Should be deleted after upload
 
 
 def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_empty(

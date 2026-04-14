@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 load_dotenv: Callable[[], bool] | None
 try:
@@ -10,6 +12,9 @@ try:
     load_dotenv = _dotenv_load
 except ImportError:  # pragma: no cover - optional until requirements are installed
     load_dotenv = None
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
 
 
 class ConfigError(RuntimeError):
@@ -27,16 +32,40 @@ class SmtpConfig:
     encryption: str = "ssl"
 
 
+def _load_settings() -> dict:
+    if not SETTINGS_PATH.exists():
+        return {}
+    try:
+        with SETTINGS_PATH.open("rb") as handle:
+            return tomllib.load(handle)
+    except Exception:
+        return {}
+
+
 def load_smtp_config(require_password: bool) -> SmtpConfig:
     if load_dotenv is not None:
         load_dotenv()
 
-    host = os.getenv("SMTP_HOST", "smtp.hostinger.com").strip()
-    port_text = os.getenv("SMTP_PORT", "465").strip()
-    encryption = os.getenv("SMTP_ENCRYPTION", "ssl").strip().lower()
-    username = os.getenv("SMTP_USERNAME", "info@carinaschoppe.com").strip()
-    from_email = os.getenv("SMTP_FROM_EMAIL", username).strip()
-    from_name = os.getenv("SMTP_FROM_NAME", "Carina Sophie Schoppe").strip()
+    settings = _load_settings()
+
+    def _get(key: str, default: str) -> str:
+        # 1. OS Env
+        # 2. settings.toml
+        # 3. default
+        val = os.getenv(key)
+        if val is not None:
+            return val.strip()
+        toml_val = settings.get(key)
+        if toml_val is not None:
+            return str(toml_val).strip()
+        return default
+
+    host = _get("SMTP_HOST", "smtp.hostinger.com")
+    port_text = _get("SMTP_PORT", "465")
+    encryption = _get("SMTP_ENCRYPTION", "ssl").lower()
+    username = _get("SMTP_USERNAME", "info@carinaschoppe.com")
+    from_email = _get("SMTP_FROM_EMAIL", username)
+    from_name = _get("SMTP_FROM_NAME", "Carina Sophie Schoppe")
     password = os.getenv("SMTP_PASSWORD", "").strip()
 
     if encryption != "ssl":

@@ -6,12 +6,16 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import importlib
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
+import tomllib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -39,17 +43,6 @@ mode_instructions = importlib.import_module(
 )
 
 SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
-
-RESEARCH_MODE = "PhD"
-AI_PROVIDER = "gemini"
-GEMINI_MODEL = "gemini-2.5-flash-lite"
-OPENAI_MODEL = "gpt-5.4"
-MIN_COMPANIES = 15
-MAX_COMPANIES = 25
-PERSON_EMAILS_PER_COMPANY = 3
-WRITE_OUTPUT = True
-UPLOAD_ATTACHMENTS = True
-BASE_DIR = Path(__file__).resolve().parents[2]
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 COMPANY_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 RESUME_ATTACHMENT_PATTERN = re.compile(
@@ -70,22 +63,57 @@ class ResearchConfig:
     write_output: bool
     verbose: bool
     upload_attachments: bool
+    gemini_model: str
+    openai_model: str
+
+
+def _load_settings() -> dict:
+    settings_path = CODE_DIR.parent / "settings.toml"
+    if not settings_path.exists():
+        return {}
+    try:
+        with settings_path.open("rb") as handle:
+            return tomllib.load(handle)
+    except Exception:
+        return {}
 
 
 def default_config() -> ResearchConfig:
     load_dotenv()
-    provider = os.getenv("RESEARCH_AI_PROVIDER", AI_PROVIDER)
+    settings = _load_settings()
+
+    def _get(key: str, default):
+        val = os.getenv(key)
+        if val is not None:
+            if isinstance(default, bool):
+                return str(val).lower() in ("true", "1", "yes")
+            if isinstance(default, int):
+                return int(val)
+            return val
+        return settings.get(key, default)
+
+    provider = _get("RESEARCH_AI_PROVIDER", "gemini")
+    gemini_model = _get("GEMINI_MODEL", "gemini-3-flash-preview")
+    openai_model = _get("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
+
+    # Mode name: check RESEARCH_MODE (env) then MODE (env or toml)
+    mode_name = os.getenv("RESEARCH_MODE")
+    if mode_name is None:
+        mode_name = _get("MODE", "PhD")
+
     return ResearchConfig(
         provider=provider,
-        mode_name=os.getenv("RESEARCH_MODE", RESEARCH_MODE),
-        model=_model_for_provider(provider),
-        min_companies=_env_int("RESEARCH_MIN_COMPANIES", MIN_COMPANIES),
-        max_companies=_env_int("RESEARCH_MAX_COMPANIES", MAX_COMPANIES),
-        person_emails_per_company=_env_int("RESEARCH_PERSON_EMAILS_PER_COMPANY", PERSON_EMAILS_PER_COMPANY),
-        base_dir=_env_path("RESEARCH_BASE_DIR", BASE_DIR),
-        write_output=_env_bool("RESEARCH_WRITE_OUTPUT", WRITE_OUTPUT),
-        verbose=_env_bool("RESEARCH_VERBOSE", False),
-        upload_attachments=_env_bool("RESEARCH_UPLOAD_ATTACHMENTS", UPLOAD_ATTACHMENTS),
+        mode_name=mode_name,
+        gemini_model=gemini_model,
+        openai_model=openai_model,
+        model=_model_for_provider(provider, gemini_model, openai_model),
+        min_companies=_get("RESEARCH_MIN_COMPANIES", 15),
+        max_companies=_get("RESEARCH_MAX_COMPANIES", 25),
+        person_emails_per_company=_get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3),
+        base_dir=_env_path("RESEARCH_BASE_DIR", CODE_DIR.parent),
+        write_output=_get("RESEARCH_WRITE_OUTPUT", True),
+        verbose=_get("RESEARCH_VERBOSE", False),
+        upload_attachments=_get("RESEARCH_UPLOAD_ATTACHMENTS", True),
     )
 
 
@@ -110,6 +138,8 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser = argparse.ArgumentParser(description="research new lead CSV files with Gemini and Google Search grounding.")
     parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai"], help="AI research provider.")
     parser.add_argument("--mode", default=env_config.mode_name, choices=MODE_NAMES, help="research mode.")
+    parser.add_argument("--gemini-model", default=env_config.gemini_model)
+    parser.add_argument("--openai-model", default=env_config.openai_model)
     parser.add_argument("--min-companies", type=int, default=env_config.min_companies)
     parser.add_argument("--max-companies", type=int, default=env_config.max_companies)
     parser.add_argument("--person-emails-per-company", type=int, default=env_config.person_emails_per_company)
@@ -122,7 +152,9 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     return ResearchConfig(
         provider=args.provider,
         mode_name=args.mode,
-        model=_model_for_provider(args.provider),
+        gemini_model=args.gemini_model,
+        openai_model=args.openai_model,
+        model=_model_for_provider(args.provider, args.gemini_model, args.openai_model),
         min_companies=args.min_companies,
         max_companies=args.max_companies,
         person_emails_per_company=args.person_emails_per_company,
@@ -181,30 +213,56 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     input_context = read_input_context(mode.recipients_dir, verbose=config.verbose)
     _verbose(config.verbose, f"Mode-specific input context characters: {len(input_context)}")
 
-    _info("Building AI research prompt.")
-    prompt = build_prompt(config, mode, existing_emails, existing_companies, input_context)
-    _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
+    all_recipients: list[Recipient] = []
+    seen_emails_in_run: set[str] = {email.lower() for email in existing_emails}
+    seen_companies_in_run: set[str] = {company for company in existing_companies or set() if company}
+    
+    # We aim for roughly max_companies as the total target for this run.
+    target_count = config.max_companies
+    max_iterations = 5
+    iteration = 0
 
-    _info("Calling AI provider now; this can take a moment.")
-    raw_response = generate_with_provider(config.provider, config.model, prompt, attachments, config.verbose)
-    if _needs_retry(raw_response, existing_emails, config.verbose) and attachments:
-        _info("AI response was not usable yet; retrying once without CV/resume uploads.")
-        _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
-        raw_response = generate_with_provider(config.provider, config.model, prompt, [], config.verbose)
-    if _needs_retry(raw_response, existing_emails, config.verbose):
-        retry_prompt = build_prompt(config, mode, set(), set(), input_context)
-        _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
-        _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
-        _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
-        raw_response = generate_with_provider(config.provider, config.model, retry_prompt, [], config.verbose)
-    _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
+    while len(all_recipients) < target_count and iteration < max_iterations:
+        iteration += 1
+        if iteration > 1:
+            _info(f"Research iteration {iteration}: {len(all_recipients)}/{target_count} recipients found so far.")
 
-    _info("Parsing and filtering AI response.")
-    recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
-    _info(f"Usable new recipients found: {len(recipients)}.")
-    _verbose(config.verbose, f"Usable new recipients after CSV parsing and exclusion filtering: {len(recipients)}")
-    if not recipients:
-        raise RuntimeError("Gemini returned no new usable email addresses.")
+        _info("Building AI research prompt.")
+        prompt = build_prompt(config, mode, seen_emails_in_run, seen_companies_in_run, input_context)
+        _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
+
+        _info("Calling AI provider now; this can take a moment.")
+        raw_response = generate_with_provider(config.provider, config.model, prompt, attachments, config.verbose)
+        if _needs_retry(raw_response, seen_emails_in_run, config.verbose) and attachments:
+            _info("AI response was not usable yet; retrying once without CV/resume uploads.")
+            _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
+            raw_response = generate_with_provider(config.provider, config.model, prompt, [], config.verbose)
+        if _needs_retry(raw_response, seen_emails_in_run, config.verbose):
+            retry_prompt = build_prompt(config, mode, set(), set(), input_context)
+            _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
+            _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
+            _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
+            raw_response = generate_with_provider(config.provider, config.model, retry_prompt, [], config.verbose)
+        _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
+
+        _info("Parsing and filtering AI response.")
+        new_recipients = parse_recipients(raw_response, seen_emails_in_run, seen_companies_in_run, config.verbose)
+        _info(f"Usable new recipients found in this iteration: {len(new_recipients)}.")
+        
+        if not new_recipients:
+            _info("No more new recipients found in this iteration.")
+            if iteration == 1:
+                raise RuntimeError("Gemini returned no new usable email addresses on the first attempt.")
+            break
+
+        for r in new_recipients:
+            all_recipients.append(r)
+            seen_emails_in_run.add(r.email.lower())
+            seen_companies_in_run.add(_normalize_company(r.company))
+
+    recipients = all_recipients
+    _info(f"Total usable new recipients found: {len(recipients)}.")
+    _verbose(config.verbose, f"Total usable new recipients after {iteration} iteration(s): {len(recipients)}")
 
     output_path = None
     if config.write_output:
@@ -429,9 +487,10 @@ def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], 
     client = genai.Client(api_key=api_key)
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to Gemini.")
     uploaded_files = []
-    for path in attachment_paths:
-        _verbose(verbose, f"Uploading Gemini context file: {path}.")
-        uploaded_files.append(client.files.upload(file=path))
+    with _fake_txt_extensions(attachment_paths, verbose) as faked_paths:
+        for path in faked_paths:
+            _verbose(verbose, f"Uploading Gemini context file: {path}.")
+            uploaded_files.append(client.files.upload(file=path))
     _verbose(verbose, f"Gemini uploaded file handles: {len(uploaded_files)}.")
     _verbose(verbose, "Calling Gemini with Google Search grounding enabled.")
     _verbose(verbose, "Gemini config: google_search enabled, tool auto mode enabled, thinking_level=HIGH, temperature=0.2.")
@@ -476,10 +535,11 @@ def generate_with_openai(model: str, prompt: str, attachment_paths: list[Path], 
     client = OpenAI(api_key=api_key)
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to OpenAI.")
     uploaded_files = []
-    for path in attachment_paths:
-        _verbose(verbose, f"Uploading OpenAI context file: {path}.")
-        with path.open("rb") as handle:
-            uploaded_files.append(client.files.create(file=handle, purpose="user_data"))
+    with _fake_txt_extensions(attachment_paths, verbose) as faked_paths:
+        for path in faked_paths:
+            _verbose(verbose, f"Uploading OpenAI context file: {path}.")
+            with path.open("rb") as handle:
+                uploaded_files.append(client.files.create(file=handle, purpose="user_data"))
     _verbose(verbose, f"OpenAI uploaded file handles: {len(uploaded_files)}.")
 
     content = [{"type": "input_text", "text": prompt}]
@@ -505,6 +565,32 @@ def generate_with_openai(model: str, prompt: str, attachment_paths: list[Path], 
     _verbose(verbose, f"OpenAI response output_text raw: {response_text!r}")
     _verbose_openai_output(verbose, response)
     return response_text
+
+
+@contextlib.contextmanager
+def _fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
+    """Temporary copy .csv files to .txt for upload to avoid MIME type issues."""
+    temp_files: list[Path] = []
+    new_paths: list[Path] = []
+    try:
+        for path in attachment_paths:
+            if path.suffix.lower() == ".csv":
+                temp_dir = Path(tempfile.gettempdir())
+                # Copy with .txt extension to the system's temp directory
+                fake_path = temp_dir / (path.name + ".txt")
+                _verbose(verbose, f"Faking extension for AI upload: {path.name} -> {fake_path.name}")
+                shutil.copy2(path, fake_path)
+                temp_files.append(fake_path)
+                new_paths.append(fake_path)
+            else:
+                new_paths.append(path)
+        yield new_paths
+    finally:
+        for temp_file in temp_files:
+            try:
+                temp_file.unlink(missing_ok=True)
+            except Exception:  # pragma: no cover
+                pass
 
 
 def _extract_openai_response_text(response) -> str:
@@ -818,11 +904,11 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(value).resolve()
 
 
-def _model_for_provider(provider: str) -> str:
+def _model_for_provider(provider: str, gemini_model: str, openai_model: str) -> str:
     normalized = provider.strip().lower()
     if normalized == "openai":
-        return os.getenv("OPENAI_MODEL", OPENAI_MODEL)
-    return os.getenv("GEMINI_MODEL", GEMINI_MODEL)
+        return os.getenv("OPENAI_MODEL", openai_model)
+    return os.getenv("GEMINI_MODEL", gemini_model)
 
 
 if __name__ == "__main__":  # pragma: no cover
