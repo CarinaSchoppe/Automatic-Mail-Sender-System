@@ -89,7 +89,7 @@ def test_cli_skips_addresses_already_in_invalid_log(project: Path, capsys) -> No
     assert "already listed in invalid_mails.csv" in capsys.readouterr().out
 
 
-def test_cli_checks_all_output_excel_logs(project: Path, capsys) -> None:
+def test_cli_checks_all_output_csv_logs(project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/phd.csv", "Existing", "existing@example.com")
     with (project / "output/send_freelance.csv").open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
@@ -228,7 +228,7 @@ def test_cli_rejects_invalid_max_send_count(project: Path, capsys) -> None:
     assert "--max-send-count must be at least 1" in capsys.readouterr().out
 
 
-def test_cli_can_disable_sent_excel_logging(monkeypatch, project: Path) -> None:
+def test_cli_can_disable_sent_csv_logging(monkeypatch, project: Path) -> None:
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
 

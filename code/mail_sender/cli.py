@@ -254,10 +254,10 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
     print(f"Attachments: {len(attachments)}")
     print(f"Log file: {mode.log_path}")
     print(f"Invalid email log file: {invalid_log_path}")
-    print("Existing CSV check: disabled (--resend-existing)" if args.resend_existing else "Existing Excel check: enabled")
+    print("Existing CSV check: disabled (--resend-existing)" if args.resend_existing else "Existing CSV check: enabled")
     print("Sending: yes" if args.send else "Sending: no (dry-run)")
     print("Dry-run CSV logging: yes" if args.log_dry_run else "Dry-run CSV logging: no")
-    print("Sent Excel logging: no" if args.no_write_sent_log else "Sent CSV logging: yes")
+    print("Sent CSV logging: no" if args.no_write_sent_log else "Sent CSV logging: yes")
     print("Delete input after success: yes" if args.delete_input_after_success else "Delete input after success: no")
 
 

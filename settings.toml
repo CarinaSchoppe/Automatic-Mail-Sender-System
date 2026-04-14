@@ -76,7 +76,7 @@ SEND = true
 
 # SEND_TARGET_COUNT
 # What it does: Sends in repeated research + real-send rounds until this many new emails
-# were successfully written to the sent Excel logs during this run.
+# were successfully written to the sent CSV logs during this run.
 # Only works when RUN_AI_RESEARCH = true, SEND = true, RESEARCH_WRITE_OUTPUT = true,
 # WRITE_SENT_LOG = true, RESEND_EXISTING = false, and MODE is not "Auto".
 # 0 = disabled; run only one normal research/mail pass.
@@ -114,7 +114,7 @@ VERBOSE_LOG_DIR = "logs"
 # Advanced mail settings.
 
 # RESEND_EXISTING
-# What it does: Controls whether addresses already found in output Excel logs are skipped.
+# What it does: Controls whether addresses already found in output CSV logs are skipped.
 # false = skip already logged addresses.
 # true = ignore existing sent logs and allow resending.
 # Default: false
