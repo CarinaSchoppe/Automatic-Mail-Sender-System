@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from . import mode_instructions
 import argparse
 import csv
 import json
@@ -236,103 +236,10 @@ def read_input_context(directory: Path, max_chars: int = 6000) -> str:
 
 
 def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[str], input_context: str = "") -> str:
-    mode_instructions = {
-        "PhD": (
-          """
-          Find companies that are realistic Industry PhD collaboration prospects for applied AI governance research in Australia.
 
-Priority order:
-1. Brisbane and South East Queensland
-2. Other Australian organisations
-3. International organisations only if they have Australian operations, Australian partnerships, or a very strong fit for enterprise AI governance / responsible AI / GenAI risk.
 
-Target organisations should be relevant to at least one of these:
-- AI governance
-- responsible AI
-- enterprise AI / GenAI
-- digital transformation
-- compliance, risk, assurance, or cybersecurity
-- university-industry research collaboration
 
-For each company:
-- include 1 general company contact email if publicly listed
-- include up to 1 or 2 decision-maker work emails only if they are publicly listed on a reliable public page
-- do not guess or infer email patterns
-- do not include contact forms
-- do not include placeholder or assumed addresses
-- only include emails that are visibly written on a public webpage
-- include the exact public source URL where the email was found
 
-Exclude all emails in the exclusion list.
-
-Use the provided files only as context for fit, not as contacts to repeat.
-
-Return CSV only with this exact header:
-company,mail,source_url
-
-Rules:
-- one row per email
-- repeat company name for multiple emails
-- if you cannot verify enough results, return fewer results
-- no markdown
-- no commentary
-- no extra text
-          """),
-        "Freelance German": (
-            "Find German-language organisations that may collaborate with a remote freelance lecturer or trainer. "
-            "Prioritise education providers, AVGS/AZAV or publicly funded training organisations, vocational education "
-            "providers, corporate training providers, reskilling or apprenticeship providers, and companies offering "
-            "remote or home-office compatible training. The fit should be IT, business, AI, digital skills, software, "
-            "cybersecurity, IT security, or related professional education. One general or relevant contact email per "
-            "company is enough."
-            "They should specialize in IT or Business courses that match to the files that Ive provided so you know what I do and what I need"
-            "Think deeply about the results and check them double that youre sure that these are valid answers given my requirements and that you found as many as Ive requested"
-
-        ),
-        "Freelance English": (
-          """Find organisations that may hire or collaborate with a remote freelance lecturer or trainer in IT, business, AI, software, data, or cybersecurity.
-
-Prioritise:
-- education providers
-- vocational training providers
-- reskilling providers
-- corporate training providers
-- apprenticeship or adult-learning providers
-- organisations that offer remote or online teaching opportunities
-
-Use the provided files only to understand the trainer profile and topic fit.
-
-Find only organisations whose course portfolio clearly overlaps with:
-- IT
-- software development
-- AI
-- data / analytics
-- cybersecurity
-- digital business skills
-
-For each company:
-- include 1 relevant public email address
-- optionally include a second public email address if clearly relevant
-- do not guess or infer email patterns
-- do not include contact forms
-- only include emails visibly shown on a public webpage
-- include the exact source URL
-
-Exclude all emails in the exclusion list.
-
-Return CSV only with this exact header:
-company,mail,source_url
-
-Rules:
-- one row per email
-- repeat company name for multiple emails
-- if you cannot verify enough results, return fewer results
-- no markdown
-- no commentary
-- no extra text """
-
-        ),
-    }
     excluded = "\n".join(sorted(existing_emails)) or "(none)"
     input_reference = input_context.strip() or "(no mode-specific input files found)"
     contact_requirement = (
@@ -350,7 +257,7 @@ Rules:
     Mode: {mode.label}
 
     Task:
-    {mode_instructions[mode.label]}
+    {mode_instructions.instructions[mode.label]}
 
     Requirements:
     - Find leads from {config.min_companies} to {config.max_companies} relevant companies.

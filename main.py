@@ -24,7 +24,7 @@ RESEARCH_UPLOAD_ATTACHMENTS = globals().get("RESEARCH_UPLOAD_ATTACHMENTS", True)
 # Safety switch:
 # False = dry run only, no real emails.
 # True = send real emails via SMTP.
-SEND = globals().get("SEND", True)
+SEND = globals().get("SEND", False)
 
 # Print detailed terminal output.
 VERBOSE = globals().get("VERBOSE", True)
