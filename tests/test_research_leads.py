@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from Research import research_leads
-from Research.research_leads import ResearchConfig
+from research import research_leads
+from research.research_leads import ResearchConfig
 from mail_sender.recipients import Recipient
 from mail_sender.sent_log import append_log
 
@@ -190,21 +190,72 @@ D,d@example.com
 ```
 """
 
-    recipients = research_leads.parse_recipients(raw, {"existing@example.com"}, max_companies=2)
+    recipients = research_leads.parse_recipients(raw, {"existing@example.com"})
 
     assert recipients == [
         Recipient(email="a@example.com", company="A"),
         Recipient(email="other@example.com", company="A"),
         Recipient(email="c@example.com", company="C"),
+        Recipient(email="d@example.com", company="D"),
     ]
 
 
-def test_parse_recipients_requires_company_and_mail_columns() -> None:
-    with pytest.raises(ValueError, match="company and mail"):
-        research_leads.parse_recipients("name,address\nA,a@example.com", set(), max_companies=1)
-
-    assert research_leads.parse_recipients("", set(), max_companies=1) == []
+def test_parse_recipients_no_longer_requires_headers() -> None:
+    # Previously it required headers, now it should handle headerless data if it looks like company,email
+    assert research_leads.parse_recipients("A,a@example.com", set()) == [
+        Recipient(email="a@example.com", company="A")
+    ]
+    assert research_leads.parse_recipients("", set()) == []
     assert research_leads._detect_dialect("") == csv.excel
+
+
+def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:
+    raw = (
+        "'com.au\\n"
+        "AI Engineers, Inc.,info@aiengineers.com\\n"
+        "PwC,info@pwc.com\\n"
+        "PwC,info@pwc.com\\n"
+        "Agix Technologies,info@agix.'"
+    )
+
+    recipients = research_leads.parse_recipients(raw, set())
+
+    assert recipients == [
+        Recipient(email="info@aiengineers.com", company="AI Engineers, Inc."),
+        Recipient(email="info@pwc.com", company="PwC"),
+    ]
+
+
+def test_parse_recipients_from_example_raw() -> None:
+    # This test verifies that parse_recipients can handle the full example.raw file
+    # and extract the expected data correctly.
+    raw_path = Path("example.raw")
+    if not raw_path.exists():
+        pytest.skip("example.raw not found in project root")
+    
+    raw_content = raw_path.read_text(encoding="utf-8")
+    recipients = research_leads.parse_recipients(raw_content, set())
+    
+    # Check for some specific known entries from example.raw
+    emails = {r.email for r in recipients}
+    companies = {r.company for r in recipients}
+    
+    # Total unique recipients should be around 168 (based on previous manual run)
+    assert len(recipients) >= 150
+    
+    # Check for "Protiviti" cases which were tricky
+    assert "info@protiviti.com.au" in emails
+    # Check for some complex names
+    assert any("Protiviti" in r.company for r in recipients)
+    assert any("Data61" in r.company for r in recipients)
+    
+    # Check for McKinsey
+    assert "McKinsey & Company" in companies
+    assert "contact.au@mckinsey.com" in emails
+
+    # Check for some special names
+    assert "CSIRO's Data61" in companies
+    assert "info@data61.csiro.au" in emails
 
 
 def test_write_recipients_csv(project: Path) -> None:
@@ -329,7 +380,7 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
 
 
 def test_needs_retry_handles_invalid_csv() -> None:
-    assert research_leads._needs_retry("not,csv\nonly-one-value\n", set(), max_companies=1) is True
+    assert research_leads._needs_retry("not,csv\nonly-one-value\n", set()) is True
 
 
 def test_model_for_provider_prefers_generic_env(monkeypatch: pytest.MonkeyPatch) -> None:

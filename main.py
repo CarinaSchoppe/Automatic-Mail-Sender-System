@@ -1,10 +1,10 @@
 import sys
 
-from Research.research_leads import main as research_main
+from research.research_leads import main as research_main
 from mail_sender.cli import main as mail_main
 
 
-# True = AI Research starten und neue Lead-CSV in input/<Mode> erzeugen
+# True = AI research starten und neue Lead-CSV in input/<Mode> erzeugen
 # False = Mail-Sender starten
 RUN_AI_RESEARCH = globals().get("RUN_AI_RESEARCH", True)
 
@@ -13,13 +13,13 @@ RUN_AI_RESEARCH = globals().get("RUN_AI_RESEARCH", True)
 # Erlaubt: "PhD", "Freelance_German", "Freelance_English" oder "Auto"
 MODE = globals().get("MODE", "PhD")
 
-# AI Research Settings, nur relevant wenn RUN_AI_RESEARCH = True ist.
+# AI research Settings, nur relevant wenn RUN_AI_RESEARCH = True ist.
 # Leere Werte nehmen die Defaults aus .env / .env.example.
 RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "gemini")  # "gemini" oder "openai"
-RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "")
-RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", None)
-RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", None)
-RESEARCH_PERSON_EMAILS_PER_COMPANY = globals().get("RESEARCH_PERSON_EMAILS_PER_COMPANY", None)
+RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "gemini-2.5-flash-lite")
+RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", 5)
+RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", 25)
+RESEARCH_PERSON_EMAILS_PER_COMPANY = globals().get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 2)
 RESEARCH_WRITE_OUTPUT = globals().get("RESEARCH_WRITE_OUTPUT", True)
 RESEARCH_UPLOAD_ATTACHMENTS = globals().get("RESEARCH_UPLOAD_ATTACHMENTS", True)
 
@@ -48,11 +48,11 @@ LOG_DRY_RUN = globals().get("LOG_DRY_RUN", False)
 
 # True = erfolgreich gesendete Mails in output/send_*.xlsx eintragen
 # False = erfolgreiche Sendungen nicht in Excel eintragen
-WRITE_SENT_LOG = globals().get("WRITE_SENT_LOG", False)
+WRITE_SENT_LOG = globals().get("WRITE_SENT_LOG", True)
 
 # True = nach erfolgreichem echtem Versand die verarbeiteten .csv/.txt Dateien aus input/<Mode> loeschen
 # False = Input-Dateien nach dem Versand liegen lassen
-DELETE_INPUT_AFTER_SUCCESS = globals().get("DELETE_INPUT_AFTER_SUCCESS", True)
+DELETE_INPUT_AFTER_SUCCESS = globals().get("DELETE_INPUT_AFTER_SUCCESS", False)
 
 
 if __name__ == "__main__":
@@ -81,7 +81,13 @@ if __name__ == "__main__":
         if VERBOSE:
             research_args.append("--verbose")
 
-        raise SystemExit(research_main(research_args))
+        research_status = research_main(research_args)
+        if research_status != 0:
+            sys.exit(research_status)
+
+        print("\n" + "=" * 50)
+        print("AI Research finished. Now starting mail sender process...")
+        print("=" * 50 + "\n")
 
     args = [
         "--mode",

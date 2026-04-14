@@ -16,7 +16,7 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
         calls.append(("mail", args))
         return 0
 
-    monkeypatch.setattr("Research.research_leads.main", fake_research_main)
+    monkeypatch.setattr("research.research_leads.main", fake_research_main)
     monkeypatch.setattr("mail_sender.cli.main", fake_mail_main)
     monkeypatch.setattr("sys.argv", ["main.py"])
 
@@ -59,7 +59,20 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "--no-upload-attachments",
                 "--verbose",
             ],
-        )
+        ),
+        (
+            "mail",
+            [
+                "--mode",
+                "Freelance_English",
+                "--signature-logo",
+                "templates/signature-logo.png",
+                "--signature-logo-width",
+                "325",
+                "--send",
+                "--verbose",
+            ],
+        ),
     ]
 
 
@@ -74,7 +87,7 @@ def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
         calls.append(("mail", args))
         return 0
 
-    monkeypatch.setattr("Research.research_leads.main", fake_research_main)
+    monkeypatch.setattr("research.research_leads.main", fake_research_main)
     monkeypatch.setattr("mail_sender.cli.main", fake_mail_main)
     monkeypatch.setattr("sys.argv", ["main.py"])
 
@@ -83,7 +96,9 @@ def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
 
     assert exc_info.value.code == 0
     assert calls[0][0] == "research"
+    assert calls[1][0] == "mail"
     assert "--mode" in calls[0][1]
+    assert "--mode" in calls[1][1]
 
 
 def test_main_wrapper_forwards_explicit_cli_args_to_mail(monkeypatch) -> None:

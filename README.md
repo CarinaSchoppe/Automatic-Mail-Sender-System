@@ -80,7 +80,7 @@ Der Standardweg ist `main.py`. Stelle oben in `main.py` ein:
 
 ```python
 MODE = "PhD"        # oder "Freelance_German", "Freelance_English", "Auto"
-RUN_AI_RESEARCH = False # False = Mail-Sender, True = AI Research
+RUN_AI_RESEARCH = True # True = Erst AI-Research, dann Mail-Versand
 SEND = False        # False = Probelauf, True = echt senden
 VERBOSE = True
 LOG_DRY_RUN = False # False = Probelauf nicht in Excel schreiben
@@ -146,9 +146,9 @@ In diese Excel-Dateien werden nur diese Spalten geschrieben:
 
 ## Research
 
-Das Research-Tool liegt in `Research/research_leads.py`. Es nutzt je nach Einstellung Gemini oder OpenAI mit Websuche, kann die passenden Dateien aus `attachments/<Mode>` als Kontext hochladen, liest bestehende Adressen aus `output/send_*.xlsx` und vorhandenen `input`-Dateien als Ausschlussliste und schreibt neue Leads als CSV in den passenden `input/<Mode>` Ordner.
+Das Research-Tool liegt in `research/research_leads.py`. Es nutzt je nach Einstellung Gemini oder OpenAI mit Websuche, kann die passenden Dateien aus `attachments/<Mode>` als Kontext hochladen, liest bestehende Adressen aus `output/send_*.xlsx` und vorhandenen `input`-Dateien als Ausschlussliste und schreibt neue Leads als CSV in den passenden `input/<Mode>` Ordner.
 
-Du kannst Research auch direkt ueber `main.py` starten:
+Du kannst Research auch direkt ueber `main.py` starten. Wenn `RUN_AI_RESEARCH = True` ist, wird erst die Recherche ausgefuehrt und anschliessend werden die gefundenen Kontakte direkt verarbeitet/versendet.
 
 ```python
 RUN_AI_RESEARCH = True
@@ -159,17 +159,17 @@ RESEARCH_UPLOAD_ATTACHMENTS = False # True = Attachments an den AI Provider hoch
 
 Vorher je nach Provider `GEMINI_API_KEY` oder `OPENAI_API_KEY` in `.env` setzen. Das Layout steht in `.env.example`. Fuer OpenAI ist `OPENAI_MODEL=gpt-5.4` voreingestellt.
 
-Beispiele:
+Beispiele fuer direkten Research-Start:
 
 ```powershell
-python Research\research_leads.py --mode PhD
-python Research\research_leads.py --mode Freelance_German
-python Research\research_leads.py --mode Freelance_English
-python Research\research_leads.py --provider openai --mode PhD --no-upload-attachments
+python research\research_leads.py --mode PhD
+python research\research_leads.py --mode Freelance_German
+python research\research_leads.py --mode Freelance_English
+python research\research_leads.py --provider openai --mode PhD --no-upload-attachments
 ```
 
 Ohne Schreiben testen:
 
 ```powershell
-python Research\research_leads.py --mode PhD --no-write-output
+python research\research_leads.py --mode PhD --no-write-output
 ```

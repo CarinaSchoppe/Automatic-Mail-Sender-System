@@ -12,15 +12,12 @@ from dotenv import load_dotenv
 
 from mail_sender.attachments import list_attachments
 from mail_sender.modes import MODE_NAMES, MailMode, get_mode
-from mail_sender.recipients import COMPANY_KEYS
-from mail_sender.recipients import EMAIL_KEYS
 from mail_sender.recipients import Recipient
 from mail_sender.recipients import list_recipient_files
 from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
 from mail_sender.recipients import read_recipients
 from mail_sender.sent_log import read_logged_emails
-
 
 RESEARCH_MODE = "PhD"
 AI_PROVIDER = "gemini"
@@ -32,9 +29,6 @@ PERSON_EMAILS_PER_COMPANY = 3
 WRITE_OUTPUT = True
 UPLOAD_ATTACHMENTS = True
 BASE_DIR = Path(__file__).resolve().parents[1]
-
-
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @dataclass(frozen=True)
@@ -76,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}")
         return 1
 
-    print(f"Research mode: {config.mode_name}")
+    print(f"research mode: {config.mode_name}")
     print(f"New recipients: {len(recipients)}")
     print(f"Output CSV: {output_path if output_path else 'not written'}")
     return 0
@@ -84,9 +78,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def parse_args(argv: list[str]) -> ResearchConfig:
     env_config = default_config()
-    parser = argparse.ArgumentParser(description="Research new lead CSV files with Gemini and Google Search grounding.")
+    parser = argparse.ArgumentParser(description="research new lead CSV files with Gemini and Google Search grounding.")
     parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai"], help="AI research provider.")
-    parser.add_argument("--mode", default=env_config.mode_name, choices=MODE_NAMES, help="Research mode.")
+    parser.add_argument("--mode", default=env_config.mode_name, choices=MODE_NAMES, help="research mode.")
     parser.add_argument("--model", help="Model name for the selected provider.")
     parser.add_argument("--min-companies", type=int, default=env_config.min_companies)
     parser.add_argument("--max-companies", type=int, default=env_config.max_companies)
@@ -117,7 +111,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
 
     _verbose(config.verbose, f"Base directory: {config.base_dir}")
     _verbose(config.verbose, f"AI provider: {config.provider}")
-    _verbose(config.verbose, f"Research mode setting: {config.mode_name}")
+    _verbose(config.verbose, f"research mode setting: {config.mode_name}")
     _verbose(config.verbose, f"AI model: {config.model}")
     _verbose(config.verbose, f"Company target range: {config.min_companies}-{config.max_companies}")
     _verbose(config.verbose, f"Person emails per company target: {config.person_emails_per_company}")
@@ -149,13 +143,13 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
 
     raw_response = generate_with_provider(config.provider, config.model, prompt, attachments, config.verbose)
-    if _needs_retry(raw_response, existing_emails, config.max_companies) and attachments:
+    if _needs_retry(raw_response, existing_emails) and attachments:
         _verbose(
             config.verbose,
             "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.",
         )
         raw_response = generate_with_provider(config.provider, config.model, prompt, [], config.verbose)
-    if _needs_retry(raw_response, existing_emails, config.max_companies):
+    if _needs_retry(raw_response, existing_emails):
         retry_prompt = build_prompt(config, mode, set(), input_context)
         _verbose(
             config.verbose,
@@ -165,7 +159,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         raw_response = generate_with_provider(config.provider, config.model, retry_prompt, [], config.verbose)
     _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
 
-    recipients = parse_recipients(raw_response, existing_emails, config.max_companies)
+    recipients = parse_recipients(raw_response, existing_emails)
     _verbose(config.verbose, f"Usable new recipients after CSV parsing and exclusion filtering: {len(recipients)}")
     if not recipients:
         raise RuntimeError("Gemini returned no new usable email addresses.")
@@ -175,30 +169,37 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         output_path = write_recipients_csv(mode.recipients_dir, mode.label, recipients)
         _verbose(config.verbose, f"Wrote research CSV: {output_path}")
     else:
-        _verbose(config.verbose, "Research CSV was not written because output writing is disabled.")
+        _verbose(config.verbose, "research CSV was not written because output writing is disabled.")
     return output_path, recipients
 
 
-def _needs_retry(raw_response: str, existing_emails: set[str], max_companies: int) -> bool:
+def _needs_retry(raw_response: str, existing_emails: set[str]) -> bool:
     if _is_model_error(raw_response):
         return True
+    _verbose(True, f"No Model error")
     try:
-        return not parse_recipients(raw_response, existing_emails, max_companies)
-    except ValueError:
+        return not parse_recipients(raw_response, existing_emails)
+    except ValueError as error:
+        _verbose(True, f"Failed to parse CSV")
+        _verbose(True, f"{error}")
         return True
 
 
 def _is_model_error(raw_response: str) -> bool:
-    text = raw_response.strip().lower()
-    if not text:
+    if not raw_response or raw_response == "":
         return True
+
+    text = raw_response.strip().lower()
     error_markers = [
         "encountered an error",
         "please try again",
         "unable to fulfill",
         "cannot fulfill",
     ]
-    return any(marker in text for marker in error_markers)
+    output = any(marker in text for marker in error_markers)
+    if output:
+        _verbose(True, f"AI provider returned an error: {text}")
+    return output
 
 
 def collect_existing_emails(base_dir: Path) -> set[str]:
@@ -238,7 +239,7 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
             "Prefer companies that look willing and able to cooperate with an Industry PhD project and provide a "
             "real-world business context for the research. "
             "For each company, find the general company contact email plus two to three decision-maker work emails "
-            "where public sources support them."
+            "where public sources support them. Mainly companies here in Australia mainly brisbane that might be interested in a PhD doing AI governance"
         ),
         "Freelance German": (
             "Find German-language organisations that may collaborate with a remote freelance lecturer or trainer. "
@@ -281,10 +282,12 @@ Requirements:
 - Do not invent email addresses.
 - Do not include generic consumer contact forms without an email address.
 {contact_requirement}
-- Output CSV only, no markdown, no commentary.
+- Output CSV only, no markdown, no commentary, no quotes around fields unless necessary.
 - CSV header must be exactly:
   company,mail
 - Use one row per email address. If you find multiple contacts for one company, repeat the company name on separate rows.
+- If no results found, return an empty CSV with only the header.
+- Do NOT output a Python list or any other format.
 
 Existing email exclusion list:
 {excluded}
@@ -295,11 +298,11 @@ Mode-specific input CSV/TXT context:
 
 
 def generate_with_provider(
-    provider: str,
-    model: str,
-    prompt: str,
-    attachment_paths: list[Path],
-    verbose: bool = False,
+        provider: str,
+        model: str,
+        prompt: str,
+        attachment_paths: list[Path],
+        verbose: bool = False,
 ) -> str:
     normalized = provider.strip().lower()
     if normalized == "gemini":
@@ -456,17 +459,35 @@ def _verbose_gemini_candidates(verbose: bool, response) -> None:
             _verbose(verbose, f"Gemini candidate {index} content parts: none")
 
 
-def parse_recipients(raw_response: str, existing_emails: set[str], max_companies: int) -> list[Recipient]:
-    csv_text = _strip_csv_fence(raw_response)
-    rows = list(csv.DictReader(csv_text.splitlines(), dialect=_detect_dialect(csv_text)))
+def parse_recipients(raw_response: str, existing_emails: set[str]) -> list[Recipient]:
+    rows = raw_response.split("\n")
+    _verbose(True, f"Raw response rows: {len(rows)}")
     if not rows:
-        return []
+        raise ValueError("No rows returned from AI provider.")
+    recipients = []
+    #delete first row
+    rows.pop(0)
+    rows = set(rows)
+    for row in rows:
+        _verbose(True, f"Raw response row: {row}")
+        contents = row.split(",")
+        email_cand = contents[-1].strip()
+        company_cand = ", ".join(contents[:-1])
+        if email_cand not in existing_emails:
+            recipients.append(Recipient(email=email_cand, company=company_cand.strip()))
+            _verbose(True, f"Recipient: {email_cand}, {company_cand}")
+        else:
+            _verbose(True, f"Skipping existing email: {email_cand}")
 
-    company_field = _find_field(rows[0], COMPANY_KEYS)
-    email_field = _find_field(rows[0], EMAIL_KEYS)
-    if not company_field or not email_field:
-        raise ValueError("Gemini CSV output must contain company and mail columns.")
+    return recipients
 
+
+def _extract_from_rows(
+        rows: list[dict[str, str]],
+        company_field: str,
+        email_field: str,
+        existing_emails: set[str]
+) -> list[Recipient]:
     recipients: list[Recipient] = []
     seen_emails = {email.lower() for email in existing_emails}
     seen_companies: set[str] = set()
@@ -478,8 +499,6 @@ def parse_recipients(raw_response: str, existing_emails: set[str], max_companies
         if not company or not email:
             continue
         if email in seen_emails or not EMAIL_PATTERN.match(email):
-            continue
-        if company_key not in seen_companies and len(seen_companies) >= max_companies:
             continue
 
         recipients.append(Recipient(email=email, company=company))
@@ -520,6 +539,8 @@ def _detect_dialect(text: str) -> csv.Dialect:
 
 def _find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
     for field in row:
+        if not field:
+            continue
         if normalize_key(field) in allowed_keys:
             return field
     return None
