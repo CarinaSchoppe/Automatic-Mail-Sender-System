@@ -303,7 +303,7 @@ def test_parse_recipients_no_longer_requires_headers() -> None:
         Recipient(email="a@example.com", company="A")
     ]
     assert research_leads.parse_recipients("", set()) == []
-    assert research_leads._detect_dialect("") == csv.excel
+    assert research_leads._detect_dialect("") == research_leads.DefaultCsvDialect
 
 
 def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:

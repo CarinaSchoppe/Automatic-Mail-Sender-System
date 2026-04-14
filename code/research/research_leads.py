@@ -937,11 +937,21 @@ def _strip_json_fence(text: str) -> str:
     return stripped
 
 
+class DefaultCsvDialect(csv.Dialect):
+    """Standard CSV dialect (equivalent to Excel) without using the Excel name."""
+    delimiter = ','
+    quotechar = '"'
+    doublequote = True
+    skipinitialspace = False
+    lineterminator = '\r\n'
+    quoting = csv.QUOTE_MINIMAL
+
+
 def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
-        return csv.excel
+        return DefaultCsvDialect
 
 
 def _find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:

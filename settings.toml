@@ -12,7 +12,7 @@ RUN_AI_RESEARCH = true
 # What it does: Selects which batch/profile to use.
 # Allowed values: "PhD", "Freelance_German", "Freelance_English", or "Auto".
 # Default: "Freelance_German"
-MODE = "Freelance_German"
+MODE = "PhD"
 
 # RESEARCH_AI_PROVIDER
 # What it does: Selects the AI provider used for lead research.
@@ -81,7 +81,7 @@ SEND = true
 # WRITE_SENT_LOG = true, RESEND_EXISTING = false, and MODE is not "Auto".
 # 0 = disabled; run only one normal research/mail pass.
 # Default: 0
-SEND_TARGET_COUNT = 15
+SEND_TARGET_COUNT = 500
 
 # SEND_TARGET_MAX_ROUNDS
 # What it does: Safety gate for the repeated target-send loop.
