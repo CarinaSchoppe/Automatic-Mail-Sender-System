@@ -238,8 +238,9 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
             "enterprise GenAI risk, digital transformation, innovation, or university-industry research partnerships. "
             "Prefer companies that look willing and able to cooperate with an Industry PhD project and provide a "
             "real-world business context for the research. "
-            "For each company, find the general company contact email plus two to three decision-maker work emails "
+            "For each company, find the general company contact email plus two to three decision-maker people work emails "
             "where public sources support them. Mainly companies here in Australia mainly brisbane that might be interested in a PhD doing AI governance"
+            "make sure that the emails you find are valid and exist and are somewhat backed up by the website you got them from"
         ),
         "Freelance German": (
             "Find German-language organisations that may collaborate with a remote freelance lecturer or trainer. "

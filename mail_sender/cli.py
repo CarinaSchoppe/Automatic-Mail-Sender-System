@@ -245,7 +245,7 @@ def _process_recipients(
             if mailer is None:
                 raise RuntimeError("Mailer is required when dry_run is False.")
 
-            _verbose(verbose, f"Sending mail to {recipient.email}.")
+            _verbose(verbose, f"Sending mail to '{recipient.email}'.")
             mailer.send(
                 recipient,
                 rendered.subject,

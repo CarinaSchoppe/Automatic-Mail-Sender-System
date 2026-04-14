@@ -18,7 +18,7 @@ MODE = globals().get("MODE", "PhD")
 RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "gemini")  # "gemini" oder "openai"
 RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "gemini-2.5-flash-lite")
 RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", 5)
-RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", 25)
+RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", 50)
 RESEARCH_PERSON_EMAILS_PER_COMPANY = globals().get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 2)
 RESEARCH_WRITE_OUTPUT = globals().get("RESEARCH_WRITE_OUTPUT", True)
 RESEARCH_UPLOAD_ATTACHMENTS = globals().get("RESEARCH_UPLOAD_ATTACHMENTS", True)
@@ -52,7 +52,7 @@ WRITE_SENT_LOG = globals().get("WRITE_SENT_LOG", True)
 
 # True = nach erfolgreichem echtem Versand die verarbeiteten .csv/.txt Dateien aus input/<Mode> loeschen
 # False = Input-Dateien nach dem Versand liegen lassen
-DELETE_INPUT_AFTER_SUCCESS = globals().get("DELETE_INPUT_AFTER_SUCCESS", False)
+DELETE_INPUT_AFTER_SUCCESS = globals().get("DELETE_INPUT_AFTER_SUCCESS", True)
 
 
 if __name__ == "__main__":
