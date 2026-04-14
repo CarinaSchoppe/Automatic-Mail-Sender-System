@@ -32,7 +32,11 @@ LOG_DRY_RUN = False
 
 # True = erfolgreich gesendete Mails in output/send_*.xlsx eintragen
 # False = erfolgreiche Sendungen nicht in Excel eintragen
-WRITE_SENT_LOG = True
+WRITE_SENT_LOG = False
+
+# True = nach erfolgreichem echtem Versand die verarbeiteten .csv/.txt Dateien aus input/<Mode> loeschen
+# False = Input-Dateien nach dem Versand liegen lassen
+DELETE_INPUT_AFTER_SUCCESS = True
 
 
 if __name__ == "__main__":
@@ -60,5 +64,7 @@ if __name__ == "__main__":
         args.append("--log-dry-run")
     if not WRITE_SENT_LOG:
         args.append("--no-write-sent-log")
+    if DELETE_INPUT_AFTER_SUCCESS:
+        args.append("--delete-input-after-success")
 
     raise SystemExit(main(args))

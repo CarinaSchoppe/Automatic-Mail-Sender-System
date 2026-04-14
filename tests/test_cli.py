@@ -164,6 +164,94 @@ def test_cli_can_disable_sent_excel_logging(monkeypatch, project: Path) -> None:
     assert not (project / "output/send_phd.xlsx").exists()
 
 
+def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project: Path) -> None:
+    input_file = project / "input/PhD/phd.csv"
+    write_recipient(input_file, "PhD Co", "phd@example.com")
+    (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
+
+    class FakeMailer:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
+            return None
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--send",
+        "--delete-input-after-success",
+    ])
+
+    assert result == 0
+    assert not input_file.exists()
+
+
+def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Path) -> None:
+    input_file = project / "input/PhD/phd.csv"
+    write_recipient(input_file, "PhD Co", "phd@example.com")
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--allow-empty-attachments",
+        "--delete-input-after-success",
+    ])
+    assert result == 0
+    assert input_file.exists()
+
+    def broken_render(*args, **kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--send",
+        "--allow-empty-attachments",
+        "--delete-input-after-success",
+    ])
+    assert result == 1
+    assert input_file.exists()
+
+
+def test_cli_deletes_input_files_when_everything_was_already_logged(project: Path) -> None:
+    input_file = project / "input/PhD/phd.csv"
+    write_recipient(input_file, "PhD Co", "phd@example.com")
+    workbook = Workbook()
+    workbook.active.append(["Unternehmen", "mail", "sent_at"])
+    workbook.active.append(["PhD Co", "phd@example.com", "2026-04-14T10:00+10:00"])
+    workbook.save(project / "output/send_phd.xlsx")
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--send",
+        "--allow-empty-attachments",
+        "--delete-input-after-success",
+    ])
+
+    assert result == 0
+    assert not input_file.exists()
+
+
 def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
 

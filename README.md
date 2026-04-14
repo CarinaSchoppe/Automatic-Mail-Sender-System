@@ -84,6 +84,7 @@ SEND = False        # False = Probelauf, True = echt senden
 VERBOSE = True
 LOG_DRY_RUN = False # False = Probelauf nicht in Excel schreiben
 WRITE_SENT_LOG = True # True = echte Sendungen in output/send_*.xlsx schreiben
+DELETE_INPUT_AFTER_SUCCESS = True # True = Input-Dateien nach erfolgreichem echtem Versand loeschen
 ```
 
 Dann starten:
@@ -141,3 +142,23 @@ In diese Excel-Dateien werden nur diese Spalten geschrieben:
 - `Unternehmen`
 - `mail`
 - `sent_at`
+
+## Research
+
+Das Research-Tool liegt in `Research/research_leads.py`. Es nutzt Gemini mit Google-Search-Grounding, laedt die passenden Dateien aus `attachments/<Mode>` als Kontext hoch, liest bestehende Adressen aus `output/send_*.xlsx` und vorhandenen `input`-Dateien als Ausschlussliste und schreibt neue Leads als CSV in den passenden `input/<Mode>` Ordner.
+
+Vorher `GEMINI_API_KEY` in deiner Umgebung setzen.
+
+Beispiele:
+
+```powershell
+python Research\research_leads.py --mode PhD
+python Research\research_leads.py --mode Freelance_German
+python Research\research_leads.py --mode Freelance_English
+```
+
+Ohne Schreiben testen:
+
+```powershell
+python Research\research_leads.py --mode PhD --no-write-output
+```

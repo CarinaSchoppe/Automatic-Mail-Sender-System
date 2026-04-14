@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--send", action="store_true", help="Actually send the emails. Without this flag, dry-run only.")
     parser.add_argument("--log-dry-run", action="store_true", help="Write dry-run rows to the Excel log. Off by default.")
     parser.add_argument("--no-write-sent-log", action="store_true", help="Do not write successfully sent emails to the Excel log.")
+    parser.add_argument("--delete-input-after-success", action="store_true", help="Delete processed .csv/.txt input files after a successful real send run.")
     parser.add_argument("--resend-existing", action="store_true", help="Ignore addresses already present in the mode Excel log.")
     parser.add_argument("--allow-empty-attachments", action="store_true", help="Allow sending even if the mode attachment folder is empty.")
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
@@ -134,9 +135,12 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     print("Sending: yes" if args.send else "Sending: no (dry-run)")
     print("Dry-run Excel logging: yes" if args.log_dry_run else "Dry-run Excel logging: no")
     print("Sent Excel logging: no" if args.no_write_sent_log else "Sent Excel logging: yes")
+    print("Delete input after success: yes" if args.delete_input_after_success else "Delete input after success: no")
 
     if not recipients_to_process:
         print("Nothing to process.")
+        if args.send and args.delete_input_after_success:
+            _delete_input_files(recipient_files, args.verbose)
         return 0
 
     smtp_config = load_smtp_config(require_password=args.send)
@@ -185,7 +189,15 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
         print(f"Finished {mode.label} with {errors} error(s).")
     else:
         print(f"Finished {mode.label} successfully.")
+        if args.send and args.delete_input_after_success:
+            _delete_input_files(recipient_files, args.verbose)
     return errors
+
+
+def _delete_input_files(files: list[Path], verbose: bool) -> None:
+    for path in files:
+        path.unlink()
+        _verbose(verbose, f"Deleted input file: {path}")
 
 
 def _process_recipients(

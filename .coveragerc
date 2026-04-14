@@ -1,5 +1,7 @@
 [run]
-source = mail_sender
+source =
+    mail_sender
+    Research
 
 [report]
 fail_under = 100
