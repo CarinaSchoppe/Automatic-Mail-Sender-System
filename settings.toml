@@ -31,6 +31,13 @@ GEMINI_MODEL = "gemini-3-flash-preview"
 # Default: "gpt-5.4-mini-2026-03-17"
 OPENAI_MODEL = "gpt-5.4-mini-2026-03-17"
 
+# RESEARCH_REASONING_EFFORT
+# What it does: Controls the AI reasoning effort/thinking level.
+# Gemini: "low" (BRIEF), "middle" (MEDIUM), "high" (FULL).
+# OpenAI: "low" (low), "middle" (medium), "high" (high).
+# Default: "middle"
+RESEARCH_REASONING_EFFORT = "middle"
+
 # RESEARCH_MIN_COMPANIES
 # What it does: Minimum number of companies the AI should try to find.
 # Default: 25
@@ -88,7 +95,7 @@ SEND_TARGET_MAX_ROUNDS = 0
 # false = normal status output only.
 # true = detailed [VERBOSE] output.
 # Default: false
-VERBOSE = true
+VERBOSE = false
 
 # SAVE_VERBOSE_LOG
 # What it does: Saves a copy of the terminal output into a timestamped log file.

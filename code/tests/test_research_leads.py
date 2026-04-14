@@ -28,6 +28,7 @@ def config(
         gemini_model: str = "gemini-2.5-flash-lite",
         openai_model: str = "gpt-5.4",
         max_companies: int = 3,
+        reasoning_effort: str = "middle",
         send_target_count: int = 0,
         max_iterations: int = 5,
 ) -> ResearchConfig:
@@ -44,6 +45,7 @@ def config(
         upload_attachments=upload_attachments,
         gemini_model=gemini_model,
         openai_model=openai_model,
+        reasoning_effort=reasoning_effort,
         send_target_count=send_target_count,
         max_iterations=max_iterations,
     )
@@ -91,6 +93,8 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "100",
         "--max-iterations",
         "10",
+        "--reasoning-effort",
+        "high",
         "--verbose",
     ])
 
@@ -104,6 +108,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.write_output is False
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
+    assert parsed.reasoning_effort == "high"
     assert parsed.send_target_count == 100
     assert parsed.max_iterations == 10
 
@@ -121,6 +126,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     monkeypatch.setenv("RESEARCH_WRITE_OUTPUT", "false")
     monkeypatch.setenv("RESEARCH_UPLOAD_ATTACHMENTS", "false")
     monkeypatch.setenv("RESEARCH_VERBOSE", "true")
+    monkeypatch.setenv("RESEARCH_REASONING_EFFORT", "high")
     monkeypatch.setenv("RESEARCH_BASE_DIR", str(project))
 
     cfg = research_leads.default_config()
@@ -134,6 +140,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     assert cfg.write_output is False
     assert cfg.verbose is True
     assert cfg.upload_attachments is False
+    assert cfg.reasoning_effort == "high"
     assert cfg.base_dir == project
 
 
@@ -386,12 +393,13 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
     cert.write_text("cert", encoding="utf-8")
     append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Co"))
 
-    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         assert model == "gemini-2.5-flash-lite"
         # The test originally expected [cv, project / "output/send_phd.csv"] but due to iteration 2 it might be called again with []
         if not attachments:
             return ""
         assert attachments == [cv, project / "output/send_phd.csv"]
+        assert reasoning_effort == "middle"
         assert "Existing email exclusion list" in prompt
         assert "Existing company exclusion list for this mode" in prompt
         assert "oldco" in prompt
@@ -413,21 +421,21 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         research_leads,
         "generate_with_gemini",
-        lambda model, prompt, attachments, verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
+        lambda model, prompt, attachments, reasoning_effort="middle", verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
     )
 
     output_path, recipients = research_leads.run_research(config(project, write_output=False))
     assert output_path is None
     assert recipients == [Recipient(email="a@example.com", company="A")]
 
-    bad_config = ResearchConfig("gemini", "PhD", "model", 2, 1, 1, project, True, False, True, "gemini-model", "openai-model")
+    bad_config = ResearchConfig("gemini", "PhD", "model", 2, 1, 1, project, True, False, True, "gemini-model", "openai-model", reasoning_effort="middle")
     with pytest.raises(ValueError, match="Company limits"):
         research_leads.run_research(bad_config)
 
     monkeypatch.setattr(
         research_leads,
         "generate_with_gemini",
-        lambda model, prompt, attachments, verbose=False: "company,mail,source_url\n",
+        lambda model, prompt, attachments, reasoning_effort="middle", verbose=False: "company,mail,source_url\n",
     )
     with pytest.raises(RuntimeError, match="no new usable"):
         research_leads.run_research(config(project))
@@ -436,7 +444,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
-    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         assert attachments == []
         assert verbose is True
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
@@ -460,7 +468,7 @@ def test_run_research_retries_without_attachments_after_empty_response(
     cv.write_text("cv", encoding="utf-8")
     calls = []
 
-    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         calls.append(attachments)
         if attachments and len(calls) == 1:
             return ""
@@ -483,7 +491,7 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
 ) -> None:
     calls = []
 
-    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
@@ -517,15 +525,15 @@ def test_generate_with_provider_selects_openai_and_rejects_unknown(monkeypatch: 
     monkeypatch.setattr(
         research_leads,
         "generate_with_openai",
-        lambda model, prompt, attachments, verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
+        lambda model, prompt, attachments, reasoning_effort="middle", verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
     )
 
-    assert research_leads.generate_with_provider("openai", "gpt-5.4", "prompt", [], True) == (
+    assert research_leads.generate_with_provider("openai", "gpt-5.4", "prompt", [], "middle", True) == (
         "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
 
     with pytest.raises(ValueError, match="Unknown research provider"):
-        research_leads.generate_with_provider("other", "model", "prompt", [], False)
+        research_leads.generate_with_provider("other", "model", "prompt", [], "middle", False)
 
 
 def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
@@ -594,7 +602,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
             ]
             assert tools == [{"type": "web_search"}]
             assert kwargs["tool_choice"] == "auto"
-            assert kwargs["reasoning"] == {"effort": "high"}
+            assert kwargs["reasoning"] == {"effort": "low"}
             output_item = py_types.SimpleNamespace(type="message", status="completed", content=[])
             return py_types.SimpleNamespace(output_text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n", output=[output_item])
 
@@ -609,11 +617,12 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
     monkeypatch.setitem(sys.modules, "openai", fake_openai)
     monkeypatch.setenv("OPENAI_API_KEY", "key")
 
-    assert research_leads.generate_with_openai("gpt-5.4", "prompt", [attachment], True) == (
+    assert research_leads.generate_with_openai("gpt-5.4", "prompt", [attachment], "low", True) == (
         "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
     output = capsys.readouterr().out
     assert "Calling OpenAI Responses API with web_search enabled." in output
+    assert "reasoning_effort=low" in output
     assert "OpenAI output items: 1" in output
 
 
@@ -642,7 +651,7 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
     monkeypatch.setitem(sys.modules, "openai", fake_openai)
     monkeypatch.setenv("OPENAI_API_KEY", "key")
 
-    assert research_leads.generate_with_openai("gpt-5.4", "prompt", [], False) == (
+    assert research_leads.generate_with_openai("gpt-5.4", "prompt", [], "middle", False) == (
         "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
 
@@ -678,7 +687,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             assert model == "gemini-2.5-flash-lite"
             assert contents == ["prompt", uploaded]
             assert config.temperature == 0.3
-            assert config.thinking_config.thinking_level == "MEDIUM"
+            assert config.thinking_config.thinking_level.name == "FULL"
             assert config.tool_config.function_calling_config.mode == "AUTO"
             assert config.tool_config.include_server_side_tool_invocations is True
             return py_types.SimpleNamespace(text='{"leads": []}')
@@ -697,7 +706,11 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
         FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
+        ThinkingLevel=py_types.SimpleNamespace(
+            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
+            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
+            FULL=py_types.SimpleNamespace(name="FULL")
+        ),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
@@ -709,9 +722,10 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
     monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
     monkeypatch.setenv("GEMINI_API_KEY", "key")
 
-    assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [attachment], True) == '{"leads": []}'
+    assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [attachment], "high", True) == '{"leads": []}'
     output = capsys.readouterr().out
     assert 'Gemini response.text raw: \'{"leads": []}\'' in output
+    assert "thinking_level=FULL" in output
     assert "Gemini candidates: none" in output
 
 
@@ -748,7 +762,11 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
         FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
+        ThinkingLevel=py_types.SimpleNamespace(
+            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
+            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
+            FULL=py_types.SimpleNamespace(name="FULL")
+        ),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
@@ -760,10 +778,11 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
     monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
     monkeypatch.setenv("GEMINI_API_KEY", "key")
 
-    assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [], True) == ""
+    assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [], "middle", True) == ""
     output = capsys.readouterr().out
     assert "Gemini response.text raw: ''" in output
     assert "Gemini prompt_feedback: 'ok'" in output
+    assert "thinking_level=MEDIUM" in output
     assert "Gemini candidates: 1" in output
     assert "Gemini candidate 1 finish_reason: 'SAFETY'" in output
 
@@ -827,14 +846,18 @@ def test_generate_with_gemini_fakes_csv_extension(
         FunctionCallingConfig=lambda **kwargs: None,
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: None,
-        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
+        ThinkingLevel=py_types.SimpleNamespace(
+            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
+            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
+            FULL=py_types.SimpleNamespace(name="FULL")
+        ),
     )
     fake_google.genai = fake_genai
     monkeypatch.setitem(sys.modules, "google", fake_google)
     monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
     monkeypatch.setenv("GEMINI_API_KEY", "key")
 
-    research_leads.generate_with_gemini("model", "prompt", [csv_attachment], True)
+    research_leads.generate_with_gemini("model", "prompt", [csv_attachment], "middle", True)
 
     assert len(captured_paths) == 1
     assert captured_paths[0].suffix == ".txt"
@@ -873,7 +896,7 @@ def test_generate_with_openai_fakes_csv_extension(
     monkeypatch.setitem(sys.modules, "openai", fake_openai)
     monkeypatch.setenv("OPENAI_API_KEY", "key")
 
-    research_leads.generate_with_openai("model", "prompt", [csv_attachment], True)
+    research_leads.generate_with_openai("model", "prompt", [csv_attachment], "middle", True)
 
     assert len(captured_paths) == 1
     assert captured_paths[0].suffix == ".txt"
@@ -916,7 +939,11 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
         FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
+        ThinkingLevel=py_types.SimpleNamespace(
+            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
+            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
+            FULL=py_types.SimpleNamespace(name="FULL")
+        ),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
@@ -928,7 +955,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
     monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
     monkeypatch.setenv("GEMINI_API_KEY", "key")
 
-    assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [], False) == (
+    assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [], "middle", False) == (
         "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
 

@@ -38,6 +38,7 @@ RESEARCH_WRITE_OUTPUT = _setting("RESEARCH_WRITE_OUTPUT", True)
 RESEARCH_UPLOAD_ATTACHMENTS = _setting("RESEARCH_UPLOAD_ATTACHMENTS", True)
 GEMINI_MODEL = _setting("GEMINI_MODEL", "gemini-3-flash-preview")
 OPENAI_MODEL = _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
+RESEARCH_REASONING_EFFORT = _setting("RESEARCH_REASONING_EFFORT", "middle")
 SEND = _setting("SEND", False)
 SEND_TARGET_COUNT = _setting("SEND_TARGET_COUNT", 0)
 SEND_TARGET_MAX_ROUNDS = _setting("SEND_TARGET_MAX_ROUNDS", 0)
@@ -108,7 +109,7 @@ def _create_log_file():
 
 def _print_effective_settings() -> None:
     _info(f"Settings file: {SETTINGS_PATH if SETTINGS_PATH.exists() else 'not found; using built-in defaults'}.")
-    _info(f"Mode: {MODE}. AI research: {'on' if RUN_AI_RESEARCH else 'off'}. Provider: {RESEARCH_AI_PROVIDER}.")
+    _info(f"Mode: {MODE}. AI research: {'on' if RUN_AI_RESEARCH else 'off'}. Provider: {RESEARCH_AI_PROVIDER}. Reasoning: {RESEARCH_REASONING_EFFORT}.")
     _info(f"Mail sending: {'real send enabled' if SEND else 'dry-run / no mail send unless research is disabled'}.")
     _info(f"Send target: {SEND_TARGET_COUNT if SEND_TARGET_COUNT else 'disabled'}.")
     _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
@@ -132,6 +133,8 @@ def _build_research_args() -> list[str]:
         str(GEMINI_MODEL),
         "--openai-model",
         str(OPENAI_MODEL),
+        "--reasoning-effort",
+        str(RESEARCH_REASONING_EFFORT),
     ]
     for flag, value in [
         ("--min-companies", RESEARCH_MIN_COMPANIES),

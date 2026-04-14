@@ -65,6 +65,7 @@ class ResearchConfig:
     upload_attachments: bool
     gemini_model: str
     openai_model: str
+    reasoning_effort: str = "middle"
     send_target_count: int = 0
     max_iterations: int = 5
 
@@ -116,6 +117,7 @@ def default_config() -> ResearchConfig:
         write_output=_get("RESEARCH_WRITE_OUTPUT", True),
         verbose=_get("RESEARCH_VERBOSE", False),
         upload_attachments=_get("RESEARCH_UPLOAD_ATTACHMENTS", True),
+        reasoning_effort=_get("RESEARCH_REASONING_EFFORT", "middle"),
         send_target_count=_get("SEND_TARGET_COUNT", 0),
         max_iterations=_get("SEND_TARGET_MAX_ROUNDS", 5),
     )
@@ -152,6 +154,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--no-upload-attachments", action="store_true", help="Do not upload CV/resume context files to the AI provider.")
     parser.add_argument("--send-target-count", type=int, default=env_config.send_target_count, help="Total target count for the send loop.")
     parser.add_argument("--max-iterations", type=int, default=env_config.max_iterations, help="Maximum number of research iterations (0 for unlimited).")
+    parser.add_argument("--reasoning-effort", default=env_config.reasoning_effort, choices=["low", "middle", "high"], help="AI reasoning effort.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed AI research logging.")
     args = parser.parse_args(argv)
 
@@ -168,6 +171,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         write_output=env_config.write_output and not args.no_write_output,
         verbose=env_config.verbose or args.verbose,
         upload_attachments=env_config.upload_attachments and not args.no_upload_attachments,
+        reasoning_effort=args.reasoning_effort,
         send_target_count=args.send_target_count,
         max_iterations=args.max_iterations,
     )
@@ -180,12 +184,13 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
 
     _info(
         f"Starting AI research: mode={config.mode_name}, provider={config.provider}, "
-        f"model={config.model}, target={config.min_companies}-{config.max_companies} companies."
+        f"model={config.model}, reasoning={config.reasoning_effort}, target={config.min_companies}-{config.max_companies} companies."
     )
     _verbose(config.verbose, f"Base directory: {config.base_dir}")
     _verbose(config.verbose, f"AI provider: {config.provider}")
     _verbose(config.verbose, f"research mode setting: {config.mode_name}")
     _verbose(config.verbose, f"AI model: {config.model}")
+    _verbose(config.verbose, f"Reasoning effort: {config.reasoning_effort}")
     _verbose(config.verbose, f"Company target range: {config.min_companies}-{config.max_companies}")
     _verbose(config.verbose, f"Person emails per company target: {config.person_emails_per_company}")
     _verbose(config.verbose, f"Write output CSV: {config.write_output}")
@@ -245,17 +250,23 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
 
         _info("Calling AI provider now; this can take a moment.")
-        raw_response = generate_with_provider(config.provider, config.model, prompt, attachments, config.verbose)
+        raw_response = generate_with_provider(
+            config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose
+        )
         if _needs_retry(raw_response, seen_emails_in_run, config.verbose) and attachments:
             _info("AI response was not usable yet; retrying once without CV/resume uploads.")
             _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
-            raw_response = generate_with_provider(config.provider, config.model, prompt, [], config.verbose)
+            raw_response = generate_with_provider(
+                config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose
+            )
         if _needs_retry(raw_response, seen_emails_in_run, config.verbose):
             retry_prompt = build_prompt(config, mode, set(), set(), input_context)
             _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
             _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
-            _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
-            raw_response = generate_with_provider(config.provider, config.model, retry_prompt, [], config.verbose)
+            _verbose(config.verbose, f"Lite AI prompt characters: {retry_prompt}")
+            raw_response = generate_with_provider(
+                config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose
+            )
         _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
 
         _info("Parsing and filtering AI response.")
@@ -344,11 +355,24 @@ def _is_model_error(raw_response: str, verbose: bool = False) -> bool:
 
 def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     emails: set[str] = set()
+    output_dir = base_dir / "output"
+    
+    # Load all emails from output logs (excluding invalid_mails.csv)
+    from mail_sender.sent_log import read_known_output_emails, read_logged_emails
+    logged = read_known_output_emails(output_dir)
+    emails.update(logged)
+    _verbose(verbose, f"Loaded {len(logged)} logged email exclusion(s) from {output_dir}.")
+
+    # Load invalid emails
+    invalid_path = output_dir / "invalid_mails.csv"
+    if invalid_path.exists():
+        invalid = read_logged_emails(invalid_path)
+        emails.update(invalid)
+        _verbose(verbose, f"Loaded {len(invalid)} invalid email exclusion(s) from {invalid_path}.")
+
+    # Load from all input directories
     for mode_name in MODE_NAMES:
         mode = get_mode(mode_name, base_dir)
-        logged = read_logged_emails(mode.log_path)
-        emails.update(logged)
-        _verbose(verbose, f"Loaded {len(logged)} logged email exclusion(s) from {mode.log_path}.")
         recipient_files = list_recipient_files(mode.recipients_dir)
         _verbose(verbose, f"Found {len(recipient_files)} existing input file(s) for exclusion scan in {mode.recipients_dir}.")
         for path in recipient_files:
@@ -475,17 +499,24 @@ def generate_with_provider(
         model: str,
         prompt: str,
         attachment_paths: list[Path],
+        reasoning_effort: str = "middle",
         verbose: bool = False,
 ) -> str:
     normalized = provider.strip().lower()
     if normalized == "gemini":
-        return generate_with_gemini(model, prompt, attachment_paths, verbose)
+        return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
     if normalized == "openai":
-        return generate_with_openai(model, prompt, attachment_paths, verbose)
+        return generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
     raise ValueError("Unknown research provider. Use gemini or openai.")
 
 
-def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], verbose: bool = False) -> str:
+def generate_with_gemini(
+        model: str,
+        prompt: str,
+        attachment_paths: list[Path],
+        reasoning_effort: str = "middle",
+        verbose: bool = False,
+) -> str:
     load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -505,8 +536,20 @@ def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], 
             _verbose(verbose, f"Uploading Gemini context file: {path}.")
             uploaded_files.append(client.files.upload(file=path))
     _verbose(verbose, f"Gemini uploaded file handles: {len(uploaded_files)}.")
+
+    # Map reasoning effort to Gemini thinking level
+    thinking_level = types.ThinkingLevel.MEDIUM
+    if reasoning_effort == "low":
+        thinking_level = types.ThinkingLevel.BRIEF
+    elif reasoning_effort == "high":
+        thinking_level = types.ThinkingLevel.FULL
+
     _verbose(verbose, "Calling Gemini with Google Search grounding enabled.")
-    _verbose(verbose, "Gemini config: google_search enabled, tool auto mode enabled, thinking_level=MEDIUM, temperature=0.3.")
+    _verbose(
+        verbose,
+        f"Gemini config: google_search enabled, tool auto mode enabled, "
+        f"thinking_level={thinking_level.name}, temperature=0.3."
+    )
     response = client.models.generate_content(
         model=model,
         contents=[prompt, *uploaded_files],  # type: ignore[arg-type]
@@ -519,7 +562,7 @@ def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], 
                 include_server_side_tool_invocations=True,
             ),
             thinking_config=types.ThinkingConfig(
-                thinking_level=types.ThinkingLevel.MEDIUM,
+                thinking_level=thinking_level,
             ),
             temperature=0.3,
         ),
@@ -534,7 +577,13 @@ def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], 
     return response_text
 
 
-def generate_with_openai(model: str, prompt: str, attachment_paths: list[Path], verbose: bool = False) -> str:
+def generate_with_openai(
+        model: str,
+        prompt: str,
+        attachment_paths: list[Path],
+        reasoning_effort: str = "middle",
+        verbose: bool = False,
+) -> str:
     load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -557,8 +606,16 @@ def generate_with_openai(model: str, prompt: str, attachment_paths: list[Path], 
 
     content = [{"type": "input_text", "text": prompt}]
     content.extend({"type": "input_file", "file_id": uploaded_file.id} for uploaded_file in uploaded_files)
+
+    # Map reasoning effort to OpenAI reasoning effort
+    openai_effort = "medium"
+    if reasoning_effort == "low":
+        openai_effort = "low"
+    elif reasoning_effort == "high":
+        openai_effort = "high"
+
     _verbose(verbose, "Calling OpenAI Responses API with web_search enabled.")
-    _verbose(verbose, "OpenAI config: web_search enabled, tool_choice=auto, reasoning_effort=high.")
+    _verbose(verbose, f"OpenAI config: web_search enabled, tool_choice=auto, reasoning_effort={openai_effort}.")
     response = client.responses.create(  # type: ignore[call-overload]
         model=model,
         input=[
@@ -570,7 +627,7 @@ def generate_with_openai(model: str, prompt: str, attachment_paths: list[Path], 
         tools=[{"type": "web_search"}],
         tool_choice="auto",
         reasoning={
-            "effort": "high"
+            "effort": openai_effort
         },
     )
     _verbose(verbose, "OpenAI response received.")
