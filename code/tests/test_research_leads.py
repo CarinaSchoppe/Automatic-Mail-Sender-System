@@ -28,6 +28,7 @@ def config(
         gemini_model: str = "gemini-2.5-flash-lite",
         openai_model: str = "gpt-5.4",
         max_companies: int = 3,
+        send_target_count: int = 0,
 ) -> ResearchConfig:
     return ResearchConfig(
         provider=provider,
@@ -42,6 +43,7 @@ def config(
         upload_attachments=upload_attachments,
         gemini_model=gemini_model,
         openai_model=openai_model,
+        send_target_count=send_target_count,
     )
 
 
@@ -83,6 +85,8 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "1",
         "--no-write-output",
         "--no-upload-attachments",
+        "--send-target-count",
+        "100",
         "--verbose",
     ])
 
@@ -96,6 +100,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.write_output is False
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
+    assert parsed.send_target_count == 100
 
 
 def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
@@ -667,8 +672,8 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
         def generate_content(model, contents, config):
             assert model == "gemini-2.5-flash-lite"
             assert contents == ["prompt", uploaded]
-            assert config.temperature == 0.2
-            assert config.thinking_config.thinking_level == "HIGH"
+            assert config.temperature == 0.3
+            assert config.thinking_config.thinking_level == "MEDIUM"
             assert config.tool_config.function_calling_config.mode == "AUTO"
             assert config.tool_config.include_server_side_tool_invocations is True
             return py_types.SimpleNamespace(text='{"leads": []}')
@@ -687,7 +692,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
         FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
+        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
@@ -738,7 +743,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
         FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
+        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
@@ -817,7 +822,7 @@ def test_generate_with_gemini_fakes_csv_extension(
         FunctionCallingConfig=lambda **kwargs: None,
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: None,
-        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
+        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
     )
     fake_google.genai = fake_genai
     monkeypatch.setitem(sys.modules, "google", fake_google)
@@ -906,7 +911,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
         FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
         ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
+        ThinkingLevel=py_types.SimpleNamespace(MEDIUM="MEDIUM"),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")

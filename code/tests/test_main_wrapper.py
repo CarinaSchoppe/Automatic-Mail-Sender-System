@@ -117,13 +117,15 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
     # Mock sys.argv to avoid CLI argument detection
     monkeypatch.setattr("sys.argv", ["code/main.py"])
 
-    # Mock _get_logged_entries to simulate new recipients
-    entry_state = {"calls": 0}
-    def fake_get_logged_entries():
-        entry_state["calls"] += 1
-        if entry_state["calls"] == 1:
-            return set() # Before mail run
-        return {("Test Company", "test@example.com")} # After mail run
+    # Mock read_logged_rows to simulate state changes
+    # Round 0: empty
+    # Round 1: one entry
+    state = {"calls": 0}
+    def fake_read_logged_rows(path):
+        state["calls"] += 1
+        if state["calls"] <= 1:
+            return []
+        return [{"company": "Test Company", "mail": "test@example.com"}]
 
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_path(
@@ -132,7 +134,7 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
             init_globals={
                 "research_main": lambda args: 0,
                 "mail_main": lambda args=None: 0,
-                "_get_logged_entries": fake_get_logged_entries,
+                "read_logged_rows": fake_read_logged_rows,
                 "RUN_AI_RESEARCH": True,
                 "SEND": True,
                 "SEND_TARGET_COUNT": 0,
@@ -142,7 +144,7 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
 
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
-    assert "Summary: 1 email(s) sent to these recipients:" in captured.out
+    assert "Summary: 1 unique email(s) sent to these recipients:" in captured.out
     assert "- Test Company: test@example.com" in captured.out
 
 
@@ -150,20 +152,22 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     # Mock sys.argv to avoid CLI argument detection
     monkeypatch.setattr("sys.argv", ["code/main.py"])
 
-    # Mock _get_logged_entries
-    entry_state = {"calls": 0}
-    def fake_get_logged_entries():
-        entry_state["calls"] += 1
-        if entry_state["calls"] % 2 == 1:
-            return set() # Round X before
-        return {("Loop Company", "loop@example.com")} # Round X after
-
-    # Mock read_known_output_emails to increment count
+    # Mock read_known_output_emails to control the loop
+    # Round 1 start: 0
+    # Round 1 end: 1
     count_state = {"val": 0}
     def fake_read_emails(path):
-        ret = ["e" * i for i in range(count_state["val"])]
-        count_state["val"] += 1
-        return ret
+        count = count_state["val"]
+        count_state["val"] = 1
+        return ["e" * i for i in range(count)]
+
+    # Mock read_logged_rows for summary
+    row_state = {"calls": 0}
+    def fake_read_rows(path):
+        row_state["calls"] += 1
+        if row_state["calls"] <= 2: # round 1 before calls (and start check)
+            return []
+        return [{"company": "Loop Company", "mail": "loop@example.com"}]
 
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_path(
@@ -172,7 +176,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
             init_globals={
                 "research_main": lambda args: 0,
                 "mail_main": lambda args=None: 0,
-                "_get_logged_entries": fake_get_logged_entries,
+                "read_logged_rows": fake_read_rows,
                 "read_known_output_emails": fake_read_emails,
                 "RUN_AI_RESEARCH": True,
                 "SEND": True,
@@ -187,7 +191,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
 
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
-    assert "Summary: 1 email(s) sent to these recipients:" in captured.out
+    assert "Summary: 1 unique email(s) sent to these recipients:" in captured.out
     assert "- Loop Company: loop@example.com" in captured.out
 
 

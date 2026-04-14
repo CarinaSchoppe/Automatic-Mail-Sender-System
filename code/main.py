@@ -145,6 +145,7 @@ def _build_research_args() -> list[str]:
         ("--verbose", VERBOSE),
     ]:
         _add_flag(args, enabled, flag)
+    _add_value(args, "--send-target-count", SEND_TARGET_COUNT)
     return args
 
 
@@ -181,30 +182,26 @@ def _count_logged_sent_emails() -> int:
     return len(read_known_output_emails(PROJECT_ROOT / "output"))
 
 
-def _get_logged_entries() -> set[tuple[str, str]]:
-    output_dir = PROJECT_ROOT / "output"
-    if not output_dir.exists() or not output_dir.is_dir():
-        return set()
-
-    entries: set[tuple[str, str]] = set()
-    for path in output_dir.glob("*.csv"):
-        if path.name.lower() == "invalid_mails.csv":
-            continue
-        rows = read_logged_rows(path)
-        for row in rows:
-            entries.add((row["company"], row["mail"]))
-    return entries
+def _get_logged_emails() -> set[str]:
+    return read_known_output_emails(PROJECT_ROOT / "output")
 
 
-def _print_run_summary(sent_recipients: list[tuple[str, str]]) -> None:
-    if not sent_recipients:
+def _print_run_summary(sent_details: list[dict[str, str]]) -> None:
+    if not sent_details:
         return
 
+    # Filter to unique emails just in case, though the logic should handle it
+    unique_emails = {d["mail"].lower() for d in sent_details}
+    
     print("\n" + "=" * 60)
-    print(f"Summary: {len(sent_recipients)} email(s) sent to these recipients:")
-    for company, email in sorted(sent_recipients):
-        company_label = company if company else "(No Company)"
-        print(f"- {company_label}: {email}")
+    print(f"Summary: {len(unique_emails)} unique email(s) sent to these recipients:")
+    
+    # Sort by company
+    sorted_details = sorted(sent_details, key=lambda x: (x.get("company") or "").lower())
+    for detail in sorted_details:
+        company = detail.get("company") or "(No Company)"
+        email = detail.get("mail")
+        print(f"- {company}: {email}")
     print("=" * 60 + "\n")
 
 
@@ -258,11 +255,20 @@ def _run_target_send_loop() -> int:
 
     target_count = int(SEND_TARGET_COUNT)
     max_rounds = int(SEND_TARGET_MAX_ROUNDS)
-    start_count = _count_logged_sent_emails()
+    
+    # We track unique emails sent in this run to reach the target_count increment.
+    start_emails = _get_logged_emails()
+    start_count = len(start_emails)
     target_total = start_count + target_count
+    
+    current_emails = start_emails
     current_count = start_count
     round_number = 0
-    all_sent_recipients: list[tuple[str, str]] = []
+    
+    # Details for the final summary (list of dicts with company/mail)
+    run_sent_details: list[dict[str, str]] = []
+    # Set of emails already added to run_sent_details to avoid duplicates in summary
+    run_sent_emails_set: set[str] = set()
 
     _info(f"Target send loop enabled: send and log {target_count} new email(s).")
     _info(f"Logged sent emails at start: {start_count}. Target logged total: {target_total}.")
@@ -271,45 +277,68 @@ def _run_target_send_loop() -> int:
         round_number += 1
         if max_rounds and round_number > max_rounds:
             _info(f"Stopping before target because SEND_TARGET_MAX_ROUNDS={max_rounds} was reached.")
-            _print_run_summary(all_sent_recipients)
+            _print_run_summary(run_sent_details)
             return 1
 
         remaining = target_total - current_count
-        _info(f"Target loop round {round_number}: {remaining} email(s) still needed.")
+        _info(f"Target loop round {round_number}: {remaining} unique email(s) still needed.")
+        
         research_status = _run_research_once(round_number)
         if research_status != 0:
-            _print_run_summary(all_sent_recipients)
+            _print_run_summary(run_sent_details)
             return research_status
 
         print("\n" + "=" * 50)
         print(f"AI Research round {round_number} finished. Now sending up to {remaining} email(s)...")
         print("=" * 50 + "\n")
 
-        before_mail_count = current_count
-        entries_before = _get_logged_entries()
-        mail_status = _run_mail_once(max_send_count=remaining)
-        entries_after = _get_logged_entries()
-        current_count = _count_logged_sent_emails()
-        sent_this_round = current_count - before_mail_count
+        # Track what was in the logs before this round
+        # We need the full rows to get company names for the summary
+        output_dir = PROJECT_ROOT / "output"
+        rows_before = []
+        for path in output_dir.glob("*.csv"):
+            if path.name.lower() != "invalid_mails.csv":
+                rows_before.extend(read_logged_rows(path))
         
-        new_entries = entries_after - entries_before
-        for entry in sorted(new_entries):
-            if entry not in all_sent_recipients:
-                all_sent_recipients.append(entry)
+        emails_before = {r["mail"].lower() for r in rows_before if r.get("mail")}
 
-        _info(f"Target loop round {round_number} logged {sent_this_round} new email(s). Total new this run: {current_count - start_count}/{target_count}.")
+        mail_status = _run_mail_once(max_send_count=remaining)
+        
+        # Track what is in the logs after this round
+        rows_after = []
+        for path in output_dir.glob("*.csv"):
+            if path.name.lower() != "invalid_mails.csv":
+                rows_after.extend(read_logged_rows(path))
+        
+        current_emails = {r["mail"].lower() for r in rows_after if r.get("mail")}
+        current_count = len(current_emails)
+        
+        # Identify newly logged emails in this round
+        for row in rows_after:
+            email = row.get("mail", "").lower()
+            if email and email not in emails_before and email not in run_sent_emails_set:
+                run_sent_details.append(row)
+                run_sent_emails_set.add(email)
+
+        sent_this_run = current_count - start_count
+        _info(f"Target loop round {round_number} finished. Total new unique emails this run: {sent_this_run}/{target_count}.")
 
         if mail_status != 0:
             _info("Mail sender returned an error; stopping target loop.")
-            _print_run_summary(all_sent_recipients)
+            _print_run_summary(run_sent_details)
             return mail_status
-        if sent_this_round <= 0:
-            _info("No new sent-log entries were created in this round; stopping to avoid an endless loop.")
-            _print_run_summary(all_sent_recipients)
+            
+        if sent_this_run >= target_count:
+            break
+            
+        # Check if we made progress
+        if len(current_emails - emails_before) <= 0:
+            _info("No new unique sent-log entries were created in this round; stopping to avoid an endless loop.")
+            _print_run_summary(run_sent_details)
             return 1
 
-    _info(f"Target reached: {current_count - start_count}/{target_count} new email(s) logged.")
-    _print_run_summary(all_sent_recipients)
+    _info(f"Target reached: {current_count - start_count}/{target_count} new unique email(s) logged.")
+    _print_run_summary(run_sent_details)
     return 0
 
 
@@ -324,7 +353,15 @@ def _run() -> int:
     if _target_send_enabled():
         return _run_target_send_loop()
 
-    all_sent_recipients: list[tuple[str, str]] = []
+    # Track unique emails for non-target run too
+    output_dir = PROJECT_ROOT / "output"
+    rows_before = []
+    if output_dir.exists():
+        for path in output_dir.glob("*.csv"):
+            if path.name.lower() != "invalid_mails.csv":
+                rows_before.extend(read_logged_rows(path))
+    emails_before = {r["mail"].lower() for r in rows_before if r.get("mail")}
+
     if RUN_AI_RESEARCH:
         research_status = _run_research_once()
         if research_status != 0:
@@ -341,15 +378,24 @@ def _run() -> int:
     else:
         _info("AI research disabled; starting mail sender only.")
 
-    entries_before = _get_logged_entries()
     mail_status = _run_mail_once()
-    entries_after = _get_logged_entries()
     
-    new_entries = entries_after - entries_before
-    for entry in sorted(new_entries):
-        all_sent_recipients.append(entry)
+    # Identify newly logged emails
+    rows_after = []
+    if output_dir.exists():
+        for path in output_dir.glob("*.csv"):
+            if path.name.lower() != "invalid_mails.csv":
+                rows_after.extend(read_logged_rows(path))
+    
+    run_sent_details = []
+    seen_in_run = set()
+    for row in rows_after:
+        email = row.get("mail", "").lower()
+        if email and email not in emails_before and email not in seen_in_run:
+            run_sent_details.append(row)
+            seen_in_run.add(email)
 
-    _print_run_summary(all_sent_recipients)
+    _print_run_summary(run_sent_details)
     return mail_status
 
 

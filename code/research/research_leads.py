@@ -65,6 +65,7 @@ class ResearchConfig:
     upload_attachments: bool
     gemini_model: str
     openai_model: str
+    send_target_count: int = 0
 
 
 def _load_settings() -> dict:
@@ -114,6 +115,7 @@ def default_config() -> ResearchConfig:
         write_output=_get("RESEARCH_WRITE_OUTPUT", True),
         verbose=_get("RESEARCH_VERBOSE", False),
         upload_attachments=_get("RESEARCH_UPLOAD_ATTACHMENTS", True),
+        send_target_count=_get("SEND_TARGET_COUNT", 0),
     )
 
 
@@ -146,6 +148,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--base-dir", default=str(env_config.base_dir))
     parser.add_argument("--no-write-output", action="store_true", help="Do not write the generated CSV file.")
     parser.add_argument("--no-upload-attachments", action="store_true", help="Do not upload CV/resume context files to the AI provider.")
+    parser.add_argument("--send-target-count", type=int, default=env_config.send_target_count, help="Total target count for the send loop.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed AI research logging.")
     args = parser.parse_args(argv)
 
@@ -162,6 +165,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         write_output=env_config.write_output and not args.no_write_output,
         verbose=env_config.verbose or args.verbose,
         upload_attachments=env_config.upload_attachments and not args.no_upload_attachments,
+        send_target_count=args.send_target_count,
     )
 
 
@@ -217,8 +221,9 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     seen_emails_in_run: set[str] = {email.lower() for email in existing_emails}
     seen_companies_in_run: set[str] = {company for company in existing_companies or set() if company}
     
-    # We aim for roughly max_companies as the total target for this run.
-    target_count = config.max_companies
+    # We aim for roughly max_companies as the total target for this run,
+    # or the global send_target_count if provided.
+    target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
     max_iterations = 5
     iteration = 0
 
@@ -493,7 +498,7 @@ def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], 
             uploaded_files.append(client.files.upload(file=path))
     _verbose(verbose, f"Gemini uploaded file handles: {len(uploaded_files)}.")
     _verbose(verbose, "Calling Gemini with Google Search grounding enabled.")
-    _verbose(verbose, "Gemini config: google_search enabled, tool auto mode enabled, thinking_level=HIGH, temperature=0.2.")
+    _verbose(verbose, "Gemini config: google_search enabled, tool auto mode enabled, thinking_level=MEDIUM, temperature=0.3.")
     response = client.models.generate_content(
         model=model,
         contents=[prompt, *uploaded_files],  # type: ignore[arg-type]
@@ -506,9 +511,9 @@ def generate_with_gemini(model: str, prompt: str, attachment_paths: list[Path], 
                 include_server_side_tool_invocations=True,
             ),
             thinking_config=types.ThinkingConfig(
-                thinking_level=types.ThinkingLevel.HIGH,
+                thinking_level=types.ThinkingLevel.MEDIUM,
             ),
-            temperature=0.2,
+            temperature=0.3,
         ),
     )
     _verbose(verbose, "Gemini response received.")

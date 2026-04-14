@@ -148,7 +148,7 @@ WRITE_SENT_LOG = true
 # false = keep input files after sending.
 # true = delete processed input files after successful real sends.
 # Default: false
-DELETE_INPUT_AFTER_SUCCESS = false
+DELETE_INPUT_AFTER_SUCCESS = true
 
 # SMTP settings.
 
