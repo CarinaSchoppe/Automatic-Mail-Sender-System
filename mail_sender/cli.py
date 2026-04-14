@@ -147,7 +147,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
     _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
     _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
-    errors = 0
+    0
 
     if args.send:
         _verbose(args.verbose, "Opening SMTPS connection.")
@@ -201,19 +201,19 @@ def _delete_input_files(files: list[Path], verbose: bool) -> None:
 
 
 def _process_recipients(
-    mailer: SmtpMailer | None,
-    template_path: Path,
-    signature_path: Path,
-    log_path: Path,
-    recipients,
-    attachments: list[Path],
-    subject_override: str | None,
-    signature_image_path: Path,
-    signature_image_width: int,
-    dry_run: bool,
-    log_dry_run: bool,
-    write_sent_log: bool,
-    verbose: bool,
+        mailer: SmtpMailer | None,
+        template_path: Path,
+        signature_path: Path,
+        log_path: Path,
+        recipients,
+        attachments: list[Path],
+        subject_override: str | None,
+        signature_image_path: Path,
+        signature_image_width: int,
+        dry_run: bool,
+        log_dry_run: bool,
+        write_sent_log: bool,
+        verbose: bool,
 ) -> int:
     errors = 0
     for recipient in recipients:

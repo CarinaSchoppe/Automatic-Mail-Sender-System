@@ -7,11 +7,10 @@ from zoneinfo import ZoneInfo
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from mail_sender.recipients import Recipient
 from mail_sender.recipients import EMAIL_KEYS
+from mail_sender.recipients import Recipient
 from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
-
 
 HEADERS = [
     "company",
@@ -21,8 +20,8 @@ HEADERS = [
 
 
 def append_log(
-    log_path: Path,
-    recipient: Recipient,
+        log_path: Path,
+        recipient: Recipient,
 ) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     workbook, sheet = _open_or_create_workbook(log_path)

@@ -124,7 +124,7 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
 
-        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
+        def send(self, recipient, subject, attachments, inline_images) -> None:
             sent.append((recipient.email, subject, len(attachments), len(inline_images)))
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -152,7 +152,7 @@ def test_cli_can_disable_sent_excel_logging(monkeypatch, project: Path) -> None:
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
 
-        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
+        def send(self) -> None:
             return None
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -179,7 +179,7 @@ def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
 
-        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
+        def send(self) -> None:
             return None
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -213,7 +213,7 @@ def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Pat
     assert result == 0
     assert input_file.exists()
 
-    def broken_render(*args, **kwargs):
+    def broken_render():
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)
@@ -255,7 +255,7 @@ def test_cli_deletes_input_files_when_everything_was_already_logged(project: Pat
 def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
 
-    def broken_render(*args, **kwargs):
+    def broken_render():
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)

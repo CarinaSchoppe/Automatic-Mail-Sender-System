@@ -12,9 +12,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-2. Copy `.env.example` to `.env` and add your local secrets.
+1. Copy `.env.example` to `.env` and add your local secrets.
 
-3. Place recipient files in the matching `input` subfolder. The selected mode reads all `.csv` and `.txt` files from its folder:
+2. Place recipient files in the matching `input` subfolder. The selected mode reads all `.csv` and `.txt` files from its folder:
 
 - `input/PhD`
 - `input/Freelance_German`
@@ -29,13 +29,13 @@ Example GmbH,max@example.com
 
 CSV files exported from Excel with semicolons also work as long as they contain a `mail` column. `email` is accepted for compatibility.
 
-4. Place all PhD attachments in `attachments/PhD`.
+1. Place all PhD attachments in `attachments/PhD`.
 
-5. Place all German freelance attachments in `attachments/Freelance_German`.
+2. Place all German freelance attachments in `attachments/Freelance_German`.
 
-6. Place all English freelance attachments in `attachments/Freelance_English`.
+3. Place all English freelance attachments in `attachments/Freelance_English`.
 
-7. Edit the email templates and signature:
+4. Edit the email templates and signature:
 
 - `templates/phd.txt`
 - `templates/freelance_german.txt`

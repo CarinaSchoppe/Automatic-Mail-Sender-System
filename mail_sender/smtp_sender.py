@@ -29,13 +29,13 @@ class SmtpMailer:
             self._server = None
 
     def send(
-        self,
-        recipient: Recipient,
-        subject: str,
-        text_body: str,
-        html_body: str,
-        attachments: list[Path],
-        inline_images: list[InlineImage],
+            self,
+            recipient: Recipient,
+            subject: str,
+            text_body: str,
+            html_body: str,
+            attachments: list[Path],
+            inline_images: list[InlineImage],
     ) -> None:
         if self._server is None:
             raise RuntimeError("SMTP connection is not open.")
@@ -49,7 +49,7 @@ class SmtpMailer:
 
         html_part = message.get_payload()[-1]
         for inline_image in inline_images:
-            main_type, sub_type = _guess_content_type(inline_image.path, fallback=("image", "png"))
+            main_type, sub_type = guess_content_type(inline_image.path, fallback=("image", "png"))
             html_part.add_related(
                 inline_image.path.read_bytes(),
                 maintype=main_type,
@@ -59,7 +59,7 @@ class SmtpMailer:
             )
 
         for attachment in attachments:
-            main_type, sub_type = _guess_content_type(attachment, fallback=("application", "octet-stream"))
+            main_type, sub_type = guess_content_type(attachment, fallback=("application", "octet-stream"))
 
             message.add_attachment(
                 attachment.read_bytes(),
@@ -71,7 +71,7 @@ class SmtpMailer:
         self._server.send_message(message)
 
 
-def _guess_content_type(path: Path, fallback: tuple[str, str]) -> tuple[str, str]:
+def guess_content_type(path: Path, fallback: tuple[str, str]) -> tuple[str, str]:
     content_type, encoding = mimetypes.guess_type(path)
     if content_type is None or encoding is not None:
         return fallback

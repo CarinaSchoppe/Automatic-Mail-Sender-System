@@ -1,13 +1,11 @@
 import sys
 
-from research.research_leads import main as research_main
 from mail_sender.cli import main as mail_main
-
+from research.research_leads import main as research_main
 
 # True = run AI research first and create a new lead CSV in input/<Mode>.
 # False = start the mail sender only.
 RUN_AI_RESEARCH = globals().get("RUN_AI_RESEARCH", True)
-
 
 # Select the batch to run.
 # Allowed: "PhD", "Freelance_German", "Freelance_English", or "Auto".

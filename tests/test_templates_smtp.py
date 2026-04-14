@@ -6,7 +6,7 @@ import pytest
 
 from mail_sender.config import SmtpConfig
 from mail_sender.recipients import Recipient
-from mail_sender.smtp_sender import SmtpMailer, _guess_content_type
+from mail_sender.smtp_sender import SmtpMailer, guess_content_type
 from mail_sender.templates import render_mail
 
 
@@ -117,7 +117,7 @@ def test_smtp_mailer_sends_message_with_attachment_and_inline_image(monkeypatch:
     assert server.logged_in == ("user", "pass")
     assert server.sent_messages[0]["To"] == "to@example.com"
     assert server.quit_called is True
-    assert _guess_content_type(Path("unknown.abcxyz"), ("application", "octet-stream")) == ("application", "octet-stream")
+    assert guess_content_type(Path("unknown.abcxyz"), ("application", "octet-stream")) == ("application", "octet-stream")
 
 
 def test_smtp_mailer_requires_open_connection() -> None:

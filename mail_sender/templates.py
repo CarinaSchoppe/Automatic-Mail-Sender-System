@@ -26,13 +26,14 @@ class RenderedMail:
 
 
 def render_mail(
-    template_path: Path,
-    signature_path: Path,
-    recipient: Recipient,
-    subject_override: str | None = None,
-    signature_image_path: Path | None = None,
-    signature_image_width: int = 180,
+        template_path: Path,
+        signature_path: Path,
+        recipient: Recipient,
+        subject_override: str | None = None,
+        signature_image_path: Path | None = None,
+        signature_image_width: int = 180,
 ) -> RenderedMail:
+    global signature_text
     if not template_path.exists():
         raise FileNotFoundError(f"Mail template not found: {template_path}")
     if not signature_path.exists():

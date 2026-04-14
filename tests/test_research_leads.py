@@ -7,20 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from research import research_leads
-from research.research_leads import ResearchConfig
 from mail_sender.recipients import Recipient
 from mail_sender.sent_log import append_log
+from research import research_leads
+from research.research_leads import ResearchConfig
 
 
 def config(
-    project: Path,
-    mode: str = "PhD",
-    write_output: bool = True,
-    verbose: bool = False,
-    upload_attachments: bool = True,
-    provider: str = "gemini",
-    model: str = "gemini-2.5-flash-lite",
+        project: Path,
+        mode: str = "PhD",
+        write_output: bool = True,
+        verbose: bool = False,
+        upload_attachments: bool = True,
+        provider: str = "gemini",
+        model: str = "gemini-2.5-flash-lite",
 ) -> ResearchConfig:
     return ResearchConfig(
         provider=provider,
@@ -251,23 +251,23 @@ def test_parse_recipients_from_example_raw() -> None:
     raw_path = Path("example.raw")
     if not raw_path.exists():
         pytest.skip("example.raw not found in project root")
-    
+
     raw_content = raw_path.read_text(encoding="utf-8")
     recipients = research_leads.parse_recipients(raw_content, set())
-    
+
     # Check for some specific known entries from example.raw
     emails = {r.email for r in recipients}
     companies = {r.company for r in recipients}
-    
+
     # Total unique recipients should be around 168 (based on previous manual run)
     assert len(recipients) >= 150
-    
+
     # Check for "Protiviti" cases which were tricky
     assert "info@protiviti.com.au" in emails
     # Check for some complex names
     assert any("Protiviti" in r.company for r in recipients)
     assert any("Data61" in r.company for r in recipients)
-    
+
     # Check for McKinsey
     assert "McKinsey & Company" in companies
     assert "contact.au@mckinsey.com" in emails
@@ -336,7 +336,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
-    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate(attachments: list[Path], verbose: bool = False) -> str:
         assert attachments == []
         assert verbose is True
         return "company,mail\nA,a@example.com\n"
@@ -350,15 +350,15 @@ def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch
 
 
 def test_run_research_retries_without_attachments_after_empty_response(
-    monkeypatch: pytest.MonkeyPatch,
-    project: Path,
-    capsys,
+        monkeypatch: pytest.MonkeyPatch,
+        project: Path,
+        capsys,
 ) -> None:
     attachment = project / "attachments/PhD/context.pdf"
     attachment.write_text("context", encoding="utf-8")
     calls = []
 
-    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate( attachments: list[Path]) -> str:
         calls.append(attachments)
         if attachments:
             return ""
@@ -374,13 +374,13 @@ def test_run_research_retries_without_attachments_after_empty_response(
 
 
 def test_run_research_retries_with_lite_prompt_after_model_error(
-    monkeypatch: pytest.MonkeyPatch,
-    project: Path,
-    capsys,
+        monkeypatch: pytest.MonkeyPatch,
+        project: Path,
+        capsys,
 ) -> None:
     calls = []
 
-    def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
+    def fake_generate(prompt: str) -> str:
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
@@ -434,7 +434,7 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
     assert result == 0
     assert "New recipients: 1" in capsys.readouterr().out
 
-    def broken_run(cfg):
+    def broken_run():
         raise RuntimeError("boom")
 
     monkeypatch.setattr(research_leads, "run_research", broken_run)
@@ -460,22 +460,24 @@ def test_generate_with_openai_requires_api_key(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_generate_with_openai_uses_web_search_and_uploaded_files(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        capsys,
 ) -> None:
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     attachment = tmp_path / "context.pdf"
     attachment.write_text("context", encoding="utf-8")
 
     class FakeFiles:
-        def create(self, file, purpose: str):
+        @staticmethod
+        def create(file, purpose: str):
             assert file.read() == b"context"
             assert purpose == "user_data"
             return py_types.SimpleNamespace(id="file_123")
 
     class FakeResponses:
-        def create(self, model, input, tools):
+        @staticmethod
+        def create(model, input, tools):
             assert model == "gpt-5.4"
             assert input == [
                 {
@@ -513,17 +515,19 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
 
     class FakeFiles:
-        def create(self, file, purpose: str):
+        @staticmethod
+        def create():
             return py_types.SimpleNamespace(id="file_123")
 
     class FakeResponses:
-        def create(self, model, input, tools):
+        @staticmethod
+        def create():
             content = [py_types.SimpleNamespace(text="company,mail\nA,a@example.com\n")]
             output = [py_types.SimpleNamespace(type="message", status="completed", content=content)]
             return py_types.SimpleNamespace(output_text="", output=output)
 
     class FakeOpenAI:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -546,9 +550,9 @@ def test_verbose_openai_output_handles_disabled_and_empty(capsys) -> None:
 
 
 def test_generate_with_gemini_uses_google_search_and_uploaded_files(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        capsys,
 ) -> None:
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     uploaded = object()
@@ -556,12 +560,15 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
     attachment.write_text("context", encoding="utf-8")
 
     class FakeFiles:
-        def upload(self, file: Path):
+        @staticmethod
+        def upload(file: Path):
             assert file == attachment
             return uploaded
 
+    # noinspection PyShadowingNames
     class FakeModels:
-        def generate_content(self, model, contents, config):
+        @staticmethod
+        def generate_content(model, contents, config):
             assert model == "gemini-2.5-flash-lite"
             assert contents == ["prompt", uploaded]
             assert config.temperature == 0.2
@@ -598,11 +605,13 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
 
     class FakeFiles:
-        def upload(self, file: Path):
+        @staticmethod
+        def upload():
             return object()
 
     class FakeModels:
-        def generate_content(self, model, contents, config):
+        @staticmethod
+        def generate_content():
             part = py_types.SimpleNamespace(text=None)
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -613,7 +622,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             return py_types.SimpleNamespace(text="", candidates=[candidate], prompt_feedback="ok")
 
     class FakeClient:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -642,16 +651,18 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
 
 def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_empty(
-    monkeypatch: pytest.MonkeyPatch,
+        monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
 
     class FakeFiles:
-        def upload(self, file: Path):
+        @staticmethod
+        def upload():
             return object()
 
     class FakeModels:
-        def generate_content(self, model, contents, config):
+        @staticmethod
+        def generate_content():
             part = py_types.SimpleNamespace(text="company,mail\nA,a@example.com\n")
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -662,7 +673,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             return py_types.SimpleNamespace(text="", candidates=[candidate])
 
     class FakeClient:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
