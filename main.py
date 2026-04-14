@@ -11,13 +11,13 @@ RUN_AI_RESEARCH = globals().get("RUN_AI_RESEARCH", True)
 
 # Stelle hier ein, welchen Batch du starten willst.
 # Erlaubt: "PhD", "Freelance_German", "Freelance_English" oder "Auto"
-MODE = globals().get("MODE", "PhD")
+MODE = globals().get("MODE", "Freelance_German")
 
 # AI research Settings, nur relevant wenn RUN_AI_RESEARCH = True ist.
 # Leere Werte nehmen die Defaults aus .env / .env.example.
 RESEARCH_AI_PROVIDER = globals().get("RESEARCH_AI_PROVIDER", "gemini")  # "gemini" oder "openai"
-RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "gemini-2.5-flash-lite")
-RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", 5)
+RESEARCH_MODEL = globals().get("RESEARCH_MODEL", "gemini-3-flash-preview")
+RESEARCH_MIN_COMPANIES = globals().get("RESEARCH_MIN_COMPANIES", 15)
 RESEARCH_MAX_COMPANIES = globals().get("RESEARCH_MAX_COMPANIES", 50)
 RESEARCH_PERSON_EMAILS_PER_COMPANY = globals().get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 2)
 RESEARCH_WRITE_OUTPUT = globals().get("RESEARCH_WRITE_OUTPUT", True)

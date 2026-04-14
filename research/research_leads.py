@@ -241,14 +241,18 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
             "For each company, find the general company contact email plus two to three decision-maker people work emails "
             "where public sources support them. Mainly companies here in Australia mainly brisbane that might be interested in a PhD doing AI governance"
             "make sure that the emails you find are valid and exist and are somewhat backed up by the website you got them from"
+            "Think deeply about the results and check them double that youre sure that these are valid answers given my requirements and that you found as many as Ive requested"
         ),
         "Freelance German": (
             "Find German-language organisations that may collaborate with a remote freelance lecturer or trainer. "
-            "Prioritise education providers, AVGS or publicly funded training organisations, vocational education "
+            "Prioritise education providers, AZAV or publicly funded training organisations, vocational education "
             "providers, corporate training providers, reskilling or apprenticeship providers, and companies offering "
             "remote or home-office compatible training. The fit should be IT, business, AI, digital skills, software, "
             "cybersecurity, IT security, or related professional education. One general or relevant contact email per "
             "company is enough."
+            "They should specialize in IT or Business courses that match to the files that Ive provided so you know what I do and what I need"
+            "Think deeply about the results and check them double that youre sure that these are valid answers given my requirements and that you found as many as Ive requested"
+
         ),
         "Freelance English": (
             "Find English-oriented organisations that may collaborate with a remote freelance lecturer or trainer. "
@@ -257,6 +261,9 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
             "Austria, Switzerland, Luxembourg, or internationally if the fit is strong. The fit should be IT, business, "
             "AI, digital skills, software, cybersecurity, IT security, or related professional education. One general "
             "or relevant contact email per company is enough."
+            "They should specialize in IT or Business courses that match to the files that Ive provided so you know what I do and what I need"
+            "Think deeply about the results and check them double that youre sure that these are valid answers given my requirements and that you found as many as Ive requested"
+
         ),
     }
     excluded = "\n".join(sorted(existing_emails)) or "(none)"
@@ -265,7 +272,7 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
         f"- For PhD, include the general company contact email plus up to {config.person_emails_per_company} "
         "decision-maker work emails per company when public sources support them."
         if mode.label == "PhD"
-        else "- For Freelance, one general or relevant contact email per company is enough."
+        else "- For Freelance, one general or relevant contact email per company is enough. But 2 would be better!"
     )
 
     return f"""
@@ -284,6 +291,9 @@ Requirements:
 - Do not include generic consumer contact forms without an email address.
 {contact_requirement}
 - Output CSV only, no markdown, no commentary, no quotes around fields unless necessary.
+- Search deeply in the web to find matching candidates
+- Find as many as I requested
+- Think deeply about the results and check them double that you found as many as Ive requested
 - CSV header must be exactly:
   company,mail
 - Use one row per email address. If you find multiple contacts for one company, repeat the company name on separate rows.
