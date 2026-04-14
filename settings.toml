@@ -81,11 +81,12 @@ SEND = true
 # WRITE_SENT_LOG = true, RESEND_EXISTING = false, and MODE is not "Auto".
 # 0 = disabled; run only one normal research/mail pass.
 # Default: 0
-SEND_TARGET_COUNT = 100
+SEND_TARGET_COUNT = 15
 
 # SEND_TARGET_MAX_ROUNDS
-# What it does: Optional safety limit for the repeated target-send loop.
-# 0 = unlimited rounds, but the system still stops if one round logs no new sent emails.
+# What it does: Safety gate for the repeated target-send loop.
+# 0 = unlimited rounds (unlimited research/mail iterations until SEND_TARGET_COUNT is reached).
+# > 0 = Stop after this many rounds even if the target is not reached (safety gate).
 # Default: 0
 SEND_TARGET_MAX_ROUNDS = 0
 

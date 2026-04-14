@@ -116,7 +116,7 @@ def _print_effective_settings() -> None:
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
     _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
-    _verbose(VERBOSE, f"Target loop max rounds: {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited'}.")
+    _verbose(VERBOSE, f"Target loop max rounds (safety gate): {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited (0)'}.")
     _verbose(VERBOSE, f"Signature logo: {SIGNATURE_LOGO}, width={SIGNATURE_LOGO_WIDTH}.")
     _verbose(VERBOSE, f"Verbose log directory: {_resolve_log_dir()}.")
 
@@ -276,6 +276,13 @@ def _run_target_send_loop() -> int:
 
     _info(f"Target send loop enabled: send and log {target_count} new email(s).")
     _info(f"Logged sent emails at start: {start_count}. Target logged total: {target_total}.")
+    
+    if max_rounds > 0:
+        _info(f"Safety gate active: Maximum of {max_rounds} round(s) allowed.")
+    else:
+        _info("Safety gate: Unlimited rounds (0) until target is reached.")
+        if target_count >= 100:
+            _info("Note: With a high target count and unlimited rounds, this process might take significant time and AI credits.")
 
     while current_count < target_total:
         round_number += 1

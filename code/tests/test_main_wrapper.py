@@ -414,3 +414,75 @@ def test_run_with_optional_log_can_skip_log_and_closes_on_error(monkeypatch, tmp
         app_main._run_with_optional_log()
 
     assert list(tmp_path.glob("run_phd_*.log"))
+
+def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
+    # Mock settings
+    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 100)
+    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 1)
+    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
+    monkeypatch.setattr(app_main, "SEND", True)
+    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
+    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
+    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
+    monkeypatch.setattr(app_main, "MODE", "PhD")
+    monkeypatch.setattr(app_main, "SAVE_VERBOSE_LOG", False)
+
+    # Mock dependencies
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {"old@example.com"})
+    monkeypatch.setattr(app_main, "research_main", lambda args: 0)
+    monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
+
+    # To simulate progress but then stop because of max_rounds=1
+    # Round 1 start: current_count = 1
+    # Round 1 end: current_count = 2 (progress made)
+    # But loop condition is 2 < 101.
+    # After round 1 finished, it checks round_number > max_rounds.
+    
+    state = {"count": 1}
+    def fake_read_logged_rows(path):
+        return [{"company": "Round 1", "mail": "new@example.com"}]
+
+    monkeypatch.setattr(app_main, "read_logged_rows", fake_read_logged_rows)
+    
+    # Mocking the glob to return one dummy file for rows_after
+    class MockPath:
+        def __init__(self, name): self.name = name
+        def glob(self, pattern): return [MockPath("file.csv")]
+    
+    monkeypatch.setattr(app_main, "PROJECT_ROOT", MockPath("root"))
+
+    status = app_main._run_target_send_loop()
+    assert status == 1
+    captured = capsys.readouterr()
+    assert "Safety gate active: Maximum of 1 round(s) allowed." in captured.out
+    assert "Stopping before target because SEND_TARGET_MAX_ROUNDS=1 was reached." in captured.out
+
+
+def test_target_loop_unlimited_warning(monkeypatch, capsys) -> None:
+    # Mock settings for unlimited with high target
+    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 100)
+    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
+    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
+    monkeypatch.setattr(app_main, "SEND", True)
+    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
+    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
+    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
+    monkeypatch.setattr(app_main, "MODE", "PhD")
+    monkeypatch.setattr(app_main, "SAVE_VERBOSE_LOG", False)
+
+    # Mock dependencies to stop early
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {"old@example.com"})
+    monkeypatch.setattr(app_main, "research_main", lambda args: 0)
+    monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
+    
+    # Simulate no progress to exit loop
+    monkeypatch.setattr(app_main, "read_logged_rows", lambda path: [])
+    class MockPath:
+        def __init__(self, name): self.name = name
+        def glob(self, pattern): return []
+    monkeypatch.setattr(app_main, "PROJECT_ROOT", MockPath("root"))
+
+    app_main._run_target_send_loop()
+    captured = capsys.readouterr()
+    assert "Safety gate: Unlimited rounds (0) until target is reached." in captured.out
+    assert "Note: With a high target count and unlimited rounds" in captured.out

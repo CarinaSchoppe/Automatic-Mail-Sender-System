@@ -155,7 +155,7 @@ def test_cli_resend_existing_bypasses_output_log(project: Path, capsys) -> None:
     ])
 
     assert result == 0
-    assert "Existing Excel log addresses will be ignored" in capsys.readouterr().out
+    assert "Existing CSV log addresses will be ignored" in capsys.readouterr().out
 
 
 def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
