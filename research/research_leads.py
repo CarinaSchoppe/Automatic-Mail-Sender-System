@@ -238,17 +238,46 @@ def read_input_context(directory: Path, max_chars: int = 6000) -> str:
 def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[str], input_context: str = "") -> str:
     mode_instructions = {
         "PhD": (
-            "Find organisations that are credible Industry PhD collaboration prospects for an applied university "
-            "collaboration in Australia. Prioritise Australian organisations, but also include strong international "
-            "companies, especially US-based organisations, if they have a clear fit for AI governance, responsible AI, "
-            "enterprise GenAI risk, digital transformation, innovation, or university-industry research partnerships. "
-            "Prefer companies that look willing and able to cooperate with an Industry PhD project and provide a "
-            "real-world business context for the research. "
-            "For each company, find the general company contact email plus two to three decision-maker people work emails "
-            "where public sources support them. Mainly companies here in Australia mainly brisbane that might be interested in a PhD doing AI governance"
-            "make sure that the emails you find are valid and exist and are somewhat backed up by the website you got them from"
-            "Think deeply about the results and check them double that youre sure that these are valid answers given my requirements and that you found as many as Ive requested"
-        ),
+          """
+          Find companies that are realistic Industry PhD collaboration prospects for applied AI governance research in Australia.
+
+Priority order:
+1. Brisbane and South East Queensland
+2. Other Australian organisations
+3. International organisations only if they have Australian operations, Australian partnerships, or a very strong fit for enterprise AI governance / responsible AI / GenAI risk.
+
+Target organisations should be relevant to at least one of these:
+- AI governance
+- responsible AI
+- enterprise AI / GenAI
+- digital transformation
+- compliance, risk, assurance, or cybersecurity
+- university-industry research collaboration
+
+For each company:
+- include 1 general company contact email if publicly listed
+- include up to 1 or 2 decision-maker work emails only if they are publicly listed on a reliable public page
+- do not guess or infer email patterns
+- do not include contact forms
+- do not include placeholder or assumed addresses
+- only include emails that are visibly written on a public webpage
+- include the exact public source URL where the email was found
+
+Exclude all emails in the exclusion list.
+
+Use the provided files only as context for fit, not as contacts to repeat.
+
+Return CSV only with this exact header:
+company,mail,source_url
+
+Rules:
+- one row per email
+- repeat company name for multiple emails
+- if you cannot verify enough results, return fewer results
+- no markdown
+- no commentary
+- no extra text
+          """),
         "Freelance German": (
             "Find German-language organisations that may collaborate with a remote freelance lecturer or trainer. "
             "Prioritise education providers, AVGS/AZAV or publicly funded training organisations, vocational education "
@@ -261,14 +290,46 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
 
         ),
         "Freelance English": (
-            "Find English-oriented organisations that may collaborate with a remote freelance lecturer or trainer. "
-            "Prioritise training providers, corporate learning companies, vocational education providers, reskilling "
-            "or apprenticeship providers, and companies offering remote or home-office compatible training in Germany, "
-            "Austria, Switzerland, Luxembourg, or internationally if the fit is strong. The fit should be IT, business, "
-            "AI, digital skills, software, cybersecurity, IT security, or related professional education. One general "
-            "or relevant contact email per company is enough."
-            "They should specialize in IT or Business courses that match to the files that Ive provided so you know what I do and what I need"
-            "Think deeply about the results and check them double that youre sure that these are valid answers given my requirements and that you found as many as Ive requested"
+          """Find organisations that may hire or collaborate with a remote freelance lecturer or trainer in IT, business, AI, software, data, or cybersecurity.
+
+Prioritise:
+- education providers
+- vocational training providers
+- reskilling providers
+- corporate training providers
+- apprenticeship or adult-learning providers
+- organisations that offer remote or online teaching opportunities
+
+Use the provided files only to understand the trainer profile and topic fit.
+
+Find only organisations whose course portfolio clearly overlaps with:
+- IT
+- software development
+- AI
+- data / analytics
+- cybersecurity
+- digital business skills
+
+For each company:
+- include 1 relevant public email address
+- optionally include a second public email address if clearly relevant
+- do not guess or infer email patterns
+- do not include contact forms
+- only include emails visibly shown on a public webpage
+- include the exact source URL
+
+Exclude all emails in the exclusion list.
+
+Return CSV only with this exact header:
+company,mail,source_url
+
+Rules:
+- one row per email
+- repeat company name for multiple emails
+- if you cannot verify enough results, return fewer results
+- no markdown
+- no commentary
+- no extra text """
 
         ),
     }
@@ -282,38 +343,43 @@ def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[st
     )
 
     return f"""
-You are a careful B2B lead researcher. Use Google Search grounding, the mode-specific input context, and any uploaded attachment context if provided.
+    You are a careful B2B lead researcher.
 
-Mode: {mode.label}
-Task:
-{mode_instructions[mode.label]}
+    Use web search, the mode-specific input context, and any uploaded attachment context if provided.
 
-Requirements:
-- Find {config.min_companies} to {config.max_companies} different companies.
-- Do not include any email address already listed in the exclusion list.
-- Use the mode-specific input CSV/TXT context below as examples and extra context, but do not repeat excluded emails.
-- Prefer directly verified, public company or work email addresses.
-- Only include an email address when it is visibly found on a public website or public source page.
-- Do not invent, infer, guess, or pattern-generate email addresses.
-- Do not use placeholder addresses such as contact@company.com unless that exact address appears on a public source page.
-- Do not include generic consumer contact forms without an email address.
-{contact_requirement}
-- Output CSV only, no markdown, no commentary, no quotes around fields unless necessary.
-- Search deeply in the web to find matching candidates
-- Find as many verified email rows as I requested; if you cannot verify enough emails, return fewer rows instead of guessing.
-- Think deeply about the results and check them double that you found as many as Ive requested
-- CSV header must be exactly:
-  company,mail,source_url
-- Use one row per email address. If you find multiple contacts for one company, repeat the company name on separate rows.
-- If no results found, return an empty CSV with only the header.
-- Do NOT output a Python list or any other format.
+    Mode: {mode.label}
 
-Existing email exclusion list:
-{excluded}
+    Task:
+    {mode_instructions[mode.label]}
 
-Mode-specific input CSV/TXT context:
-{input_reference}
-""".strip()
+    Requirements:
+    - Find leads from {config.min_companies} to {config.max_companies} relevant companies.
+    - Do not include any email address already listed in the exclusion list.
+    - Use the mode-specific input CSV/TXT context only as background for fit and targeting.
+    - Prefer official company websites and publicly visible work email addresses.
+    - Only include an email address if it is explicitly shown on a public webpage.
+    - Do not invent, infer, guess, or pattern-generate email addresses.
+    - Do not include contact forms without an email address.
+    - Do not include placeholder or assumed addresses unless that exact address is publicly shown.
+    {contact_requirement}
+    - Include the exact public source URL where the email was found.
+    - If you cannot verify enough emails, return fewer rows instead of guessing.
+
+    Output format:
+    - Return valid CSV only.
+    - CSV header must be exactly:
+      company,mail,source_url
+    - Use one row per email address.
+    - If multiple emails are found for one company, repeat the company name on separate rows.
+    - If no results are found, return only the header.
+    - Do not return markdown, explanations, JSON, or Python lists.
+
+    Existing email exclusion list:
+    {excluded}
+
+    Mode-specific input CSV/TXT context:
+    {input_reference}
+    """.strip()
 
 
 def generate_with_provider(
