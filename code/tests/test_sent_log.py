@@ -74,3 +74,7 @@ def test_invalid_email_log_and_known_output_email_scan(tmp_path: Path) -> None:
     ]
     assert read_invalid_emails(invalid_path) == {"bad@example.invalid"}
     assert read_known_output_emails(output_dir) == {"sent@example.com"}
+
+
+def test_known_output_email_scan_handles_missing_output_dir(tmp_path: Path) -> None:
+    assert read_known_output_emails(tmp_path / "missing-output") == set()

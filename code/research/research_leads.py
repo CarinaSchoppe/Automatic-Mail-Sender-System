@@ -5,11 +5,16 @@ import csv
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
 
 from mail_sender.attachments import list_attachments
 from mail_sender.modes import MODE_NAMES, MailMode, get_mode
@@ -21,7 +26,11 @@ from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
 from mail_sender.recipients import read_recipients
 from mail_sender.sent_log import read_logged_emails
-from . import mode_instructions
+
+try:
+    from . import mode_instructions
+except ImportError:  # Allows running this file directly as python code/research/research_leads.py.
+    import mode_instructions
 
 SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
 
@@ -34,7 +43,7 @@ MAX_COMPANIES = 25
 PERSON_EMAILS_PER_COMPANY = 3
 WRITE_OUTPUT = True
 UPLOAD_ATTACHMENTS = True
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 RESUME_ATTACHMENT_PATTERN = re.compile(
     r"(?:^|[\s._-])(cv|resume|lebenslauf|curriculum(?:[\s._-]+vitae)?)(?:$|[\s._-])",
@@ -74,7 +83,9 @@ def default_config() -> ResearchConfig:
 
 
 def main(argv: list[str] | None = None) -> int:
-    config = parse_args(argv) if argv else default_config()
+    if argv is None:
+        argv = sys.argv[1:]
+    config = parse_args(argv)
     try:
         output_path, recipients = run_research(config)
     except (RuntimeError, ValueError, FileNotFoundError, NotADirectoryError) as exc:
@@ -619,11 +630,9 @@ def _extract_from_rows(
 ) -> list[Recipient]:
     recipients: list[Recipient] = []
     seen_emails = {email.lower() for email in existing_emails}
-    seen_companies: set[str] = set()
 
     for row in rows:
         company = str(row.get(company_field, "")).strip()
-        company_key = company.lower()
         email = normalize_email(str(row.get(email_field, ""))).lower()
         source_url = str(row.get(source_field, "")).strip() if source_field else ""
         if not company or not email:
@@ -639,7 +648,6 @@ def _extract_from_rows(
 
         recipients.append(Recipient(email=email, company=company))
         seen_emails.add(email)
-        seen_companies.add(company_key)
         _verbose(verbose, f"Recipient row accepted: {company} <{email}>.")
 
     return recipients

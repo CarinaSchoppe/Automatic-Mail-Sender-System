@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import runpy
 import sys
 import types as py_types
 from pathlib import Path
@@ -11,6 +12,9 @@ from mail_sender.recipients import Recipient
 from mail_sender.sent_log import append_log
 from research import research_leads
 from research.research_leads import ResearchConfig
+
+
+CODE_DIR = Path(__file__).resolve().parents[1]
 
 
 def config(
@@ -750,3 +754,92 @@ def test_verbose_gemini_candidates_handles_disabled_and_missing_parts(capsys) ->
 
     research_leads._verbose_gemini_candidates(True, response)
     assert "Gemini candidate 1 content parts: none" in capsys.readouterr().out
+
+
+def test_direct_script_bootstrap_inserts_code_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_path = list(sys.path)
+    research_dir = CODE_DIR / "research"
+    monkeypatch.setattr(
+        sys,
+        "path",
+        [str(research_dir)] + [
+            path
+            for path in original_path
+            if not path or Path(path).resolve() != CODE_DIR.resolve()
+        ],
+    )
+
+    namespace = runpy.run_path("code/research/research_leads.py")
+
+    assert namespace["CODE_DIR"] == CODE_DIR
+    assert str(CODE_DIR) in sys.path
+
+
+def test_research_main_uses_sys_argv_when_no_args_are_passed(
+        monkeypatch: pytest.MonkeyPatch,
+        project: Path,
+        capsys,
+) -> None:
+    monkeypatch.setattr("sys.argv", ["research_leads.py", "--mode", "PhD", "--base-dir", str(project)])
+    monkeypatch.setattr(
+        research_leads,
+        "run_research",
+        lambda cfg: (project / "input/PhD/research.csv", [Recipient(email="a@example.com", company="A")]),
+    )
+
+    assert research_leads.main() == 0
+    assert "New recipients: 1" in capsys.readouterr().out
+
+
+def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    def broken_parse(raw_response, existing_emails, verbose=False):
+        raise ValueError("bad csv")
+
+    monkeypatch.setattr(research_leads, "parse_recipients", broken_parse)
+
+    assert research_leads._needs_retry("not empty", set(), True) is True
+    output = capsys.readouterr().out
+    assert "Failed to parse CSV" in output
+    assert "bad csv" in output
+
+
+def test_read_input_context_logs_empty_files(project: Path, capsys) -> None:
+    empty_file = project / "input/PhD/empty.csv"
+    empty_file.write_text("   ", encoding="utf-8")
+
+    assert research_leads.read_input_context(project / "input/PhD", verbose=True) == ""
+    assert "Skipped empty input context file: empty.csv" in capsys.readouterr().out
+
+
+def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
+    json_text = """
+```json
+{"leads": [{"company": "A", "emails": ["a@example.com"], "source_urls": ["https://a.example/contact"]}]}
+```
+"""
+    recipients = research_leads.parse_recipients(json_text, set(), True)
+    assert [(recipient.company, recipient.email) for recipient in recipients] == [("A", "a@example.com")]
+    assert "Parsed JSON recipients: 1" in capsys.readouterr().out
+
+    list_payload = """
+[{"company": "B", "email": "b@example.com", "source": "https://b.example/contact"}, "skip me"]
+"""
+    recipients = research_leads._parse_json_recipients(list_payload, set(), True)
+    assert [(recipient.company, recipient.email) for recipient in recipients] == [("B", "b@example.com")]
+
+    assert research_leads._parse_json_recipients('"not a list"', set(), True) == []
+
+    assert research_leads._strip_csv_fence("```csv\nA,a@example.com\n```") == "A,a@example.com"
+    assert research_leads._strip_csv_fence("```\nA,a@example.com\n```") == "A,a@example.com"
+    assert research_leads._strip_json_fence("```\n{\"leads\": []}\n```") == '{"leads": []}'
+    assert research_leads._find_field({"": "", "mail": "a@example.com"}, research_leads.EMAIL_KEYS) == "mail"
+
+
+def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    def broken_dialect(text: str):
+        raise csv.Error("bad dialect")
+
+    monkeypatch.setattr(research_leads, "_detect_dialect", broken_dialect)
+
+    assert research_leads._parse_headerless_csv_recipients("A,a@example.com", set(), True) == []
+    assert "Headerless CSV parser failed to read CSV rows." in capsys.readouterr().out

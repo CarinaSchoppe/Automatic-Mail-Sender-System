@@ -9,7 +9,7 @@ from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MODE_NAMES
 from mail_sender.modes import get_mode
 from mail_sender.recipients import list_recipient_files, read_recipients_from_dir
-from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails, read_logged_emails
+from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails
 from mail_sender.smtp_sender import SmtpMailer
 from mail_sender.templates import render_mail
 

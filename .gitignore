@@ -5,6 +5,10 @@ __pycache__/
 .coverage
 .pytest_cache/
 .idea
+logs/
+*.log
+*.csv
+*.xlsx
 # Personal recipient data and generated send logs
 recipients.csv
 Send_*.xlsx

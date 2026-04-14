@@ -1,0 +1,125 @@
+# MailSenderSystem settings.
+# This file is only configuration. Edit these values instead of editing Python code.
+# Use true/false for switches, numbers without quotes, and text values in quotes.
+
+# RUN_AI_RESEARCH
+# What it does: Runs AI lead research first and creates a new CSV in input/<mode>.
+# If false: skips AI research and starts the mail sender directly.
+# Default: true
+RUN_AI_RESEARCH = true
+
+# MODE
+# What it does: Selects which batch/profile to use.
+# Allowed values: "PhD", "Freelance_German", "Freelance_English", or "Auto".
+# Default: "Freelance_German"
+MODE = "Freelance_German"
+
+# RESEARCH_AI_PROVIDER
+# What it does: Selects the AI provider used for lead research.
+# "gemini" uses GEMINI_MODEL from .env.
+# "openai" uses OPENAI_MODEL from .env.
+# Default: "gemini"
+RESEARCH_AI_PROVIDER = "gemini"
+
+# RESEARCH_MIN_COMPANIES
+# What it does: Minimum number of companies the AI should try to find.
+# Default: 25
+RESEARCH_MIN_COMPANIES = 25
+
+# RESEARCH_MAX_COMPANIES
+# What it does: Maximum number of companies the AI should try to find.
+# Default: 50
+RESEARCH_MAX_COMPANIES = 50
+
+# RESEARCH_PERSON_EMAILS_PER_COMPANY
+# What it does: For research modes that allow named contacts, this is the target number
+# of person/work email addresses per company. The AI must still only use public verified emails.
+# Default: 3
+RESEARCH_PERSON_EMAILS_PER_COMPANY = 3
+
+# RESEARCH_WRITE_OUTPUT
+# What it does: Writes the generated research CSV into input/<mode>.
+# If false: research can run, but no CSV file is written.
+# Default: true
+RESEARCH_WRITE_OUTPUT = true
+
+# RESEARCH_UPLOAD_ATTACHMENTS
+# What it does: Uploads only CV/resume/Lebenslauf files as AI context for research.
+# Important: Mail sending still uses all files in the attachment folder.
+# Default: true
+RESEARCH_UPLOAD_ATTACHMENTS = true
+
+# SEND
+# What it does: Safety switch for real email sending.
+# false = dry-run/no real emails.
+# true = send real emails via SMTP after successful research or when research is disabled.
+# Default: false
+SEND = false
+
+# VERBOSE
+# What it does: Enables very detailed debug-style output for files, parsing, filters,
+# provider calls, recipient validation, and generated CLI args.
+# false = normal status output only.
+# true = detailed [VERBOSE] output.
+# Default: false
+VERBOSE = false
+
+# SAVE_VERBOSE_LOG
+# What it does: Saves a copy of the terminal output into a timestamped log file.
+# If VERBOSE is true, the log file also contains all detailed [VERBOSE] lines.
+# If VERBOSE is false, the log file still contains normal [INFO], [DRY_RUN], [SENT], and error output.
+# Default: true
+SAVE_VERBOSE_LOG = true
+
+# VERBOSE_LOG_DIR
+# What it does: Folder for saved log files.
+# Relative paths are resolved from this project folder.
+# Default: "logs"
+VERBOSE_LOG_DIR = "logs"
+
+# Advanced mail settings.
+
+# RESEND_EXISTING
+# What it does: Controls whether addresses already found in output Excel logs are skipped.
+# false = skip already logged addresses.
+# true = ignore existing sent logs and allow resending.
+# Default: false
+RESEND_EXISTING = false
+
+# SIGNATURE_LOGO
+# What it does: Path to the inline logo image used in the email signature when the signature template contains {IMAGE}.
+# Relative paths are resolved from this project folder.
+# Default: "templates/signature-logo.png"
+SIGNATURE_LOGO = "templates/signature-logo.png"
+
+# SIGNATURE_LOGO_WIDTH
+# What it does: Width of the inline signature logo in pixels.
+# Default: 325
+SIGNATURE_LOGO_WIDTH = 325
+
+# ALLOW_EMPTY_ATTACHMENTS
+# What it does: Allows the mail sender to run even when the selected mail attachment folder is empty.
+# Keep false for real sending unless you intentionally want to send without attachments.
+# Default: false
+ALLOW_EMPTY_ATTACHMENTS = false
+
+# LOG_DRY_RUN
+# What it does: Writes dry-run recipients to the Excel sent log.
+# false = dry-run output is not written to sent logs.
+# true = dry-run rows are written to sent logs.
+# Default: false
+LOG_DRY_RUN = false
+
+# WRITE_SENT_LOG
+# What it does: Writes successfully sent real emails to output/send_*.xlsx.
+# false = do not write successful sends to Excel.
+# true = write successful sends to Excel.
+# Default: true
+WRITE_SENT_LOG = true
+
+# DELETE_INPUT_AFTER_SUCCESS
+# What it does: Deletes processed CSV/TXT input files from input/<mode> after a successful real send run.
+# false = keep input files after sending.
+# true = delete processed input files after successful real sends.
+# Default: false
+DELETE_INPUT_AFTER_SUCCESS = false

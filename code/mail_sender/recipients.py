@@ -101,10 +101,9 @@ def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
         values = {header[index]: value.strip() for index, value in enumerate(row) if index < len(header)}
         email = normalize_email(_first_value(values, EMAIL_KEYS))
         if not email:
-            print(f"Missing email address in recipients.csv line {line_number}.")
-            continue
-        if not _validate_email(email, line_number):
-            continue
+            raise ValueError(f"Missing email address in recipients.csv line {line_number}.")
+        if not _validate_email(email):
+            raise ValueError(f"Invalid email address in recipients.csv line {line_number}: {email}")
 
         recipients.append(
             Recipient(
@@ -135,8 +134,7 @@ def normalize_email(value: str) -> str:
     return email
 
 
-def _validate_email(email: str, line_number: int) -> bool:
+def _validate_email(email: str) -> bool:
     if "@" not in email or email.startswith("@") or email.endswith("@"):
-        print(f"Invalid email address in recipients.csv line {line_number}: {email}")
         return False
     return True

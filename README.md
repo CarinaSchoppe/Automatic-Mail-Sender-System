@@ -2,6 +2,17 @@
 
 Python pipeline for researching leads and sending PhD or freelance email batches via SMTPS.
 
+## Project Layout
+
+All Python source and tests live in `code/`. Project configuration and data folders stay at the project root:
+
+- `settings.toml`
+- `.env`
+- `attachments/`
+- `input/`
+- `output/`
+- `templates/`
+
 ## Setup
 
 1. Create a virtual environment and install dependencies:
@@ -65,13 +76,13 @@ templates/signature-logo.png
 If the file has another name, pass it at startup:
 
 ```powershell
-python main.py --mode PhD --signature-logo "C:\Path\to\logo.png"
+python code\main.py --mode PhD --signature-logo "C:\Path\to\logo.png"
 ```
 
 Set the logo width like this:
 
 ```powershell
-python main.py --mode PhD --signature-logo-width 180
+python code\main.py --mode PhD --signature-logo-width 180
 ```
 
 The first template line may be `Subject: ...`. These placeholders are available:
@@ -85,22 +96,22 @@ The first template line may be `Subject: ...`. These placeholders are available:
 
 ## Dry Run
 
-The default entry point is `main.py`. Configure the top of `main.py`:
+The default entry point is `code/main.py`. Configure normal runs in `settings.toml`:
 
-```python
-MODE = "PhD"        # or "Freelance_German", "Freelance_English", "Auto"
-RUN_AI_RESEARCH = True # True = run AI research first, then process/send emails
-SEND = False        # False = dry run, True = real sending
-VERBOSE = True
-LOG_DRY_RUN = False # False = do not write dry runs to Excel
-WRITE_SENT_LOG = True # True = write real sends to output/send_*.xlsx
-DELETE_INPUT_AFTER_SUCCESS = True # True = delete input files after successful real sending
+```toml
+MODE = "PhD"
+RUN_AI_RESEARCH = true
+SEND = false
+VERBOSE = true
+LOG_DRY_RUN = false
+WRITE_SENT_LOG = true
+DELETE_INPUT_AFTER_SUCCESS = false
 ```
 
 Then run:
 
 ```powershell
-python main.py
+python code\main.py
 ```
 
 Without `SEND = True`, no emails are sent. With `LOG_DRY_RUN = False`, dry runs are not written to the matching Excel file.
@@ -108,10 +119,10 @@ Without `SEND = True`, no emails are sent. With `LOG_DRY_RUN = False`, dry runs 
 You can also pass settings through the CLI:
 
 ```powershell
-python main.py --mode PhD
-python main.py --mode Freelance_German
-python main.py --mode Freelance_English
-python main.py --mode Auto
+python code\main.py --mode PhD
+python code\main.py --mode Freelance_German
+python code\main.py --mode Freelance_English
+python code\main.py --mode Auto
 ```
 
 `Auto` processes every mode subfolder in `input` that contains `.csv` or `.txt` files.
@@ -119,7 +130,7 @@ python main.py --mode Auto
 With detailed output:
 
 ```powershell
-python main.py --mode PhD --verbose
+python code\main.py --mode PhD --verbose
 ```
 
 ## Real Sending
@@ -127,15 +138,15 @@ python main.py --mode PhD --verbose
 Use `--send` to send emails through SMTP SSL:
 
 ```powershell
-python main.py --mode PhD --send
-python main.py --mode Freelance_German --send
-python main.py --mode Freelance_English --send
+python code\main.py --mode PhD --send
+python code\main.py --mode Freelance_German --send
+python code\main.py --mode Freelance_English --send
 ```
 
 Before every send, the matching Excel file is checked automatically. If an email address is already present, it is skipped and no email is prepared or sent:
 
 ```powershell
-python main.py --mode PhD --send --verbose
+python code\main.py --mode PhD --send --verbose
 ```
 
 Only use `--resend-existing` if you intentionally want to contact already logged addresses again.
@@ -171,15 +182,15 @@ The invalid email log writes:
 
 ## Research
 
-The research tool is in `research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, can upload matching files from `attachments/<Mode>` as context, reads existing addresses from `output/send_*.xlsx` and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
+The research tool is in `code/research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, can upload matching files from `attachments/<Mode>` as context, reads existing addresses from `output/send_*.xlsx` and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
 
-You can start research through `main.py`. If `RUN_AI_RESEARCH = True`, research runs first and the newly found contacts are then processed/sent.
+You can start research through `code/main.py`. If `RUN_AI_RESEARCH = true`, research runs first and the newly found contacts are then processed/sent.
 
-```python
-RUN_AI_RESEARCH = True
-MODE = "PhD"  # or "Freelance_German" / "Freelance_English"
-RESEARCH_AI_PROVIDER = "openai" # or "gemini"
-RESEARCH_UPLOAD_ATTACHMENTS = False # True = upload attachments to the AI provider
+```toml
+RUN_AI_RESEARCH = true
+MODE = "PhD"
+RESEARCH_AI_PROVIDER = "openai"
+RESEARCH_UPLOAD_ATTACHMENTS = false
 ```
 
 Set `GEMINI_API_KEY` or `OPENAI_API_KEY` in `.env`, depending on the provider. The layout is documented in `.env.example`. For OpenAI, `OPENAI_MODEL=gpt-5.4` is the default.
@@ -187,14 +198,14 @@ Set `GEMINI_API_KEY` or `OPENAI_API_KEY` in `.env`, depending on the provider. T
 Direct research examples:
 
 ```powershell
-python research\research_leads.py --mode PhD
-python research\research_leads.py --mode Freelance_German
-python research\research_leads.py --mode Freelance_English
-python research\research_leads.py --provider openai --mode PhD --no-upload-attachments
+python code\research\research_leads.py --mode PhD
+python code\research\research_leads.py --mode Freelance_German
+python code\research\research_leads.py --mode Freelance_English
+python code\research\research_leads.py --provider openai --mode PhD --no-upload-attachments
 ```
 
 Test without writing output:
 
 ```powershell
-python research\research_leads.py --mode PhD --no-write-output
+python code\research\research_leads.py --mode PhD --no-write-output
 ```
