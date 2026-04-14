@@ -1,0 +1,18 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.idea
+# Personal recipient data and generated send logs
+recipients.csv
+Send_*.xlsx
+send_*.xlsx
+*.iml
+# Real attachments can contain private documents. Keep only folder placeholders.
+attachments/PhD/*
+attachments/Freelance/*
+attachments/Freelance_German/*
+attachments/Freelance_English/*
+!attachments/PhD/.gitkeep
+!attachments/Freelance_German/.gitkeep
+!attachments/Freelance_English/.gitkeep

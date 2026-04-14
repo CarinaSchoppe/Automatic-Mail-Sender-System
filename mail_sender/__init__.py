@@ -1,0 +1,1 @@
+"""Mail sending pipeline package."""
