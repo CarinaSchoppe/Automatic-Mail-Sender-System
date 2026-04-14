@@ -26,7 +26,7 @@ RESEARCH_UPLOAD_ATTACHMENTS = globals().get("RESEARCH_UPLOAD_ATTACHMENTS", True)
 # Sicherheits-Schalter:
 # False = nur Probelauf, keine echten Mails
 # True = echte Mails per SMTP senden
-SEND = globals().get("SEND", False)
+SEND = globals().get("SEND", True)
 
 # Viele Ausgaben im Terminal.
 VERBOSE = globals().get("VERBOSE", True)
