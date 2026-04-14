@@ -176,12 +176,12 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
 def _needs_retry(raw_response: str, existing_emails: set[str]) -> bool:
     if _is_model_error(raw_response):
         return True
-    _verbose(True, f"No Model error")
+    _verbose(globals().get("VERBOSE", True), f"No Model error")
     try:
         return not parse_recipients(raw_response, existing_emails)
     except ValueError as error:
-        _verbose(True, f"Failed to parse CSV")
-        _verbose(True, f"{error}")
+        _verbose(globals().get("VERBOSE", True), f"Failed to parse CSV")
+        _verbose(globals().get("VERBOSE", True), f"{error}")
         return True
 
 
@@ -198,7 +198,7 @@ def _is_model_error(raw_response: str) -> bool:
     ]
     output = any(marker in text for marker in error_markers)
     if output:
-        _verbose(True, f"AI provider returned an error: {text}")
+        _verbose(globals().get("VERBOSE", True), f"AI provider returned an error: {text}")
     return output
 
 
@@ -472,7 +472,7 @@ def _verbose_gemini_candidates(verbose: bool, response) -> None:
 
 def parse_recipients(raw_response: str, existing_emails: set[str]) -> list[Recipient]:
     rows = raw_response.split("\n")
-    _verbose(True, f"Raw response rows: {len(rows)}")
+    _verbose(globals().get("VERBOSE", True), f"Raw response rows: {len(rows)}")
     if not rows:
         raise ValueError("No rows returned from AI provider.")
     recipients = []
@@ -480,15 +480,15 @@ def parse_recipients(raw_response: str, existing_emails: set[str]) -> list[Recip
     rows.pop(0)
     rows = set(rows)
     for row in rows:
-        _verbose(True, f"Raw response row: {row}")
+        _verbose(globals().get("VERBOSE", True), f"Raw response row: {row}")
         contents = row.split(",")
         email_cand = contents[-1].strip()
         company_cand = ", ".join(contents[:-1])
         if email_cand not in existing_emails:
             recipients.append(Recipient(email=email_cand, company=company_cand.strip()))
-            _verbose(True, f"Recipient: {email_cand}, {company_cand}")
+            _verbose(globals().get("VERBOSE", True), f"Recipient: {email_cand}, {company_cand}")
         else:
-            _verbose(True, f"Skipping existing email: {email_cand}")
+            _verbose(globals().get("VERBOSE", True), f"Skipping existing email: {email_cand}")
 
     return recipients
 
