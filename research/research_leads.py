@@ -572,10 +572,6 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _model_for_provider(provider: str) -> str:
-    model = os.getenv("RESEARCH_MODEL", "").strip()
-    if model:
-        return model
-
     normalized = provider.strip().lower()
     if normalized == "openai":
         return os.getenv("OPENAI_MODEL", OPENAI_MODEL)
