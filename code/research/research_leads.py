@@ -66,6 +66,7 @@ class ResearchConfig:
     gemini_model: str
     openai_model: str
     send_target_count: int = 0
+    max_iterations: int = 5
 
 
 def _load_settings() -> dict:
@@ -116,6 +117,7 @@ def default_config() -> ResearchConfig:
         verbose=_get("RESEARCH_VERBOSE", False),
         upload_attachments=_get("RESEARCH_UPLOAD_ATTACHMENTS", True),
         send_target_count=_get("SEND_TARGET_COUNT", 0),
+        max_iterations=_get("SEND_TARGET_MAX_ROUNDS", 5),
     )
 
 
@@ -149,6 +151,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--no-write-output", action="store_true", help="Do not write the generated CSV file.")
     parser.add_argument("--no-upload-attachments", action="store_true", help="Do not upload CV/resume context files to the AI provider.")
     parser.add_argument("--send-target-count", type=int, default=env_config.send_target_count, help="Total target count for the send loop.")
+    parser.add_argument("--max-iterations", type=int, default=env_config.max_iterations, help="Maximum number of research iterations (0 for unlimited).")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed AI research logging.")
     args = parser.parse_args(argv)
 
@@ -166,6 +169,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         verbose=env_config.verbose or args.verbose,
         upload_attachments=env_config.upload_attachments and not args.no_upload_attachments,
         send_target_count=args.send_target_count,
+        max_iterations=args.max_iterations,
     )
 
 
@@ -224,10 +228,14 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     # We aim for roughly max_companies as the total target for this run,
     # or the global send_target_count if provided.
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
-    max_iterations = 5
+    max_iterations = config.max_iterations
     iteration = 0
 
-    while len(all_recipients) < target_count and iteration < max_iterations:
+    while len(all_recipients) < target_count:
+        if max_iterations > 0 and iteration >= max_iterations:
+            _info(f"Stopping research because max_iterations={max_iterations} was reached.")
+            break
+            
         iteration += 1
         if iteration > 1:
             _info(f"Research iteration {iteration}: {len(all_recipients)}/{target_count} recipients found so far.")

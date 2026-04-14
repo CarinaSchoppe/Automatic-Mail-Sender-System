@@ -146,6 +146,7 @@ def _build_research_args() -> list[str]:
     ]:
         _add_flag(args, enabled, flag)
     _add_value(args, "--send-target-count", SEND_TARGET_COUNT)
+    _add_value(args, "--max-iterations", SEND_TARGET_MAX_ROUNDS)
     return args
 
 

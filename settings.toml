@@ -121,7 +121,7 @@ SIGNATURE_LOGO = "templates/signature-logo.png"
 # SIGNATURE_LOGO_WIDTH
 # What it does: Width of the inline signature logo in pixels.
 # Default: 325
-SIGNATURE_LOGO_WIDTH = 325
+SIGNATURE_LOGO_WIDTH = 350
 
 # ALLOW_EMPTY_ATTACHMENTS
 # What it does: Allows the mail sender to run even when the selected mail attachment folder is empty.

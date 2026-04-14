@@ -29,6 +29,7 @@ def config(
         openai_model: str = "gpt-5.4",
         max_companies: int = 3,
         send_target_count: int = 0,
+        max_iterations: int = 5,
 ) -> ResearchConfig:
     return ResearchConfig(
         provider=provider,
@@ -44,6 +45,7 @@ def config(
         gemini_model=gemini_model,
         openai_model=openai_model,
         send_target_count=send_target_count,
+        max_iterations=max_iterations,
     )
 
 
@@ -87,6 +89,8 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "--no-upload-attachments",
         "--send-target-count",
         "100",
+        "--max-iterations",
+        "10",
         "--verbose",
     ])
 
@@ -101,6 +105,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
     assert parsed.send_target_count == 100
+    assert parsed.max_iterations == 10
 
 
 def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
