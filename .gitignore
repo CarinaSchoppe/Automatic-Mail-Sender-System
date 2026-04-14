@@ -8,11 +8,8 @@ __pycache__/
 logs/
 *.log
 *.csv
-*.xlsx
 # Personal recipient data and generated send logs
 recipients.csv
-Send_*.xlsx
-send_*.xlsx
 input/PhD/*
 input/Freelance_German/*
 input/Freelance_English/*

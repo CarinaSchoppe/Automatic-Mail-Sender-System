@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
-
-from openpyxl import Workbook, load_workbook
 
 from mail_sender import cli
 from mail_sender.recipients import Recipient
@@ -32,24 +31,26 @@ def test_cli_auto_processes_each_input_folder_and_logs_dry_run(project: Path, ca
     assert "Mode: PhD" in output
     assert "Mode: Freelance German" in output
     assert "Mode: Freelance English" in output
-    assert load_workbook(project / "output/send_phd.xlsx").active.max_row == 2
-    assert load_workbook(project / "output/send_freelance.xlsx").active.max_row == 3
+    with (project / "output/send_phd.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        assert len(list(csv.reader(f))) == 2
+    with (project / "output/send_freelance.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        assert len(list(csv.reader(f))) == 3
 
 
 def test_cli_skips_logged_and_duplicate_addresses(project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/one.csv", "One", "one@example.com")
     (project / "input/PhD/two.csv").write_text("company,mail\nTwo,one@example.com\nLogged,logged@example.com\n", encoding="utf-8")
-    workbook = Workbook()
-    workbook.active.append(["company", "mail", "sent_at"])
-    workbook.active.append(["Logged", "mailto:logged@example.com", "2026-04-14T10:00+10:00"])
-    workbook.save(project / "output/send_phd.xlsx")
+    with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["Logged", "mailto:logged@example.com", "2026-04-14T10:00+10:00"])
 
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
 
     assert result == 0
     output = capsys.readouterr().out
     assert "duplicate skipped" in output
-    assert "already present in an output Excel log" in output
+    assert "already present in an output CSV log" in output
     assert "[DRY_RUN] one@example.com" in output
 
 
@@ -70,48 +71,43 @@ def test_cli_skips_invalid_addresses_and_persists_invalid_log(monkeypatch, proje
     output = capsys.readouterr().out
     assert "[INVALID] bad@example.invalid | domain has no MX or A record" in output
     assert "[DRY_RUN] good@example.com" in output
-    sheet = load_workbook(project / "output/invalid_mails.xlsx").active
-    assert [sheet.cell(2, column).value for column in range(1, 4)] == [
-        "Bad",
-        "bad@example.invalid",
-        "domain has no MX or A record",
-    ]
+    with (project / "output/invalid_mails.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        reader = list(csv.reader(f))
+        assert reader[1][:3] == ["Bad", "bad@example.invalid", "domain has no MX or A record"]
 
 
 def test_cli_skips_addresses_already_in_invalid_log(project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.append(["company", "mail", "invalid_reason", "detected_at"])
-    sheet.append(["Bad", "bad@example.invalid", "domain has no MX or A record", "2026-04-14T10:00+10:00"])
-    workbook.save(project / "output/invalid_mails.xlsx")
+    with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
+        writer.writerow(["Bad", "bad@example.invalid", "domain has no MX or A record", "2026-04-14T10:00+10:00"])
 
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
 
     assert result == 0
-    assert "already listed in invalid_mails.xlsx" in capsys.readouterr().out
+    assert "already listed in invalid_mails.csv" in capsys.readouterr().out
 
 
 def test_cli_checks_all_output_excel_logs(project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/phd.csv", "Existing", "existing@example.com")
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.append(["company", "mail", "sent_at"])
-    sheet.append(["Existing", "existing@example.com", "2026-04-14T10:00+10:00"])
-    workbook.save(project / "output/send_freelance.xlsx")
+    with (project / "output/send_freelance.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["Existing", "existing@example.com", "2026-04-14T10:00+10:00"])
 
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
 
     assert result == 0
-    assert "already present in an output Excel log" in capsys.readouterr().out
+    assert "already present in an output CSV log" in capsys.readouterr().out
 
 
 def test_cli_returns_zero_when_all_recipients_are_logged(project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/one.csv", "One", "one@example.com")
-    workbook = Workbook()
-    workbook.active.append(["company", "mail", "sent_at"])
-    workbook.active.append(["One", "one@example.com", "2026-04-14T10:00+10:00"])
-    workbook.save(project / "output/send_phd.xlsx")
+    with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["One", "one@example.com", "2026-04-14T10:00+10:00"])
 
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments", "--verbose"])
 
@@ -187,8 +183,9 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
 
     assert result == 0
     assert sent == [("phd@example.com", "PhD PhD Co", 1, 1)]
-    sheet = load_workbook(project / "output/send_phd.xlsx").active
-    assert sheet.cell(2, 2).value == "phd@example.com"
+    with (project / "output/send_phd.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        reader = list(csv.reader(f))
+        assert reader[1][1] == "phd@example.com"
 
 
 def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsys) -> None:
@@ -220,8 +217,8 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
     assert result == 0
     assert sent == ["a@example.com", "b@example.com"]
     assert "Limiting this run to 2 recipient(s)." in capsys.readouterr().out
-    sheet = load_workbook(project / "output/send_phd.xlsx").active
-    assert sheet.max_row == 3
+    with (project / "output/send_phd.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        assert len(list(csv.reader(f))) == 3
 
 
 def test_cli_rejects_invalid_max_send_count(project: Path, capsys) -> None:
@@ -254,7 +251,7 @@ def test_cli_can_disable_sent_excel_logging(monkeypatch, project: Path) -> None:
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send", "--no-write-sent-log"])
 
     assert result == 0
-    assert not (project / "output/send_phd.xlsx").exists()
+    assert not (project / "output/send_phd.csv").exists()
 
 
 def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project: Path) -> None:
@@ -326,10 +323,10 @@ def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Pat
 def test_cli_deletes_input_files_when_everything_was_already_logged(project: Path) -> None:
     input_file = project / "input/PhD/phd.csv"
     write_recipient(input_file, "PhD Co", "phd@example.com")
-    workbook = Workbook()
-    workbook.active.append(["company", "mail", "sent_at"])
-    workbook.active.append(["PhD Co", "phd@example.com", "2026-04-14T10:00+10:00"])
-    workbook.save(project / "output/send_phd.xlsx")
+    with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["PhD Co", "phd@example.com", "2026-04-14T10:00+10:00"])
 
     result = cli.main([
         "--mode",
@@ -364,7 +361,7 @@ def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> N
         mailer=None,
         template_path=project / "templates/phd.txt",
         signature_path=project / "templates/signature.txt",
-        log_path=project / "output/send_phd.xlsx",
+        log_path=project / "output/send_phd.csv",
         recipients=[],
         attachments=[],
         subject_override=None,
@@ -381,7 +378,7 @@ def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> N
         mailer=None,
         template_path=project / "templates/phd.txt",
         signature_path=project / "templates/signature.txt",
-        log_path=project / "output/send_phd.xlsx",
+        log_path=project / "output/send_phd.csv",
         recipients=[Recipient(email="a@example.com", company="A")],
         attachments=[],
         subject_override=None,

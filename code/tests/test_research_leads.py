@@ -128,7 +128,7 @@ def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPat
 
 
 def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
-    append_log(project / "output/send_phd.xlsx", Recipient(email="logged@example.com", company="Logged"))
+    append_log(project / "output/send_phd.csv", Recipient(email="logged@example.com", company="Logged"))
     (project / "input/Freelance_German/existing.csv").write_text(
         "company,mail\nInput,mailto:input@example.com\n",
         encoding="utf-8",
@@ -139,7 +139,7 @@ def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
 
 def test_collect_mode_existing_companies_reads_mode_log_and_input(project: Path) -> None:
     mode = research_leads.get_mode("PhD", project)
-    append_log(project / "output/send_phd.xlsx", Recipient(email="old@example.com", company="Old Company GmbH"))
+    append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Company GmbH"))
     (project / "input/PhD/existing.csv").write_text(
         "company,mail\nInput Company,input@example.com\n",
         encoding="utf-8",
@@ -227,10 +227,10 @@ def test_list_research_context_files_adds_matching_sent_log(project: Path) -> No
     other = project / "attachments/PhD/certificate.pdf"
     cv.write_text("cv", encoding="utf-8")
     other.write_text("certificate", encoding="utf-8")
-    append_log(project / "output/send_phd.xlsx", Recipient(email="old@example.com", company="Old"))
+    append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old"))
     mode = research_leads.get_mode("PhD", project)
 
-    assert research_leads.list_research_context_files(mode) == [cv, project / "output/send_phd.xlsx"]
+    assert research_leads.list_research_context_files(mode) == [cv, project / "output/send_phd.csv"]
 
 
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
@@ -366,11 +366,11 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
     cert = project / "attachments/PhD/context.pdf"
     cv.write_text("cv", encoding="utf-8")
     cert.write_text("cert", encoding="utf-8")
-    append_log(project / "output/send_phd.xlsx", Recipient(email="old@example.com", company="Old Co"))
+    append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Co"))
 
     def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         assert model == "gemini-2.5-flash-lite"
-        assert attachments == [cv, project / "output/send_phd.xlsx"]
+        assert attachments == [cv, project / "output/send_phd.csv"]
         assert "Existing email exclusion list" in prompt
         assert "Existing company exclusion list for this mode" in prompt
         assert "oldco" in prompt

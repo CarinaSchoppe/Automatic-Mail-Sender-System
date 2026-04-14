@@ -38,8 +38,6 @@ company,mail
 Example GmbH,max@example.com
 ```
 
-CSV files exported from Excel with semicolons also work as long as they contain a `mail` column. `email` is accepted for compatibility.
-
 AI research output additionally includes a `source_url` column:
 
 ```csv
@@ -119,7 +117,7 @@ Then run:
 python code\main.py
 ```
 
-Without `SEND = True`, no emails are sent. With `LOG_DRY_RUN = False`, dry runs are not written to the matching Excel file.
+Without `SEND = True`, no emails are sent. With `LOG_DRY_RUN = False`, dry runs are not written to the matching CSV file.
 
 You can also pass settings through the CLI:
 
@@ -148,7 +146,7 @@ python code\main.py --mode Freelance_German --send
 python code\main.py --mode Freelance_English --send
 ```
 
-Before every send, the matching Excel file is checked automatically. If an email address is already present, it is skipped and no email is prepared or sent:
+Before every send, the matching CSV file is checked automatically. If an email address is already present, it is skipped and no email is prepared or sent:
 
 ```powershell
 python code\main.py --mode PhD --send --verbose
@@ -168,15 +166,15 @@ SEND_TARGET_COUNT = 500
 SEND_TARGET_MAX_ROUNDS = 0
 ```
 
-`SEND_TARGET_COUNT` counts newly logged sent emails in this run. The system checks the existing `output/*.xlsx` sent logs before it starts, then repeats research and real sending until that many new addresses have been added. The final send round is capped automatically so it does not intentionally send past the remaining target. `SEND_TARGET_MAX_ROUNDS = 0` means unlimited rounds; even then, the loop stops if a round creates no new sent-log entries.
+`SEND_TARGET_COUNT` counts newly logged sent emails in this run. The system checks the existing `output/*.csv` sent logs before it starts, then repeats research and real sending until that many new addresses have been added. The final send round is capped automatically so it does not intentionally send past the remaining target. `SEND_TARGET_MAX_ROUNDS = 0` means unlimited rounds; even then, the loop stops if a round creates no new sent-log entries.
 
 Before rendering or sending, each recipient email is also validated. The pipeline checks email syntax and whether the domain has MX or A DNS records. Invalid addresses are skipped and written to:
 
 ```text
-output/invalid_mails.xlsx
+output/invalid_mails.csv
 ```
 
-Future runs skip addresses already listed in `invalid_mails.xlsx`. The sender also checks all `.xlsx` files in `output` for already used addresses, not just the active mode workbook. This reduces false positives, but it is not full mailbox verification: an address can still bounce even if the domain DNS is valid.
+Future runs skip addresses already listed in `invalid_mails.csv`. The sender also checks all `.csv` files in `output` for already used addresses, not just the active mode workbook. This reduces false positives, but it is not full mailbox verification: an address can still bounce even if the domain DNS is valid.
 
 ## Logs
 
@@ -193,9 +191,9 @@ If `VERBOSE = true`, these saved logs also include all `[VERBOSE]` lines. If `VE
 
 The script writes processed recipients to:
 
-- `output/send_phd.xlsx` for PhD mode
-- `output/send_freelance.xlsx` for both freelance modes
-- `output/invalid_mails.xlsx` for invalid addresses found before rendering/sending
+- `output/send_phd.csv` for PhD mode
+- `output/send_freelance.csv` for both freelance modes
+- `output/invalid_mails.csv` for invalid addresses found before rendering/sending
 
 Only these columns are written:
 
@@ -212,11 +210,11 @@ The invalid email log writes:
 
 ## Research
 
-The research tool is in `code/research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, reads existing addresses from `output/send_*.xlsx` and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
+The research tool is in `code/research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, reads existing addresses from `output/send_*.csv` and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
 
-For AI research context upload, only CV/resume/Lebenslauf files from `attachments/<Mode>` plus the matching sent Excel log are uploaded. PhD research uploads `output/send_phd.xlsx` when it exists. Freelance research uploads `output/send_freelance.xlsx` when it exists. Mail sending is separate and still uses the normal attachment folder behavior.
+For AI research context upload, only CV/resume/Lebenslauf files from `attachments/<Mode>` plus the matching sent CSV log are uploaded. PhD research uploads `output/send_phd.csv` when it exists. Freelance research uploads `output/send_freelance.csv` when it exists. Mail sending is separate and still uses the normal attachment folder behavior.
 
-The prompt also tells the AI not to search for or return companies or email addresses already present in the mode-specific sent Excel list. The local parser still filters existing email addresses and mode-specific company names after the AI response.
+The prompt also tells the AI not to search for or return companies or email addresses already present in the mode-specific sent CSV list. The local parser still filters existing email addresses and mode-specific company names after the AI response.
 
 Gemini research is configured with Google Search grounding, automatic tool use, and high thinking/reasoning. OpenAI research uses the Responses API with `web_search`, automatic tool choice, and high reasoning effort. Provider-specific model names stay in `.env`:
 

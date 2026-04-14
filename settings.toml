@@ -44,8 +44,8 @@ RESEARCH_PERSON_EMAILS_PER_COMPANY = 3
 RESEARCH_WRITE_OUTPUT = true
 
 # RESEARCH_UPLOAD_ATTACHMENTS
-# What it does: Uploads only CV/resume/Lebenslauf files plus the mode-specific sent Excel log
-# as AI context for research. PhD uses output/send_phd.xlsx. Freelance uses output/send_freelance.xlsx.
+# What it does: Uploads only CV/resume/Lebenslauf files plus the mode-specific sent CSV log
+# as AI context for research. PhD uses output/send_phd.csv. Freelance uses output/send_freelance.csv.
 # Important: Mail sending still uses all files in the attachment folder.
 # Default: true
 RESEARCH_UPLOAD_ATTACHMENTS = true
@@ -120,16 +120,16 @@ SIGNATURE_LOGO_WIDTH = 325
 ALLOW_EMPTY_ATTACHMENTS = false
 
 # LOG_DRY_RUN
-# What it does: Writes dry-run recipients to the Excel sent log.
+# What it does: Writes dry-run recipients to the CSV sent log.
 # false = dry-run output is not written to sent logs.
 # true = dry-run rows are written to sent logs.
 # Default: false
 LOG_DRY_RUN = false
 
 # WRITE_SENT_LOG
-# What it does: Writes successfully sent real emails to output/send_*.xlsx.
-# false = do not write successful sends to Excel.
-# true = write successful sends to Excel.
+# What it does: Writes successfully sent real emails to output/send_*.csv.
+# false = do not write successful sends to CSV.
+# true = write successful sends to CSV.
 # Default: true
 WRITE_SENT_LOG = true
 

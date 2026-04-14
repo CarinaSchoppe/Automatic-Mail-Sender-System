@@ -156,7 +156,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Resolved mode: {mode.label}")
     _verbose(config.verbose, f"Mode input directory: {mode.recipients_dir}")
     _verbose(config.verbose, f"Mode attachment directory: {mode.attachments_dir}")
-    _verbose(config.verbose, f"Mode output Excel log: {mode.log_path}")
+    _verbose(config.verbose, f"Mode output CSV log: {mode.log_path}")
 
     _info("Preparing CV/resume and sent-log context for AI upload.")
     attachments = list_research_context_files(mode, config.verbose) if config.upload_attachments else []
@@ -368,7 +368,7 @@ def build_prompt(
     Requirements:
     - Find leads from {config.min_companies} to {config.max_companies} relevant companies.
     - Do not include any email address already listed in the exclusion list.
-    - Do not search for or return a company if the company name or email address already appears in the mode-specific sent Excel list, uploaded sent-log file, or exclusions.
+    - Do not search for or return a company if the company name or email address already appears in the mode-specific sent CSV list, uploaded sent-log file, or exclusions.
     - Use the mode-specific input CSV/TXT context only as background for fit and targeting.
     - Prefer official company websites and publicly visible work email addresses.
     - Only include an email address if it is explicitly shown on a public webpage.

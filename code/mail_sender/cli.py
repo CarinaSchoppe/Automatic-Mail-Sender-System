@@ -86,7 +86,7 @@ def _select_modes(mode_name: str, base_dir: Path):
 def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
     """Process one configured mail mode and return the number of per-recipient errors."""
     _info(f"Starting mode {mode.label}.")
-    invalid_log_path = base_dir / "output" / "invalid_mails.xlsx"
+    invalid_log_path = base_dir / "output" / "invalid_mails.csv"
     _log_mode_paths(args, mode, base_dir, signature_path, signature_logo_path, invalid_log_path)
 
     recipient_files = _scan_recipient_files(args, mode)
@@ -208,11 +208,11 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
         _verbose(args.verbose, f"Checking recipient {recipient.email} ({recipient.company}).")
         if email_key in logged_emails:
             skipped_before_send += 1
-            print(f"[SKIP] {recipient.email} is already present in an output Excel log; no mail will be created or sent.")
+            print(f"[SKIP] {recipient.email} is already present in an output CSV log; no mail will be created or sent.")
             continue
         if email_key in invalid_emails:
             skipped_before_send += 1
-            print(f"[SKIP_INVALID] {recipient.email} is already listed in invalid_mails.xlsx; no mail will be created or sent.")
+            print(f"[SKIP_INVALID] {recipient.email} is already listed in invalid_mails.csv; no mail will be created or sent.")
             continue
         if email_key in seen_in_this_run:
             skipped_before_send += 1

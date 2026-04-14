@@ -1,13 +1,12 @@
-"""Excel log helpers for sent and invalid email tracking."""
+"""CSV log helpers for sent and invalid email tracking."""
 
 from __future__ import annotations
 
+import csv
+import os
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-
-from openpyxl import Workbook, load_workbook
-from openpyxl.worksheet.worksheet import Worksheet
 
 from mail_sender.recipients import EMAIL_KEYS
 from mail_sender.recipients import Recipient
@@ -32,32 +31,20 @@ def append_log(
         log_path: Path,
         recipient: Recipient,
 ) -> None:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    workbook, sheet = _open_or_create_workbook(log_path)
-    _ensure_headers(sheet)
-    sheet.append(
-        [
-            recipient.company,
-            recipient.email,
-            datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
-        ]
-    )
-    workbook.save(log_path)
+    _append_csv_row(log_path, HEADERS, [
+        recipient.company,
+        recipient.email,
+        datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
+    ])
 
 
 def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> None:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    workbook, sheet = _open_or_create_workbook(log_path, INVALID_HEADERS, "Invalid")
-    _ensure_headers(sheet, INVALID_HEADERS)
-    sheet.append(
-        [
-            recipient.company,
-            recipient.email,
-            reason,
-            datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
-        ]
-    )
-    workbook.save(log_path)
+    _append_csv_row(log_path, INVALID_HEADERS, [
+        recipient.company,
+        recipient.email,
+        reason,
+        datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
+    ])
 
 
 def read_logged_emails(log_path: Path) -> set[str]:
@@ -66,26 +53,39 @@ def read_logged_emails(log_path: Path) -> set[str]:
 
 
 def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
-    """Read normalized company/email rows from a sent or invalid Excel log."""
+    """Read normalized company/email rows from a sent or invalid CSV log."""
     if not log_path.exists():
         return []
 
-    workbook = load_workbook(log_path)
-    sheet = workbook.active
-    header = [str(cell.value or "") for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
-    company_index = _find_header_index(header, {"company", "organization"})
-    email_index = _find_header_index(header, EMAIL_KEYS)
-    if email_index is None:
-        return []
+    try:
+        with log_path.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.reader(f)
+            try:
+                header = next(reader)
+            except StopIteration:
+                return []
 
-    rows: list[dict[str, str]] = []
-    for row in sheet.iter_rows(min_row=2):
-        company = ""
-        if company_index is not None:
-            company = str(row[company_index - 1].value or "").strip()
-        email = normalize_email(str(row[email_index - 1].value or "")).lower()
-        rows.append({"company": company, "mail": email})
-    return rows
+            company_index = _find_header_index(header, {"company", "organization"})
+            email_index = _find_header_index(header, EMAIL_KEYS)
+            if email_index is None:
+                return []
+
+            rows: list[dict[str, str]] = []
+            for row in reader:
+                if not row:
+                    continue
+                company = ""
+                if company_index is not None and len(row) >= company_index:
+                    company = row[company_index - 1].strip()
+                
+                email = ""
+                if len(row) >= email_index:
+                    email = normalize_email(row[email_index - 1]).lower()
+                
+                rows.append({"company": company, "mail": email})
+            return rows
+    except Exception:
+        return []
 
 
 def read_invalid_emails(log_path: Path) -> set[str]:
@@ -97,37 +97,22 @@ def read_known_output_emails(output_dir: Path) -> set[str]:
         return set()
 
     emails: set[str] = set()
-    for path in output_dir.glob("*.xlsx"):
-        if path.name.lower() == "invalid_mails.xlsx":
+    for path in output_dir.glob("*.csv"):
+        if path.name.lower() == "invalid_mails.csv":
             continue
         emails.update(read_logged_emails(path))
     return emails
 
 
-def _open_or_create_workbook(
-        log_path: Path,
-        headers: list[str] | None = None,
-        title: str = "Sent",
-) -> tuple[Workbook, Worksheet]:
-    headers = headers or HEADERS
-    if log_path.exists():
-        workbook = load_workbook(log_path)
-        return workbook, workbook.active
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = title
-    sheet.append(headers)
-    return workbook, sheet
-
-
-def _ensure_headers(sheet: Worksheet, headers: list[str] | None = None) -> None:
-    headers = headers or HEADERS
-    if sheet.max_column > len(headers):
-        sheet.delete_cols(len(headers) + 1, sheet.max_column - len(headers))
-
-    for column, header in enumerate(headers, start=1):
-        sheet.cell(row=1, column=column, value=header)
+def _append_csv_row(path: Path, headers: list[str], row: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_exists = path.exists()
+    
+    with path.open("a", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists or os.path.getsize(path) == 0:
+            writer.writerow(headers)
+        writer.writerow(row)
 
 
 def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:

@@ -15,10 +15,10 @@ def test_modes_point_to_input_attachments_and_output(project: Path) -> None:
     english = get_mode("freelance english", project)
 
     assert phd.recipients_dir == project / "input/PhD"
-    assert phd.log_path == project / "output/send_phd.xlsx"
+    assert phd.log_path == project / "output/send_phd.csv"
     assert german.template_path.name == "freelance_german.txt"
     assert german.attachments_dir == project / "attachments/Freelance_German"
-    assert german.log_path == project / "output/send_freelance.xlsx"
+    assert german.log_path == project / "output/send_freelance.csv"
     assert english.template_path.name == "freelance_english.txt"
     assert english.recipients_dir == project / "input/Freelance_English"
 
