@@ -83,6 +83,7 @@ MODE = "PhD"        # oder "Freelance_German", "Freelance_English", "Auto"
 SEND = False        # False = Probelauf, True = echt senden
 VERBOSE = True
 LOG_DRY_RUN = False # False = Probelauf nicht in Excel schreiben
+WRITE_SENT_LOG = True # True = echte Sendungen in output/send_*.xlsx schreiben
 ```
 
 Dann starten:

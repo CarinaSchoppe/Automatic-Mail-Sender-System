@@ -24,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-dir", default=".", help="Project base directory.")
     parser.add_argument("--send", action="store_true", help="Actually send the emails. Without this flag, dry-run only.")
     parser.add_argument("--log-dry-run", action="store_true", help="Write dry-run rows to the Excel log. Off by default.")
+    parser.add_argument("--no-write-sent-log", action="store_true", help="Do not write successfully sent emails to the Excel log.")
     parser.add_argument("--resend-existing", action="store_true", help="Ignore addresses already present in the mode Excel log.")
     parser.add_argument("--allow-empty-attachments", action="store_true", help="Allow sending even if the mode attachment folder is empty.")
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
@@ -132,6 +133,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     print("Existing Excel check: disabled (--resend-existing)" if args.resend_existing else "Existing Excel check: enabled")
     print("Sending: yes" if args.send else "Sending: no (dry-run)")
     print("Dry-run Excel logging: yes" if args.log_dry_run else "Dry-run Excel logging: no")
+    print("Sent Excel logging: no" if args.no_write_sent_log else "Sent Excel logging: yes")
 
     if not recipients_to_process:
         print("Nothing to process.")
@@ -159,6 +161,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
                 signature_image_width=args.signature_logo_width,
                 dry_run=False,
                 log_dry_run=args.log_dry_run,
+                write_sent_log=not args.no_write_sent_log,
                 verbose=args.verbose,
             )
     else:
@@ -174,6 +177,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
             signature_image_width=args.signature_logo_width,
             dry_run=True,
             log_dry_run=args.log_dry_run,
+            write_sent_log=not args.no_write_sent_log,
             verbose=args.verbose,
         )
 
@@ -196,6 +200,7 @@ def _process_recipients(
     signature_image_width: int,
     dry_run: bool,
     log_dry_run: bool,
+    write_sent_log: bool,
     verbose: bool,
 ) -> int:
     errors = 0
@@ -238,8 +243,11 @@ def _process_recipients(
                 rendered.inline_images,
             )
             print(f"[SENT] {recipient.email} | {rendered.subject}")
-            append_log(log_path, recipient)
-            _verbose(verbose, f"Sent mail logged to {log_path}.")
+            if write_sent_log:
+                append_log(log_path, recipient)
+                _verbose(verbose, f"Sent mail logged to {log_path}.")
+            else:
+                _verbose(verbose, "Sent mail was not written to Excel because --no-write-sent-log is set.")
         except Exception as exc:  # Keep the batch moving and log the failed recipient.
             errors += 1
             print(f"[ERROR] {recipient.email} | {exc}")

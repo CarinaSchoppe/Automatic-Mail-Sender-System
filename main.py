@@ -30,6 +30,10 @@ ALLOW_EMPTY_ATTACHMENTS = False
 # True = Probelauf wird in Excel protokolliert
 LOG_DRY_RUN = False
 
+# True = erfolgreich gesendete Mails in output/send_*.xlsx eintragen
+# False = erfolgreiche Sendungen nicht in Excel eintragen
+WRITE_SENT_LOG = True
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -54,5 +58,7 @@ if __name__ == "__main__":
         args.append("--allow-empty-attachments")
     if LOG_DRY_RUN:
         args.append("--log-dry-run")
+    if not WRITE_SENT_LOG:
+        args.append("--no-write-sent-log")
 
     raise SystemExit(main(args))
