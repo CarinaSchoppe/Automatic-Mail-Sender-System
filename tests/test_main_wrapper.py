@@ -28,12 +28,12 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "RUN_AI_RESEARCH": True,
                 "RESEARCH_AI_PROVIDER": "openai",
                 "MODE": "Freelance_English",
-                "RESEARCH_MODEL": "custom-model",
                 "RESEARCH_MIN_COMPANIES": 2,
                 "RESEARCH_MAX_COMPANIES": 4,
                 "RESEARCH_PERSON_EMAILS_PER_COMPANY": 1,
                 "RESEARCH_WRITE_OUTPUT": False,
                 "RESEARCH_UPLOAD_ATTACHMENTS": False,
+                "SEND": True,
                 "VERBOSE": True,
             },
         )
@@ -47,8 +47,6 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "openai",
                 "--mode",
                 "Freelance_English",
-                "--model",
-                "custom-model",
                 "--min-companies",
                 "2",
                 "--max-companies",
@@ -95,10 +93,8 @@ def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
         runpy.run_path("main.py", run_name="__main__")
 
     assert exc_info.value.code == 0
-    assert calls[0][0] == "research"
-    assert calls[1][0] == "mail"
+    assert [call[0] for call in calls] == ["research"]
     assert "--mode" in calls[0][1]
-    assert "--mode" in calls[1][1]
 
 
 def test_main_wrapper_forwards_explicit_cli_args_to_mail(monkeypatch) -> None:

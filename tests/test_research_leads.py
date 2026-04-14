@@ -71,8 +71,6 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "4",
         "--person-emails-per-company",
         "1",
-        "--model",
-        "test-model",
         "--no-write-output",
         "--no-upload-attachments",
         "--verbose",
@@ -84,7 +82,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.min_companies == 2
     assert parsed.max_companies == 4
     assert parsed.person_emails_per_company == 1
-    assert parsed.model == "test-model"
+    assert parsed.model == "gpt-5.4"
     assert parsed.write_output is False
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
@@ -151,7 +149,7 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
     assert "company,mail,source_url" in phd_prompt
     assert "Example GmbH" in phd_prompt
     assert "AVGS" in german_prompt
-    assert "Luxembourg" in english_prompt
+    assert "remote freelance lecturer" in english_prompt
 
 
 def test_read_input_context_reads_mode_files_and_truncates(project: Path) -> None:
@@ -172,6 +170,20 @@ def test_read_input_context_replaces_invalid_bytes(project: Path) -> None:
 
     assert "broken.csv" in context
     assert "company,mail" in context
+
+
+def test_list_resume_attachments_only_returns_cv_resume_files(project: Path) -> None:
+    attachment_dir = project / "attachments/Freelance_German"
+    cv = attachment_dir / "Lebenslauf Carina Sophie Schoppe.pdf"
+    cert = attachment_dir / "Master Certificate.pdf"
+    nested_resume = attachment_dir / "nested" / "Resume_2026.pdf"
+    attachment_dir.mkdir(parents=True, exist_ok=True)
+    (attachment_dir / "nested").mkdir()
+    cv.write_text("cv", encoding="utf-8")
+    cert.write_text("cert", encoding="utf-8")
+    nested_resume.write_text("resume", encoding="utf-8")
+
+    assert research_leads.list_resume_attachments(attachment_dir) == [cv, nested_resume]
 
 
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
@@ -288,11 +300,14 @@ def test_write_recipients_csv(project: Path) -> None:
 
 
 def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
-    (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
+    cv = project / "attachments/PhD/CV.pdf"
+    cert = project / "attachments/PhD/context.pdf"
+    cv.write_text("cv", encoding="utf-8")
+    cert.write_text("cert", encoding="utf-8")
 
     def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
         assert model == "gemini-2.5-flash-lite"
-        assert attachments == [project / "attachments/PhD/context.pdf"]
+        assert attachments == [cv]
         assert "Existing email exclusion list" in prompt
         assert "Mode-specific input CSV/TXT context" in prompt
         assert verbose is True
@@ -354,7 +369,9 @@ def test_run_research_retries_without_attachments_after_empty_response(
         capsys,
 ) -> None:
     attachment = project / "attachments/PhD/context.pdf"
+    cv = project / "attachments/PhD/CV.pdf"
     attachment.write_text("context", encoding="utf-8")
+    cv.write_text("cv", encoding="utf-8")
     calls = []
 
     def fake_generate(model: str, prompt: str, attachments: list[Path], verbose: bool = False) -> str:
@@ -367,7 +384,7 @@ def test_run_research_retries_without_attachments_after_empty_response(
 
     _, recipients = research_leads.run_research(config(project, verbose=True))
 
-    assert calls == [[attachment], []]
+    assert calls == [[cv], []]
     assert recipients == [Recipient(email="a@example.com", company="A")]
     assert "retrying once without attachment uploads" in capsys.readouterr().out
 
@@ -383,7 +400,8 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
-        assert "Existing email exclusion list:\n(none)" in prompt
+        assert "Existing email exclusion list:" in prompt
+        assert "(none)" in prompt
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
     monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
@@ -476,7 +494,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
 
     class FakeResponses:
         @staticmethod
-        def create(model, input, tools):
+        def create(model, input, tools, **kwargs):
             assert model == "gpt-5.4"
             assert input == [
                 {
@@ -488,6 +506,8 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
                 }
             ]
             assert tools == [{"type": "web_search"}]
+            assert kwargs["tool_choice"] == "auto"
+            assert kwargs["reasoning"] == {"effort": "high"}
             output_item = py_types.SimpleNamespace(type="message", status="completed", content=[])
             return py_types.SimpleNamespace(output_text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n", output=[output_item])
 
@@ -571,6 +591,9 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             assert model == "gemini-2.5-flash-lite"
             assert contents == ["prompt", uploaded]
             assert config.temperature == 0.2
+            assert config.thinking_config.thinking_level == "HIGH"
+            assert config.tool_config.function_calling_config.mode == "AUTO"
+            assert config.tool_config.include_server_side_tool_invocations is True
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
@@ -580,9 +603,14 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             self.models = FakeModels()
 
     fake_types = py_types.SimpleNamespace(
-        GenerateContentConfig=lambda tools, temperature: py_types.SimpleNamespace(tools=tools, temperature=temperature),
+        GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
         GoogleSearch=lambda: py_types.SimpleNamespace(name="google_search"),
+        ToolConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
+        ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
@@ -626,9 +654,14 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             self.models = FakeModels()
 
     fake_types = py_types.SimpleNamespace(
-        GenerateContentConfig=lambda tools, temperature: py_types.SimpleNamespace(tools=tools, temperature=temperature),
+        GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
         GoogleSearch=lambda: py_types.SimpleNamespace(name="google_search"),
+        ToolConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
+        ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
@@ -677,9 +710,14 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             self.models = FakeModels()
 
     fake_types = py_types.SimpleNamespace(
-        GenerateContentConfig=lambda tools, temperature: py_types.SimpleNamespace(tools=tools, temperature=temperature),
+        GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
         GoogleSearch=lambda: py_types.SimpleNamespace(name="google_search"),
+        ToolConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
+        ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        ThinkingLevel=py_types.SimpleNamespace(HIGH="HIGH"),
     )
     fake_google = py_types.ModuleType("google")
     fake_genai = py_types.ModuleType("google.genai")
