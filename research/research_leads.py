@@ -1,5 +1,5 @@
 from __future__ import annotations
-from . import mode_instructions
+
 import argparse
 import csv
 import json
@@ -21,6 +21,7 @@ from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
 from mail_sender.recipients import read_recipients
 from mail_sender.sent_log import read_logged_emails
+from . import mode_instructions
 
 SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
 
@@ -236,10 +237,6 @@ def read_input_context(directory: Path, max_chars: int = 6000) -> str:
 
 
 def build_prompt(config: ResearchConfig, mode: MailMode, existing_emails: set[str], input_context: str = "") -> str:
-
-
-
-
     excluded = "\n".join(sorted(existing_emails)) or "(none)"
     input_reference = input_context.strip() or "(no mode-specific input files found)"
     contact_requirement = (
@@ -368,6 +365,12 @@ def generate_with_openai(model: str, prompt: str, attachment_paths: list[Path], 
             }
         ],
         tools=[{"type": "web_search"}],
+        tool_choice="auto",
+        reasoning={
+            "effort": "high",
+            "summary": "auto",
+        },
+        max_output_tokens=32000,
     )
     _verbose(verbose, "OpenAI response received.")
     response_text = _extract_openai_response_text(response)
