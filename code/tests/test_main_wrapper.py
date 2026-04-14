@@ -51,6 +51,8 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "openai",
                 "--mode",
                 "Freelance_English",
+                "--base-dir",
+                str(app_main.PROJECT_ROOT),
                 "--min-companies",
                 "2",
                 "--max-companies",
@@ -67,6 +69,8 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
             [
                 "--mode",
                 "Freelance_English",
+                "--base-dir",
+                str(app_main.PROJECT_ROOT),
                 "--signature-logo",
                 "templates/signature-logo.png",
                 "--signature-logo-width",

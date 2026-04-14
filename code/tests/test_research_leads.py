@@ -120,6 +120,13 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     assert cfg.base_dir == project
 
 
+def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    monkeypatch.setenv("RESEARCH_BASE_DIR", "")
+
+    assert research_leads.default_config().base_dir == research_leads.BASE_DIR.resolve()
+
+
 def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
     append_log(project / "output/send_phd.xlsx", Recipient(email="logged@example.com", company="Logged"))
     (project / "input/Freelance_German/existing.csv").write_text(

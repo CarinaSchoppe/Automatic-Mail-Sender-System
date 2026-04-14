@@ -82,7 +82,7 @@ def default_config() -> ResearchConfig:
         min_companies=_env_int("RESEARCH_MIN_COMPANIES", MIN_COMPANIES),
         max_companies=_env_int("RESEARCH_MAX_COMPANIES", MAX_COMPANIES),
         person_emails_per_company=_env_int("RESEARCH_PERSON_EMAILS_PER_COMPANY", PERSON_EMAILS_PER_COMPANY),
-        base_dir=Path(os.getenv("RESEARCH_BASE_DIR", str(BASE_DIR))).resolve(),
+        base_dir=_env_path("RESEARCH_BASE_DIR", BASE_DIR),
         write_output=_env_bool("RESEARCH_WRITE_OUTPUT", WRITE_OUTPUT),
         verbose=_env_bool("RESEARCH_VERBOSE", False),
         upload_attachments=_env_bool("RESEARCH_UPLOAD_ATTACHMENTS", UPLOAD_ATTACHMENTS),
@@ -809,6 +809,13 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None or not value.strip():
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_path(name: str, default: Path) -> Path:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default.resolve()
+    return Path(value).resolve()
 
 
 def _model_for_provider(provider: str) -> str:

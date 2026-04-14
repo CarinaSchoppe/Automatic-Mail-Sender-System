@@ -119,7 +119,7 @@ def _print_effective_settings() -> None:
 
 
 def _build_research_args() -> list[str]:
-    args = ["--provider", RESEARCH_AI_PROVIDER, "--mode", MODE]
+    args = ["--provider", RESEARCH_AI_PROVIDER, "--mode", MODE, "--base-dir", str(PROJECT_ROOT)]
     for flag, value in [
         ("--min-companies", RESEARCH_MIN_COMPANIES),
         ("--max-companies", RESEARCH_MAX_COMPANIES),
@@ -139,6 +139,8 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
     args = [
         "--mode",
         MODE,
+        "--base-dir",
+        str(PROJECT_ROOT),
         "--signature-logo",
         SIGNATURE_LOGO,
         "--signature-logo-width",
