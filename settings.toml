@@ -87,16 +87,16 @@ SEND_TARGET_COUNT = 550
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 25
+PARALLEL_THREADS = 5
 
 
 # Mail
 
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
-VERIFY_EMAIL_SMTP = true
+VERIFY_EMAIL_SMTP = false
 
 # Skip DNS verification: If checked, skips MX/A record checks but still validates syntax and deduplication.
-SKIP_EMAIL_DNS_CHECK = false
+SKIP_EMAIL_DNS_CHECK = true
 
 # Verify timeout: Timeout for recipient SMTP probe.
 VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
@@ -105,7 +105,7 @@ VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
 RESEND_EXISTING = false
 
 # Skip invalid check: If checked, ignores invalid_mails.csv so listed recipients can be sent again.
-SKIP_INVALID_CHECK = false
+SKIP_INVALID_CHECK = true
 
 # Allow empty attachments: Allows running a mode even when the attachment folder is empty.
 ALLOW_EMPTY_ATTACHMENTS = false

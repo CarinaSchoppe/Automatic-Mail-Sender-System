@@ -163,6 +163,11 @@ class ThreadSafeRecipientSink:
                 with path.open("w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
                     writer.writerow(["company", "mail", "source_url"])
+                    f.flush()
+                    try:
+                        os.fsync(f.fileno())
+                    except OSError:
+                        pass
                 self.thread_files[thread_id] = path
                 return path
             except OSError as e:
@@ -232,6 +237,11 @@ class ThreadSafeRecipientSink:
                     with thread_file.open("a", newline="", encoding="utf-8") as f:
                         writer = csv.writer(f)
                         writer.writerow([recipient.company, recipient.email, recipient.source_url])
+                        f.flush()
+                        try:
+                            os.fsync(f.fileno())
+                        except OSError:
+                            pass
                 except OSError as e:
                     _verbose(self.config.verbose, f"Instant save failed for {recipient.email}: {e}")
 

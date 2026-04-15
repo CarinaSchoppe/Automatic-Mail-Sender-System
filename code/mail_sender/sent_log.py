@@ -159,7 +159,10 @@ def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index
                 writer.writerow(headers)
             writer.writerow(row)
             f.flush()
-            os.fsync(f.fileno())
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
 
 
 def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
