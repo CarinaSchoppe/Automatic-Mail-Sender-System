@@ -68,7 +68,7 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
             except StopIteration:
                 return []
 
-            company_index = _find_header_index(header, {"company", "organization"})
+            company_index = _find_header_index(header, {"company", "organization", "firma"})
             email_index = _find_header_index(header, EMAIL_KEYS)
             if email_index is None:
                 return []
@@ -78,16 +78,18 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
                 if not row:
                     continue
                 company = ""
-                if company_index is not None and len(row) >= company_index:
+                if company_index is not None and 0 < company_index <= len(row):
                     company = row[company_index - 1].strip()
 
                 email = ""
-                if len(row) >= email_index:
+                if 0 < email_index <= len(row):
                     email = normalize_email(row[email_index - 1]).lower()
 
                 rows.append({"company": company, "mail": email})
             return rows
     except (OSError, csv.Error):
+        return []
+    except Exception: # Fallback for unexpected errors during read
         return []
 
 

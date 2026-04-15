@@ -23,7 +23,6 @@ def generate_with_gemini(
         verbose: bool = False,
         load_env: Callable[[], object] = load_dotenv,
 ) -> str | None | Any:
-    global response
     load_env()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -58,6 +57,7 @@ def generate_with_gemini(
     )
 
     max_retries = 5
+    response: Any = None
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(

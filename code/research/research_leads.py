@@ -43,8 +43,6 @@ from research.parsing import parse_recipients, normalize_company as _normalize_c
 from research.types import RecipientSink, ResearchConfig
 from research.self_research import (
     default_self_keywords as _default_self_keywords,
-    collect_self_search_result_urls,
-    crawl_self_result_url,
 )
 
 # Late import for prompts to avoid circular issues
@@ -168,6 +166,8 @@ def _load_settings() -> dict:
         with settings_path.open("rb") as handle:
             return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    except Exception: # Fallback for unexpected errors
         return {}
 
 
@@ -446,7 +446,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
                         _info(f"Target of {target_count} reached. Stopping batch.")
                         stop_event.set()
                 except Exception as e:
-                    _info(f"AI request failed in thread: {e}")
+                    _info(f"AI request failed in thread: {type(e).__name__}: {e}")
 
         batch_actually_added = 0
         for r in sink.recipients:
@@ -535,9 +535,9 @@ def _generate_research_response(
     if stop_event and stop_event.is_set():
         return ""
 
-    raw_response = generate_with_provider(
+    raw_response = str(generate_with_provider(
         config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose, config.ollama_base_url
-    )
+    ))
     if stop_event and stop_event.is_set():
         return raw_response
 
@@ -547,9 +547,9 @@ def _generate_research_response(
         if stop_event and stop_event.is_set():
             return raw_response
 
-        raw_response = generate_with_provider(
+        raw_response = str(generate_with_provider(
             config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
-        )
+        ))
     if stop_event and stop_event.is_set():
         return raw_response
 
@@ -561,9 +561,9 @@ def _generate_research_response(
         if stop_event and stop_event.is_set():
             return raw_response
 
-        raw_response = generate_with_provider(
+        raw_response = str(generate_with_provider(
             config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
-        )
+        ))
     return raw_response
 
 
@@ -574,58 +574,7 @@ def run_self_research(
         existing_companies: set[str],
 ) -> list[Recipient]:
     """Compatibility wrapper around the self research base workflow."""
-    target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
-
-    queries = _self_search_queries(config, mode)
-    result_urls = collect_self_search_result_urls(config, queries)
-    if not result_urls:
-        raise RuntimeError("Self research found no search result URLs.")
-
-    _info(f"Starting self-research crawl on {len(result_urls)} site(s) with target={target_count}.")
-    stop_event = threading.Event()
-    sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config)
-
-    with ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls))) as executor:
-        # We wrap the crawl call to ensure we handle the sink and legacy test mocks.
-        def _crawl_task(u):
-            # If it's a mock that doesn't accept sink, it will fail here, 
-            # so we try to call it with fewer args if needed.
-            try:
-                return crawl_self_result_url(config, u, stop_event, sink)
-            except TypeError:
-                return crawl_self_result_url(config, u, stop_event)  # type: ignore
-
-        futures = {executor.submit(_crawl_task, url): url for url in result_urls}
-        for future in as_completed(futures):
-            if sink.is_full():
-                stop_event.set()
-                break
-
-            try:
-                candidates = future.result()
-                thread_added = 0
-                for candidate in candidates:
-                    if sink.is_full():
-                        break
-                    # Candidates already added via sink inside crawl_self_result_url 
-                    # won't be re-added here because add_recipient handles seen_emails check.
-                    if sink.add_recipient(candidate):
-                        thread_added += 1
-            except Exception as exc:
-                _verbose(config.verbose, f"Self research crawl failed for {futures[future]}: {exc}")
-                continue
-
-            if thread_added > 0:
-                _info(f"Self-research found {thread_added} new recipients. Progress: {len(sink.recipients)}/{target_count}.")
-
-            if sink.is_full():
-                _info(f"Self-research target of {target_count} reached.")
-                stop_event.set()
-                break
-
-    if not sink.recipients:
-        raise RuntimeError("Self research found no new usable email addresses.")
-    return sink.recipients
+    return _self_research.run_self_research(config, mode, existing_emails, existing_companies)
 
 
 def run_ollama_web_research(
@@ -634,25 +583,18 @@ def run_ollama_web_research(
         existing_emails: set[str],
         existing_companies: set[str],
 ) -> list[Recipient]:
-    candidates = run_self_research(config, mode, existing_emails, existing_companies)
-    target_count = config.send_target_count or config.max_companies
-    if len(candidates) >= target_count:
-        _info(f"Ollama web research: target reached via crawl ({len(candidates)} candidates). Skipping AI filtering.")
-        return candidates[:target_count]
-
-    _info(f"Ollama web research: filtering {len(candidates)} candidates via AI model {config.model}.")
-    prompt = _self_research.build_ollama_web_research_prompt(config, mode, _self_research._recipients_to_csv_text(candidates))
-    raw_response = generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
-    recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
-
-    final_recipients = recipients if recipients else candidates
-    _info(f"Ollama web research finished. Found {len(final_recipients)} usable recipients.")
-    return final_recipients[:target_count]
+    return _self_research.run_ollama_web_research(config, mode, existing_emails, existing_companies)
 
 
-def _self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
-    keywords = [keyword.strip() for keyword in config.self_search_keywords if keyword.strip()]
-    return keywords or list(_default_self_keywords(mode.label))
+def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
+    return _self_research.self_search_queries(config, mode)
+
+
+def normalize_company(company: str) -> str:
+    return _parsing.normalize_company(company)
+
+
+_normalize_company = normalize_company
 
 
 def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path]:
@@ -750,6 +692,10 @@ def collect_mode_existing_companies(mode: MailMode, verbose: bool = False) -> se
     return companies
 
 
+def _is_verbose_log_enabled(verbose: bool) -> bool:
+    return verbose
+
+
 def read_input_context(directory: Path, max_chars: int = 6000, verbose: bool = False) -> str:
     parts: list[str] = []
     files = list_recipient_files(directory)
@@ -814,15 +760,6 @@ def build_prompt(
         EXCLUDED_COMPANIES=excluded_companies,
         INPUT_CONTEXT=input_reference
     )
-
-
-def _parse_headerless_csv_recipients(
-        raw_text: str,
-        existing_emails: set[str],
-        existing_companies: set[str] | None = None,
-        verbose: bool = False,
-) -> list[Recipient]:
-    return _parsing.parse_headerless_csv_recipients(raw_text, existing_emails, existing_companies, verbose)
 
 
 def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Recipient]) -> Path:

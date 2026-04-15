@@ -219,6 +219,9 @@ def find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
     return None
 
 
-def _verbose(enabled: bool, message: str) -> None:
+def verbose_log(enabled: bool, message: str) -> None:
     if enabled:
         print(f"[VERBOSE] {message}")
+
+
+_verbose = verbose_log

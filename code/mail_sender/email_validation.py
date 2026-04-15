@@ -84,6 +84,8 @@ def _probe_mailbox_exists(email: str, mx_hosts: list[str], smtp_from_email: str,
                 code, message = smtp.rcpt(email)
         except (OSError, smtplib.SMTPException):
             continue
+        except Exception: # Fallback for unexpected socket or SMTP errors during probe
+            continue
 
         if code in DEFINITE_MAILBOX_REJECT_CODES:
             reason = _decode_smtp_message(message) or f"mailbox rejected by {host} with SMTP {code}"

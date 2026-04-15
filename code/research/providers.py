@@ -6,26 +6,23 @@ from typing import Any
 from dotenv import load_dotenv
 
 from research.provider_clients.common import (
-    extract_gemini_response_text as _extract_response_text,
-    extract_openai_response_text as _extract_openai_response_text,
+    extract_gemini_response_text,
+    extract_openai_response_text,
     fake_txt_extensions,
     verbose_gemini_candidates,
     verbose_openai_output,
 )
 
-_fake_txt_extensions = fake_txt_extensions
-_verbose_gemini_candidates = verbose_gemini_candidates
-_verbose_openai_output = verbose_openai_output
 from research.provider_clients.gemini_provider import generate_with_gemini as _gemini_generate
 from research.provider_clients.ollama_provider import generate_with_ollama
 from research.provider_clients.openai_provider import generate_with_openai as _openai_generate
 
 __all__ = [
-    "_extract_response_text",
-    "_extract_openai_response_text",
-    "_fake_txt_extensions",
-    "_verbose_gemini_candidates",
-    "_verbose_openai_output",
+    "extract_gemini_response_text",
+    "extract_openai_response_text",
+    "fake_txt_extensions",
+    "verbose_gemini_candidates",
+    "verbose_openai_output",
     "generate_with_provider",
     "generate_with_gemini",
     "generate_with_openai",

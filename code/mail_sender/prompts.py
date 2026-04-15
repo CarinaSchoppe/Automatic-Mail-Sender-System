@@ -201,6 +201,8 @@ def load_prompts(path: Path = PROMPTS_PATH) -> dict[str, str]:
         except (OSError, tomllib.TOMLDecodeError):
             # Fallback to defaults on error
             pass
+        except Exception: # Fallback for unexpected errors
+            pass
     return prompts
 
 
@@ -208,12 +210,18 @@ def save_prompts(prompts: dict[str, str], path: Path = PROMPTS_PATH) -> None:
     """Saves prompts to a TOML file."""
     lines = ["# MailSenderSystem AI Prompts", "", "[prompts]"]
     for key, value in prompts.items():
-        # Escape backslashes and quotes for TOML string
-        escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
         if "\n" in value:
-            # Use multi-line string for better readability
-            lines.append(f'"{key}" = \"\"\"\n{value}\"\"\"')
+            # Use multi-line string for better readability, and escape triple quotes if needed
+            escaped_multiline = value.replace('"""', '\\"\\"\\"')
+            lines.append(f'"{key}" = \"\"\"\n{escaped_multiline}\"\"\"')
         else:
+            # Escape backslashes and quotes for TOML string
+            escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
             lines.append(f'"{key}" = "{escaped_value}"')
 
-    path.write_text("\n".join(lines), encoding="utf-8")
+    try:
+        path.write_text("\n".join(lines), encoding="utf-8")
+    except OSError:
+        pass
+    except Exception: # Fallback for unexpected write errors
+        pass

@@ -19,8 +19,9 @@ def test_mail_sender_workbench_collects_and_saves_settings(tmp_path: Path) -> No
         app.variables["MODE"].set("PhD")
         app.env_variables["SMTP_USERNAME"].set("mailer")
         app.variables["PARALLEL_THREADS"].set(9)
-        app.keyword_text.delete("1.0", "end")
-        app.keyword_text.insert("1.0", "alpha email\nbeta contact\n")
+        if app.keyword_text is not None:
+            app.keyword_text.delete("1.0", "end")
+            app.keyword_text.insert("1.0", "alpha email\nbeta contact\n")
 
         values = app.collect_form_values()
         env_values = app.collect_env_values()

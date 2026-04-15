@@ -240,9 +240,14 @@ def _print_run_summary(sent_details: list[dict[str, str]]) -> None:
     # Sort by company
     sorted_details = sorted(sent_details, key=lambda x: (x.get("company") or "").lower())
     for detail in sorted_details:
-        company = detail.get("company") or detail.get("mail").split("@")[1].split(".")[0] or "(No Company)"
-        email = detail.get("mail")
-        print(f"- {company}: {email}")
+        mail = detail.get("mail") or ""
+        company = detail.get("company")
+        if not company and mail and "@" in mail:
+            parts = mail.split("@")
+            if len(parts) > 1:
+                company = parts[1].split(".")[0]
+        company = company or "(No Company)"
+        print(f"- {company}: {mail}")
     print("=" * 60 + "\n")
 
 

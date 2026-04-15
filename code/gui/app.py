@@ -247,17 +247,17 @@ class MailSenderWorkbench:
         self._attach_hover(button, HOVER_TEXTS.get(text, text))
         return button
 
+    def _on_enter(self, text: str) -> None:
+        if hasattr(self, "status_var") and self.status_var:
+            self.status_var.set(text)
+
+    def _on_leave(self) -> None:
+        if hasattr(self, "status_var") and self.status_var:
+            self.status_var.set("Ready.")
+
     def _attach_hover(self, widget: tk.Widget, text: str) -> None:
-        def on_enter(_event: tk.Event) -> None:
-            if hasattr(self, "status_var"):
-                self.status_var.set(text)
-
-        def on_leave(_event: tk.Event) -> None:
-            if hasattr(self, "status_var"):
-                self.status_var.set("Ready.")
-
-        widget.bind("<Enter>", on_enter)
-        widget.bind("<Leave>", on_leave)
+        widget.bind("<Enter>", lambda _e: self._on_enter(text))
+        widget.bind("<Leave>", lambda _e: self._on_leave())
 
     def _build_settings_tab(self) -> None:
         top = ttk.Frame(self.settings_tab)
@@ -323,7 +323,8 @@ class MailSenderWorkbench:
                     return
                 updating["active"] = True
                 value = source_var.get()
-                target_var.set(str(int(value)) if integer else str(round(float(value), 2)))
+                text_val = str(int(value)) if integer else str(round(float(value), 2))
+                target_var.set(text_val)
                 updating["active"] = False
 
             def sync_slider(*_args, source_var=entry_var, target_var=var, setting=spec) -> None:
@@ -341,7 +342,8 @@ class MailSenderWorkbench:
                 if setting.max_value is not None:
                     parsed = min(float(setting.max_value), parsed)
                 updating["active"] = True
-                target_var.set(int(parsed) if setting.kind == "int" else parsed)
+                var_val = int(parsed) if setting.kind == "int" else parsed
+                target_var.set(var_val)
                 updating["active"] = False
                 self._schedule_autosave("env" if env else "settings")
 
@@ -422,10 +424,11 @@ class MailSenderWorkbench:
             return
 
         if mode == "Overseer":
-            self.prompt_info_var.set(
+            info_text = (
                 "Placeholders: {MODE_LABEL}, {TASK_INSTRUCTIONS}, {MIN_COMPANIES}, {MAX_COMPANIES}, "
                 "{CONTACT_REQUIREMENT}, {EXCLUDED_EMAILS}, {EXCLUDED_COMPANIES}, {INPUT_CONTEXT}"
             )
+            self.prompt_info_var.set(info_text)
         else:
             self.prompt_info_var.set("")
 
@@ -557,7 +560,8 @@ class MailSenderWorkbench:
             return
 
         self._append_console(f"[INFO] Saved prompts to {self.project_root / 'prompts.toml'}\n")
-        self.status_var.set("Prompts saved successfully.")
+        if hasattr(self, "status_var") and self.status_var:
+            self.status_var.set("Prompts saved successfully.")
 
     def _reset_current_prompt(self) -> None:
         from mail_sender.prompts import DEFAULT_PROMPTS
@@ -567,7 +571,8 @@ class MailSenderWorkbench:
             if messagebox.askyesno("Reset Prompt", f"Are you sure you want to reset the prompt for '{mode}' to its default?"):
                 self.prompt_text.delete("1.0", tk.END)
                 self.prompt_text.insert("1.0", DEFAULT_PROMPTS[mode])
-                self.status_var.set(f"Reset prompt for {mode} to default.")
+                if hasattr(self, "status_var") and self.status_var:
+                    self.status_var.set(f"Reset prompt for {mode} to default.")
 
     def save_settings(self) -> None:
         try:
@@ -911,8 +916,9 @@ class MailSenderWorkbench:
         self.root.after(100, self._drain_queue)
 
     def _append_console(self, text: str) -> None:
-        self.console.insert("end", text)
-        self.console.see("end")
+        if hasattr(self, "console") and self.console:
+            self.console.insert("end", text)
+            self.console.see("end")
 
     def _style_text_widget(self, widget: tk.Text) -> None:
         widget.configure(

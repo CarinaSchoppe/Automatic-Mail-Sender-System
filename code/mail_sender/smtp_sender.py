@@ -20,8 +20,9 @@ class SmtpMailer:
 
     def __enter__(self) -> "SmtpMailer":
         context = ssl.create_default_context()
-        self._server = smtplib.SMTP_SSL(self._config.host, self._config.port, context=context)
-        self._server.login(self._config.username, self._config.password)
+        server = smtplib.SMTP_SSL(self._config.host, self._config.port, context=context)
+        server.login(self._config.username, self._config.password)
+        self._server = server
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:

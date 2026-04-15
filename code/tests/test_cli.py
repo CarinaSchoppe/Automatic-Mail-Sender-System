@@ -164,11 +164,8 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def send(recipient, subject, attachments, inline_images):
+    def send_wrapper(recipient, subject, text_body, html_body, attachments, inline_images):
         sent.append((recipient.email, subject, len(attachments), len(inline_images)))
-
-    def send(*args, **kwargs):
-        send(*args, **kwargs)
 
     class FakeMailer:
         def __init__(self, config) -> None:
@@ -179,6 +176,9 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, *args, **kwargs):
+            send_wrapper(*args, **kwargs)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -200,11 +200,11 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def send(recipient):
-        sent.append(recipient.email)
-
-    def send():
-        send()
+    def send_wrapper(*args, **kwargs):
+        if len(args) > 0:
+            sent.append(args[0].email)
+        elif "recipient" in kwargs:
+            sent.append(kwargs["recipient"].email)
 
     class FakeMailer:
         def __init__(self, config) -> None:
@@ -215,6 +215,9 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, *args, **kwargs):
+            send_wrapper(*args, **kwargs)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -237,12 +240,12 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
     sent = []
     lock = threading.Lock()
 
-    def send(recipient):
+    def send_wrapper(*args, **kwargs):
         with lock:
-            sent.append(recipient.email)
-
-    def send():
-        send()
+            if len(args) > 0:
+                sent.append(args[0].email)
+            elif "recipient" in kwargs:
+                sent.append(kwargs["recipient"].email)
 
     class FakeMailer:
         def __init__(self, config) -> None:
@@ -253,6 +256,9 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, *args, **kwargs):
+            send_wrapper(*args, **kwargs)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -348,7 +354,7 @@ def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Pat
     assert result == 0
     assert input_file.exists()
 
-    def broken_render():
+    def broken_render(*args, **kwargs):
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)
@@ -390,7 +396,7 @@ def test_cli_deletes_input_files_when_everything_was_already_logged(project: Pat
 def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project: Path, capsys) -> None:
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
 
-    def broken_render():
+    def broken_render(*args, **kwargs):
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)

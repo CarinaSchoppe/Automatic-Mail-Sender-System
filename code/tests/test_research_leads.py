@@ -535,7 +535,8 @@ def test_generate_with_ollama_posts_to_local_api(monkeypatch: pytest.MonkeyPatch
         captured["timeout"] = timeout
         return FakeResponse()
 
-    monkeypatch.setattr(research_leads.urllib.request, "urlopen", fake_urlopen)
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
     result = research_leads.generate_with_ollama("llama3.1:8b", "prompt", "http://localhost:11434", True)
 
@@ -756,9 +757,9 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
 
     class FakeResponses:
         @staticmethod
-        def create(model, input, tools, **kwargs):
+        def create(model, input_data, tools, **kwargs):
             assert model == "gpt-5.4"
-            assert input == [
+            assert input_data == [
                 {
                     "role": "user",
                     "content": [
@@ -804,8 +805,8 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
     class FakeResponses:
         @staticmethod
         def create():
-            content = [py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")]
-            output = [py_types.SimpleNamespace(type="message", status="completed", content=content)]
+            input_data = [py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")]
+            output = [py_types.SimpleNamespace(type="message", status="completed", content=input_data)]
             return py_types.SimpleNamespace(output_text="", output=output)
 
     class FakeOpenAI:

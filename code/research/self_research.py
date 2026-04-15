@@ -41,7 +41,7 @@ def run_self_research(
     seen_companies = {company for company in existing_companies if company}
     recipients: list[Recipient] = []
 
-    queries = _self_search_queries(config, mode)
+    queries = self_search_queries(config, mode)
     _info(
         f"Starting self research with {len(queries)} keyword(s), "
         f"{config.self_search_pages} search page(s), crawl depth {config.self_crawl_depth}, "
@@ -145,9 +145,9 @@ def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) 
     seen: set[str] = set()
     for query in queries:
         for page in range(config.self_search_pages):
-            search_url = _google_search_url(query, page * config.self_results_per_page)
+            search_url = google_search_url(query, page * config.self_results_per_page)
             _verbose(config.verbose, f"Self research search page: {search_url}")
-            html_text = _fetch_text(search_url, config.self_request_timeout, config.verbose)
+            html_text = fetch_text(search_url, config.self_request_timeout, config.verbose)
             if not html_text:
                 continue
             for result_url in _extract_google_result_urls(html_text):
@@ -181,7 +181,7 @@ def crawl_self_result_url(
             continue
         visited.add(normalized)
 
-        page_text = _fetch_text(url, config.self_request_timeout, config.verbose)
+        page_text = fetch_text(url, config.self_request_timeout, config.verbose)
         if not page_text:
             continue
 
@@ -205,7 +205,7 @@ def crawl_self_result_url(
     return candidates
 
 
-def _self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
+def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
     keywords = [keyword.strip() for keyword in config.self_search_keywords if keyword.strip()]
     if not keywords:
         keywords = list(default_self_keywords(mode.label))
@@ -233,12 +233,15 @@ def default_self_keywords(mode_name: str) -> tuple[str, ...]:
     )
 
 
-def _google_search_url(query: str, start: int) -> str:
+def google_search_url(query: str, start: int) -> str:
     params = urllib.parse.urlencode({"q": query, "num": "10", "start": str(start), "hl": "en"})
     return f"https://www.google.com/search?{params}"
 
 
-def _fetch_text(url: str, timeout: float, verbose: bool) -> str:
+_google_search_url = google_search_url
+
+
+def fetch_text(url: str, timeout: float, verbose: bool) -> str:
     try:
         request = urllib.request.Request(url, headers=HTTP_HEADERS)
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -340,11 +343,14 @@ def _is_blocked_result_url(url: str) -> bool:
     return any(domain in netloc for domain in blocked)
 
 
-def _recipients_to_csv_text(recipients: list[Recipient]) -> str:
+def recipients_to_csv_text(recipients: list[Recipient]) -> str:
     lines = ["company,mail,source_url"]
     for recipient in recipients:
         lines.append(f"{_csv_cell(recipient.company)},{_csv_cell(recipient.email)},self-crawl")
     return "\n".join(lines)
+
+
+_recipients_to_csv_text = recipients_to_csv_text
 
 
 def _csv_cell(value: str) -> str:
