@@ -4,7 +4,7 @@ import csv
 from dataclasses import dataclass
 from pathlib import Path
 
-EMAIL_KEYS = {"email", "e-mail", "mail", "emailaddress"}
+EMAIL_KEYS = {"email", "e-mail", "mail", "email_address", "emailaddress"}
 COMPANY_KEYS = {"company", "organization"}
 RECIPIENT_FILE_SUFFIXES = {".csv", ".txt"}
 

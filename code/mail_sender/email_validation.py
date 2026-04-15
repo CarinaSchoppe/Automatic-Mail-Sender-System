@@ -63,7 +63,7 @@ def _mail_exchange_hosts(domain: str) -> list[str]:
             if str(answer.exchange).strip(".")
         ]
         return [host for host in hosts if host != "."]
-    except dns.exception.DNSException:
+    except (dns.exception.DNSException, AttributeError):
         return []
 
 

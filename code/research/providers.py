@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
 from research.provider_clients.common import (
     extract_gemini_response_text as _extract_response_text,
-)
-from research.provider_clients.common import (
     extract_openai_response_text as _extract_openai_response_text,
+    fake_txt_extensions,
+    verbose_gemini_candidates,
+    verbose_openai_output,
 )
+
+_fake_txt_extensions = fake_txt_extensions
+_verbose_gemini_candidates = verbose_gemini_candidates
+_verbose_openai_output = verbose_openai_output
 from research.provider_clients.gemini_provider import generate_with_gemini as _gemini_generate
 from research.provider_clients.ollama_provider import generate_with_ollama
 from research.provider_clients.openai_provider import generate_with_openai as _openai_generate
@@ -35,7 +41,7 @@ def generate_with_provider(
         reasoning_effort: str = "middle",
         verbose: bool = False,
         ollama_base_url: str | None = None,
-) -> str:
+) -> str | None | Any:
     normalized = provider.strip().lower()
     if normalized == "gemini":
         return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
@@ -52,7 +58,7 @@ def generate_with_gemini(
         attachment_paths: list[Path],
         reasoning_effort: str = "middle",
         verbose: bool = False,
-) -> str:
+) -> str | None | Any:
     return _gemini_generate(model, prompt, attachment_paths, reasoning_effort, verbose, load_dotenv)
 
 
@@ -62,5 +68,5 @@ def generate_with_openai(
         attachment_paths: list[Path],
         reasoning_effort: str = "middle",
         verbose: bool = False,
-) -> str:
+) -> str | None | Any:
     return _openai_generate(model, prompt, attachment_paths, reasoning_effort, verbose, load_dotenv)

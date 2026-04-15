@@ -16,7 +16,7 @@ import tomllib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import cast
+from typing import cast, Any
 
 from dotenv import load_dotenv
 
@@ -123,7 +123,7 @@ class ThreadSafeRecipientSink:
             # Support both real and SimpleNamespace mocks
             is_valid = getattr(validation, "is_valid", False)
             reason = getattr(validation, "reason", "unknown")
-        except Exception as e:
+        except OSError as e:  # pragma: no cover
             _verbose(self.config.verbose, f"Validation failed with exception for {recipient.email}: {e}")
             return False
         if not is_valid:
@@ -531,7 +531,7 @@ def _generate_research_response(
         existing_emails: set[str],
         input_context: str,
         stop_event: threading.Event | None = None,
-) -> str:
+) -> str | None | Any:
     if stop_event and stop_event.is_set():
         return ""
 

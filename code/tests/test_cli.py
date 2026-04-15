@@ -167,6 +167,9 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
     def send(recipient, subject, attachments, inline_images):
         sent.append((recipient.email, subject, len(attachments), len(inline_images)))
 
+    def send(*args, **kwargs):
+        send(*args, **kwargs)
+
     class FakeMailer:
         def __init__(self, config) -> None:
             self.config = config
@@ -199,6 +202,9 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
 
     def send(recipient):
         sent.append(recipient.email)
+
+    def send():
+        send()
 
     class FakeMailer:
         def __init__(self, config) -> None:
@@ -234,6 +240,9 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
     def send(recipient):
         with lock:
             sent.append(recipient.email)
+
+    def send():
+        send()
 
     class FakeMailer:
         def __init__(self, config) -> None:

@@ -248,11 +248,11 @@ class MailSenderWorkbench:
         return button
 
     def _attach_hover(self, widget: tk.Widget, text: str) -> None:
-        def on_enter(_event):
+        def on_enter(_event: tk.Event) -> None:
             if hasattr(self, "status_var"):
                 self.status_var.set(text)
 
-        def on_leave(_event):
+        def on_leave(_event: tk.Event) -> None:
             if hasattr(self, "status_var"):
                 self.status_var.set("Ready.")
 

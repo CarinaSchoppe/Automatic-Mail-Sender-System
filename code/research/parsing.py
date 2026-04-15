@@ -6,7 +6,7 @@ import re
 
 from mail_sender.recipients import COMPANY_KEYS, EMAIL_KEYS, Recipient, normalize_email, normalize_key
 
-SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
+SOURCE_KEYS = {"source", "source-url", "source_url", "sourceurl", "url", "website"}
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 COMPANY_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 
