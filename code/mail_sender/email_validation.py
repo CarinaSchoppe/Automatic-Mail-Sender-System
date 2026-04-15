@@ -20,6 +20,7 @@ def validate_email_address(
         verify_mailbox: bool = False,
         smtp_from_email: str = "postmaster@localhost",
         smtp_timeout: float = 8.0,
+        skip_dns_check: bool = False,
 ) -> EmailValidationResult:
     normalized = email.strip().lower()
     if not EMAIL_PATTERN.match(normalized):
@@ -28,6 +29,10 @@ def validate_email_address(
     domain = normalized.rsplit("@", 1)[1]
     if domain.startswith("-") or domain.endswith("-") or ".." in domain:
         return EmailValidationResult(False, "invalid email domain syntax")
+
+    if skip_dns_check:
+        return EmailValidationResult(True)
+
     mx_hosts = _mail_exchange_hosts(domain)
     if not mx_hosts and not _domain_has_a_record(domain):
         return EmailValidationResult(False, "domain has no MX or A record")

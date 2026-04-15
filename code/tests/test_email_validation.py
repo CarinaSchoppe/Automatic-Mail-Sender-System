@@ -41,11 +41,19 @@ def test_validate_email_address_rejects_domain_without_dns(monkeypatch) -> None:
     assert result.reason == "domain has no MX or A record"
 
 
+def test_validate_email_address_skips_dns_when_requested() -> None:
+    # No mocks needed as we skip the DNS part
+    result = email_validation.validate_email_address("person@example.invalid", skip_dns_check=True)
+
+    assert result.is_valid is True
+    assert result.reason == ""
+
+
 def test_domain_has_a_record_uses_socket(monkeypatch) -> None:
     monkeypatch.setattr(socket, "getaddrinfo", lambda domain, port: [("ok",)])
     assert email_validation._domain_has_a_record("example.com") is True
 
-    def fail():
+    def fail(*_args, **_kwargs):
         raise socket.gaierror()
 
     monkeypatch.setattr(socket, "getaddrinfo", fail)
@@ -90,6 +98,15 @@ def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
 
         def __exit__(self, exc_type, exc, traceback):
             return None
+
+        def ehlo_or_helo_if_needed(self):
+            pass
+
+        def mail(self, sender):
+            pass
+
+        def rcpt(self, email):
+            return 550, "user unknown"
 
     monkeypatch.setattr(email_validation.smtplib, "SMTP", FakeSmtp)
 

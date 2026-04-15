@@ -55,6 +55,7 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SEND_TARGET_MAX_ROUNDS", "Max target rounds", "int", 0, "Mail", "Safety limit for repeated target loop. 0 means unlimited.", min_value=0, max_value=100),
     SettingSpec("PARALLEL_THREADS", "Parallel threads", "int", 7, "Mail", "Maximum parallel research requests and mail sender workers.", min_value=1, max_value=50),
     SettingSpec("VERIFY_EMAIL_SMTP", "Verify before send", "bool", False, "Mail", "Optional MX/SMTP recipient probe before real sending."),
+    SettingSpec("SKIP_EMAIL_DNS_CHECK", "Skip DNS verification", "bool", False, "Mail", "If checked, skips MX/A record checks but still validates syntax and deduplication."),
     SettingSpec("VERIFY_EMAIL_SMTP_TIMEOUT", "Verify timeout", "float", 8.0, "Mail", "Timeout for recipient SMTP probe.", min_value=1, max_value=60),
     SettingSpec("RESEND_EXISTING", "Resend existing", "bool", False, "Mail", "Allows sending to addresses already present in output logs."),
     SettingSpec("ALLOW_EMPTY_ATTACHMENTS", "Allow empty attachments", "bool", False, "Mail", "Allows running a mode even when the attachment folder is empty."),

@@ -8,7 +8,7 @@
 RUN_AI_RESEARCH = true
 
 # Mode: Selects which templates, input folder, attachments, and sent log are used.
-MODE = "Freelance_German"
+MODE = "PhD"
 
 
 # Research
@@ -81,13 +81,13 @@ SELF_VERIFY_EMAIL_SMTP = false
 SEND = true
 
 # Target new sends: Repeated research/send target. 0 disables the target loop.
-SEND_TARGET_COUNT = 57
+SEND_TARGET_COUNT = 500
 
 # Max target rounds: Safety limit for repeated target loop. 0 means unlimited.
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 3
+PARALLEL_THREADS = 25
 
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
 VERIFY_EMAIL_SMTP = true
@@ -108,7 +108,7 @@ LOG_DRY_RUN = false
 WRITE_SENT_LOG = true
 
 # Delete input after success: Deletes processed input CSV/TXT files after a successful send run.
-DELETE_INPUT_AFTER_SUCCESS = true
+DELETE_INPUT_AFTER_SUCCESS = false
 
 # Signature logo: Path to the inline signature image.
 SIGNATURE_LOGO = "templates/signature-logo.png"

@@ -43,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-send-count", type=int, help="Maximum number of filtered recipients to process in this run.")
     parser.add_argument("--parallel-threads", type=int, default=1, help="Maximum number of recipients to render/send in parallel.")
     parser.add_argument("--verify-email-smtp", action="store_true", help="Probe recipient MX servers for definitive mailbox rejects before sending.")
+    parser.add_argument("--skip-email-dns-check", action="store_true", help="Skip DNS/MX record verification during email validation.")
     parser.add_argument("--verify-email-smtp-timeout", type=float, default=8.0, help="Timeout in seconds for optional SMTP mailbox probes.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed pipeline logging.")
     args = parser.parse_args(argv)
@@ -232,9 +233,13 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
                 recipient.email,
                 verify_mailbox=True,
                 smtp_timeout=args.verify_email_smtp_timeout,
+                skip_dns_check=args.skip_email_dns_check,
             )
         else:
-            validation = validate_email_address(recipient.email)
+            validation = validate_email_address(
+                recipient.email,
+                skip_dns_check=args.skip_email_dns_check,
+            )
         _verbose(args.verbose, f"Validation result for {recipient.email}: {validation.is_valid} {validation.reason}")
         if not validation.is_valid:
             skipped_before_send += 1
