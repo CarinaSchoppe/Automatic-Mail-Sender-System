@@ -555,9 +555,9 @@ def _send_with_mailer(mailer: SmtpMailer, recipient, rendered, attachments: list
         attachments,
         rendered.inline_images,
     )
-    print(f"[SENT] {recipient.email} | {rendered.subject}")
     if write_sent_log:
         append_log(log_path, recipient)
         _verbose(verbose, f"Sent mail logged to {log_path}.")
     else:
         _verbose(verbose, "Sent mail was not written to CSV because --no-write-sent-log is set.")
+    print(f"[SENT] {recipient.email} | {rendered.subject}")

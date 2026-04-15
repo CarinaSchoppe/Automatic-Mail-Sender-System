@@ -138,7 +138,7 @@ def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index
     with _CSV_WRITE_LOCK:
         file_exists = path.exists()
         if file_exists and unique_index is not None and len(row) > unique_index:
-            val_to_check = row[unique_index].lower()
+            val_to_check = _unique_csv_value(row[unique_index])
             try:
                 # Efficiently check for existing value before opening for append
                 with path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -146,7 +146,7 @@ def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index
                     try:
                         next(reader)  # skip header
                         for existing_row in reader:
-                            if len(existing_row) > unique_index and existing_row[unique_index].lower() == val_to_check:
+                            if len(existing_row) > unique_index and _unique_csv_value(existing_row[unique_index]) == val_to_check:
                                 return  # Already exists
                     except StopIteration:
                         pass
@@ -158,6 +158,8 @@ def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index
             if not file_exists or os.path.getsize(path) == 0:
                 writer.writerow(headers)
             writer.writerow(row)
+            f.flush()
+            os.fsync(f.fileno())
 
 
 def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
@@ -166,3 +168,8 @@ def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
         if normalize_key(value) in allowed_keys:
             return index
     return None
+
+
+def _unique_csv_value(value: str) -> str:
+    """Normalisiert CSV-Werte fuer robuste Duplikatpruefungen."""
+    return normalize_email(value).lower()

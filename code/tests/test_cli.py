@@ -240,6 +240,88 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
         assert reader[1][1] == "phd@example.com"
 
 
+def test_cli_resend_existing_sends_without_duplicate_sent_log(monkeypatch, project: Path) -> None:
+    """Prueft, dass Resend sendet, aber keine doppelte Sent-Log-Zeile schreibt."""
+    write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
+    (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
+    with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["Old", "mailto:phd@example.com", "2026-04-14T10:00+10:00"])
+    sent = []
+
+    class FakeMailer:
+        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
+
+        def __init__(self, config) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
+            self.config = config
+
+        def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
+            return None
+
+        @staticmethod
+        def send(recipient, *_args, **_kwargs) -> None:
+            """Merkt die trotz Resend erneut gesendete Adresse."""
+            sent.append(recipient.email)
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send", "--resend-existing"])
+
+    assert result == 0
+    assert sent == ["phd@example.com"]
+    with (project / "output/send_phd.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert len(rows) == 2
+
+
+def test_cli_logs_sent_mail_immediately_after_successful_send(monkeypatch, project: Path) -> None:
+    """Prueft, dass der Sent-Log direkt nach erfolgreichem SMTP-Send geschrieben wird."""
+    write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
+    (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
+    events = []
+
+    class FakeMailer:
+        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
+
+        def __init__(self, config) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
+            self.config = config
+
+        def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
+            return None
+
+        @staticmethod
+        def send(recipient, *_args, **_kwargs) -> None:
+            """Merkt den erfolgreichen simulierten SMTP-Send."""
+            events.append(("send", recipient.email))
+
+    def fake_append_log(_log_path, recipient) -> None:
+        """Merkt den direkten Sent-Log-Schreibzeitpunkt."""
+        events.append(("log", recipient.email))
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+    monkeypatch.setattr("mail_sender.cli.append_log", fake_append_log)
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send"])
+
+    assert result == 0
+    assert events == [("send", "phd@example.com"), ("log", "phd@example.com")]
+
+
 def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsys) -> None:
     """Prueft das Verhalten fuer cli send path respects max send count."""
     (project / "input/PhD/phd.csv").write_text(

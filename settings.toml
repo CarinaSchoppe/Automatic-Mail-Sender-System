@@ -87,7 +87,7 @@ SEND_TARGET_COUNT = 500
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 25
+PARALLEL_THREADS = 5
 
 
 # Mail
@@ -102,9 +102,9 @@ SKIP_EMAIL_DNS_CHECK = true
 VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
 
 # Resend existing: Allows sending to addresses already present in output logs.
-RESEND_EXISTING = true
+RESEND_EXISTING = false
 
-# Skip invalid check: If checked, skips recipients already listed in invalid_mails.csv.
+# Skip invalid check: If checked, ignores invalid_mails.csv so listed recipients can be sent again.
 SKIP_INVALID_CHECK = true
 
 # Allow empty attachments: Allows running a mode even when the attachment folder is empty.

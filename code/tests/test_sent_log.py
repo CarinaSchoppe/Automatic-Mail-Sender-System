@@ -67,6 +67,34 @@ def test_append_log_uses_correct_headers_even_if_file_empty(tmp_path: Path) -> N
         assert reader[1][:2] == ["New", "new@example.com"]
 
 
+def test_append_log_keeps_email_entries_unique_after_normalization(tmp_path: Path) -> None:
+    """Prueft, dass Log-Dateien keine normalisierten Mail-Duplikate bekommen."""
+    log_path = tmp_path / "send.csv"
+    with log_path.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["Old", "mailto:person@example.com", "2026-04-14T10:00+10:00"])
+
+    append_log(log_path, Recipient(email="PERSON@example.com", company="New"))
+
+    with log_path.open("r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert len(rows) == 2
+
+
+def test_append_invalid_email_keeps_email_entries_unique(tmp_path: Path) -> None:
+    """Prueft, dass Invalid-Logs dieselbe Mail nur einmal enthalten."""
+    invalid_path = tmp_path / "invalid_mails.csv"
+
+    append_invalid_email(invalid_path, Recipient(email="bad@example.invalid", company="Bad"), "first")
+    append_invalid_email(invalid_path, Recipient(email="MAILTO:BAD@example.invalid", company="Bad Again"), "second")
+
+    with invalid_path.open("r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert len(rows) == 2
+    assert rows[1][:3] == ["Bad", "bad@example.invalid", "first"]
+
+
 def test_invalid_email_log_and_known_output_email_scan(tmp_path: Path) -> None:
     """Prueft das Verhalten fuer invalid email log and known output email scan."""
     output_dir = tmp_path / "output"
