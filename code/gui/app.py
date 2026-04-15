@@ -94,10 +94,70 @@ class MailSenderWorkbench:
         style.configure("Surface.TFrame", background=self.PALETTE["surface"], relief="solid", borderwidth=1)
         style.configure("TLabel", background=self.PALETTE["window_bg"], foreground=self.PALETTE["text"])
         style.configure("Muted.TLabel", foreground=self.PALETTE["muted"])
-        style.configure("TButton", padding=(12, 7))
+        style.configure(
+            "TButton",
+            padding=(12, 7),
+            background=self.PALETTE["surface"],
+            foreground=self.PALETTE["text"],
+            bordercolor=self.PALETTE["border"],
+            lightcolor=self.PALETTE["surface"],
+            darkcolor=self.PALETTE["border"],
+            focuscolor=self.PALETTE["accent"],
+        )
+        style.map(
+            "TButton",
+            background=[("active", self.PALETTE["surface_alt"]), ("pressed", "#d7eaff")],
+            foreground=[("disabled", self.PALETTE["muted"])],
+        )
         style.configure("Accent.TButton", background=self.PALETTE["accent"], foreground="#ffffff")
         style.map("Accent.TButton", background=[("active", self.PALETTE["accent_active"])])
-        style.configure("Treeview", rowheight=26)
+        style.configure(
+            "TNotebook",
+            background=self.PALETTE["window_bg"],
+            bordercolor=self.PALETTE["border"],
+            tabmargins=(4, 4, 4, 0),
+        )
+        style.configure(
+            "TNotebook.Tab",
+            background=self.PALETTE["surface_alt"],
+            foreground=self.PALETTE["text"],
+            padding=(14, 8),
+            bordercolor=self.PALETTE["border"],
+            lightcolor=self.PALETTE["surface_alt"],
+            darkcolor=self.PALETTE["border"],
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", self.PALETTE["accent"]), ("active", "#d7eaff")],
+            foreground=[("selected", "#ffffff"), ("active", self.PALETTE["text"])],
+        )
+        style.configure(
+            "TLabelframe",
+            background=self.PALETTE["surface"],
+            bordercolor=self.PALETTE["border"],
+            lightcolor=self.PALETTE["surface"],
+            darkcolor=self.PALETTE["border"],
+        )
+        style.configure(
+            "TLabelframe.Label",
+            background=self.PALETTE["surface"],
+            foreground=self.PALETTE["accent_active"],
+            font=("Segoe UI", 10, "bold"),
+        )
+        style.configure("TCheckbutton", background=self.PALETTE["window_bg"], foreground=self.PALETTE["text"])
+        style.map("TCheckbutton", background=[("active", self.PALETTE["window_bg"])])
+        style.configure("TEntry", fieldbackground=self.PALETTE["surface"], foreground=self.PALETTE["text"])
+        style.configure("TCombobox", fieldbackground=self.PALETTE["surface"], foreground=self.PALETTE["text"])
+        style.map("TCombobox", fieldbackground=[("readonly", self.PALETTE["surface"])])
+        style.configure("Horizontal.TScale", background=self.PALETTE["surface"], troughcolor="#d7eaff")
+        style.configure(
+            "Treeview",
+            rowheight=26,
+            background=self.PALETTE["surface"],
+            fieldbackground=self.PALETTE["surface"],
+            foreground=self.PALETTE["text"],
+            bordercolor=self.PALETTE["border"],
+        )
         style.configure("Treeview.Heading", background=self.PALETTE["surface_alt"], foreground=self.PALETTE["text"])
         style.configure("Status.TLabel", background=self.PALETTE["surface_alt"], foreground=self.PALETTE["muted"])
         style.configure("Header.TFrame", background=self.PALETTE["navy"])
@@ -190,7 +250,7 @@ class MailSenderWorkbench:
     def _scrollable_body(self, parent: ttk.Frame) -> ttk.Frame:
         canvas = tk.Canvas(parent, borderwidth=0, highlightthickness=0, background=self.PALETTE["window_bg"])
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-        body = ttk.Frame(canvas)
+        body = ttk.Frame(canvas, style="TFrame")
         body.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=body, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
@@ -228,6 +288,7 @@ class MailSenderWorkbench:
             widget = wrapper
         elif spec.kind == "list":
             text = tk.Text(parent, height=5, width=46, wrap="word")
+            self._style_text_widget(text)
             (self.env_text_widgets if env else self.text_widgets)[spec.key] = text
             if spec.key == "SELF_SEARCH_KEYWORDS":
                 self.keyword_text = text
@@ -283,6 +344,7 @@ class MailSenderWorkbench:
         self.file_view_title = tk.StringVar(value="Select a file to preview it.")
         ttk.Label(right, textvariable=self.file_view_title, font=("Segoe UI", 11, "bold")).pack(fill="x")
         self.file_viewer = scrolledtext.ScrolledText(right, height=22, wrap="none")
+        self._style_text_widget(self.file_viewer)
         self.file_viewer.pack(fill="both", expand=True, pady=(8, 0))
 
     def _build_found_tab(self) -> None:
@@ -322,6 +384,7 @@ class MailSenderWorkbench:
         self._toolbar_button(toolbar, "Stop", self.stop_process)
         ttk.Button(toolbar, text="Clear", command=lambda: self.console.delete("1.0", "end")).pack(side="left", padx=4)
         self.console = scrolledtext.ScrolledText(self.console_tab, height=28, wrap="word")
+        self._style_text_widget(self.console)
         self.console.pack(fill="both", expand=True)
 
     def _make_tree(self, parent: ttk.Frame, columns: tuple[str, ...]) -> ttk.Treeview:
@@ -540,11 +603,19 @@ class MailSenderWorkbench:
             return
         frame = ttk.Frame(self.notebook, padding=8)
         title = f"Log: {path.name}"
+        toolbar = ttk.Frame(frame)
+        toolbar.pack(fill="x", pady=(0, 8))
+        ttk.Label(toolbar, text=str(path), style="Muted.TLabel").pack(side="left")
+        ttk.Button(toolbar, text="Close Log Tab", command=lambda tab=frame: self.close_tab(tab)).pack(side="right")
         text = scrolledtext.ScrolledText(frame, wrap="word")
+        self._style_text_widget(text)
         text.pack(fill="both", expand=True)
         text.insert("1.0", path.read_text(encoding="utf-8", errors="replace"))
         self.notebook.add(frame, text=title)
         self.notebook.select(frame)
+
+    def close_tab(self, tab: ttk.Frame) -> None:
+        self.notebook.forget(tab)
 
     def _refresh_logs(self) -> None:
         self.log_tree.delete(*self.log_tree.get_children())
@@ -648,6 +719,18 @@ class MailSenderWorkbench:
     def _append_console(self, text: str) -> None:
         self.console.insert("end", text)
         self.console.see("end")
+
+    def _style_text_widget(self, widget: tk.Text) -> None:
+        widget.configure(
+            background=self.PALETTE["surface"],
+            foreground=self.PALETTE["text"],
+            insertbackground=self.PALETTE["accent"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=self.PALETTE["border"],
+            highlightcolor=self.PALETTE["accent"],
+        )
 
     def _schedule_autosave(self, target: str = "all") -> None:
         if self._loading or not self.autosave.get():

@@ -157,5 +157,8 @@ def test_mail_sender_workbench_opens_log_in_new_tab(tmp_path: Path) -> None:
 
         assert len(app.notebook.tabs()) == before + 1
         assert app.notebook.tab(app.notebook.select(), "text") == "Log: run.log"
+        selected_tab = app.root.nametowidget(app.notebook.select())
+        app.close_tab(selected_tab)
+        assert len(app.notebook.tabs()) == before
     finally:
         root.destroy()
