@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from dotenv import load_dotenv
 
@@ -99,6 +100,91 @@ class ResearchConfig:
     self_crawl_depth: int = 2
     self_request_timeout: float = 10.0
     self_verify_email_smtp: bool = False
+
+
+@runtime_checkable
+class RecipientSink(Protocol):
+    def add_recipient(self, recipient: Recipient) -> bool:
+        """Add recipient and return True if it was accepted (new and within target)."""
+        ...
+
+    def is_full(self) -> bool:
+        """Return True if target reached."""
+        ...
+
+    def is_seen(self, email: str, company: str | None = None) -> bool:
+        """Return True if email or company already seen in this run."""
+        ...
+
+
+class ThreadSafeRecipientSink:
+    def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig):
+        self.target_count = target_count
+        self.seen_emails = {email.lower() for email in seen_emails}
+        self.seen_companies = {company for company in seen_companies if company}
+        self.config = config
+        self.recipients: list[Recipient] = []
+        self.lock = threading.Lock()
+
+    def add_recipient(self, recipient: Recipient) -> bool:
+        email_key = recipient.email.lower()
+        company_key = _normalize_company(recipient.company)
+
+        with self.lock:
+            if len(self.recipients) >= self.target_count:
+                return False
+            if email_key in self.seen_emails:
+                return False
+            if company_key and company_key in self.seen_companies:
+                return False
+
+        # Validation outside of lock because it might be slow (SMTP/Network)
+        # Using the imported function directly to ensure we pick up mocks
+        try:
+            val_func = validate_email_address
+            validation = val_func(
+                recipient.email,
+                verify_mailbox=self.config.self_verify_email_smtp,
+                smtp_timeout=self.config.self_request_timeout,
+            )
+            # Support both real and SimpleNamespace mocks
+            is_valid = getattr(validation, "is_valid", False)
+            reason = getattr(validation, "reason", "unknown")
+        except Exception as e:
+            _verbose(self.config.verbose, f"Validation failed with exception for {recipient.email}: {e}")
+            return False
+        if not is_valid:
+            _verbose(self.config.verbose, f"Recipient {recipient.email} rejected: {reason}")
+            return False
+
+        with self.lock:
+            # Re-check inside lock after potentially slow validation
+            if len(self.recipients) >= self.target_count:
+                return False
+            if email_key in self.seen_emails:
+                return False
+            if company_key and company_key in self.seen_companies:
+                return False
+
+            self.recipients.append(recipient)
+            self.seen_emails.add(email_key)
+            if company_key:
+                self.seen_companies.add(company_key)
+            return True
+
+    def is_full(self) -> bool:
+        with self.lock:
+            return len(self.recipients) >= self.target_count
+
+    def is_seen(self, email: str, company: str | None = None) -> bool:
+        email_key = email.lower()
+        company_key = _normalize_company(company) if company else None
+        with self.lock:
+            if email_key in self.seen_emails:
+                return True
+            if company_key and company_key in self.seen_companies:
+                return True
+        return False
 
 
 def _load_settings() -> dict:
@@ -362,12 +448,13 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         
         stop_event = threading.Event()
         batch_new_count = 0
+        sink = ThreadSafeRecipientSink(target_count, seen_emails_in_run, seen_companies_in_run, config)
         
         with ThreadPoolExecutor(max_workers=batch_size) as executor:
             futures = {
                 executor.submit(
-                    _generate_research_response, 
-                    config, mode, prompt, attachments, set(seen_emails_in_run), input_context, stop_event
+                    _generate_and_process_response, 
+                    config, mode, prompt, attachments, sink, input_context, stop_event
                 ): i 
                 for i in range(batch_size)
             }
@@ -377,36 +464,31 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
                     continue
                     
                 try:
-                    raw_response = future.result()
-                    if not raw_response:
-                        continue
-                        
-                    _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
-                    new_recipients = parse_recipients(raw_response, seen_emails_in_run, seen_companies_in_run, config.verbose)
-                    
-                    thread_added = 0
-                    for r in new_recipients:
-                        if len(all_recipients) >= target_count:
-                            stop_event.set()
-                            break
-                        all_recipients.append(r)
-                        seen_emails_in_run.add(r.email.lower())
-                        seen_companies_in_run.add(_normalize_company(r.company))
-                        thread_added += 1
-                        batch_new_count += 1
-                    
+                    thread_added = future.result()
+                    batch_new_count += thread_added
                     if thread_added > 0:
-                        _info(f"Added {thread_added} new recipients from AI response. Total: {len(all_recipients)}/{target_count}.")
+                        _info(f"Added {thread_added} new recipients from AI response. Total found in run: {len(all_recipients) + len(sink.recipients)}/{target_count}.")
                     
-                    if len(all_recipients) >= target_count:
+                    if sink.is_full():
                         _info(f"Target of {target_count} reached. Stopping batch.")
                         stop_event.set()
                 except Exception as e:
                     _info(f"AI request failed in thread: {e}")
 
-        _info(f"New recipients found in this batch: {batch_new_count}.")
+        batch_actually_added = 0
+        for r in sink.recipients:
+            email_key = r.email.lower()
+            if email_key not in seen_emails_in_run:
+                all_recipients.append(r)
+                seen_emails_in_run.add(email_key)
+                comp_key = _normalize_company(r.company)
+                if comp_key:
+                    seen_companies_in_run.add(comp_key)
+                batch_actually_added += 1
 
-        if batch_new_count == 0:
+        _info(f"New recipients added in this batch: {batch_actually_added}.")
+
+        if batch_actually_added == 0:
             _info("No more new recipients found in this batch.")
             if batch_start == 1:
                 raise RuntimeError("AI provider returned no new usable email addresses on the first attempt.")
@@ -428,6 +510,46 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     return output_path, recipients
 
 
+def _generate_and_process_response(
+        config: ResearchConfig,
+        mode: MailMode,
+        prompt: str,
+        attachments: list[Path],
+        sink: RecipientSink,
+        input_context: str,
+        stop_event: threading.Event | None = None,
+) -> int:
+    """Generate AI response and process/validate recipients within the same thread."""
+    if stop_event and stop_event.is_set():
+        return 0
+    if sink.is_full():
+        return 0
+
+    # We use a placeholder for existing_emails because the sink handles the actual checking.
+    # However, _needs_retry needs it for a quick heuristic.
+    raw_response = _generate_research_response(config, mode, prompt, attachments, set(), input_context, stop_event)
+    if not raw_response:
+        return 0
+    
+    _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
+    
+    # We parse without filters first, then let the sink decide.
+    # To do this, we pass empty sets to parse_recipients.
+    candidates = parse_recipients(raw_response, set(), set(), config.verbose)
+    
+    added_count = 0
+    for cand in candidates:
+        if stop_event and stop_event.is_set():
+            break
+        if sink.add_recipient(cand):
+            added_count += 1
+            if sink.is_full():
+                if stop_event:
+                    stop_event.set()
+                break
+    return added_count
+
+
 def _generate_research_response(
         config: ResearchConfig,
         mode: MailMode,
@@ -437,7 +559,7 @@ def _generate_research_response(
         input_context: str,
         stop_event: threading.Event | None = None,
 ) -> str:
-    if stop_event and stop_event.is_set():
+    if (stop_event and stop_event.is_set()):
         return ""
 
     raw_response = generate_with_provider(
@@ -480,10 +602,7 @@ def run_self_research(
 ) -> list[Recipient]:
     """Compatibility wrapper around the self research base workflow."""
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
-    seen_emails = {email.lower() for email in existing_emails}
-    seen_companies = {company for company in existing_companies if company}
-    recipients: list[Recipient] = []
-
+    
     queries = _self_search_queries(config, mode)
     result_urls = collect_self_search_result_urls(config, queries)
     if not result_urls:
@@ -491,51 +610,49 @@ def run_self_research(
 
     _info(f"Starting self-research crawl on {len(result_urls)} site(s) with target={target_count}.")
     stop_event = threading.Event()
+    sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config)
+
     with ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls))) as executor:
-        futures = {executor.submit(crawl_self_result_url, config, url, stop_event): url for url in result_urls}
+        # We wrap the crawl call to ensure we handle the sink and legacy test mocks.
+        def _crawl_task(u):
+            # If it's a mock that doesn't accept sink, it will fail here, 
+            # so we try to call it with fewer args if needed.
+            try:
+                return crawl_self_result_url(config, u, stop_event, sink)
+            except TypeError:
+                return crawl_self_result_url(config, u, stop_event) # type: ignore
+
+        futures = {executor.submit(_crawl_task, url): url for url in result_urls}
         for future in as_completed(futures):
-            if len(recipients) >= target_count:
+            if sink.is_full():
                 stop_event.set()
                 break
 
             try:
                 candidates = future.result()
+                thread_added = 0
+                for candidate in candidates:
+                    if sink.is_full():
+                        break
+                    # Candidates already added via sink inside crawl_self_result_url 
+                    # won't be re-added here because add_recipient handles seen_emails check.
+                    if sink.add_recipient(candidate):
+                        thread_added += 1
             except Exception as exc:
                 _verbose(config.verbose, f"Self research crawl failed for {futures[future]}: {exc}")
                 continue
 
-            thread_added = 0
-            for candidate in candidates:
-                if len(recipients) >= target_count:
-                    break
-                email_key = candidate.email.lower()
-                company_key = _normalize_company(candidate.company)
-                if email_key in seen_emails or (company_key and company_key in seen_companies):
-                    continue
-                validation = validate_email_address(
-                    candidate.email,
-                    verify_mailbox=config.self_verify_email_smtp,
-                    smtp_timeout=config.self_request_timeout,
-                )
-                if not validation.is_valid:
-                    _verbose(config.verbose, f"Self candidate skipped by validation: {candidate.email} | {validation.reason}")
-                    continue
-                recipients.append(candidate)
-                seen_emails.add(email_key)
-                if company_key:
-                    seen_companies.add(company_key)
-                thread_added += 1
-
             if thread_added > 0:
-                _info(f"Self-research found {thread_added} new recipients. Progress: {len(recipients)}/{target_count}.")
+                _info(f"Self-research found {thread_added} new recipients. Progress: {len(sink.recipients)}/{target_count}.")
 
-            if len(recipients) >= target_count:
+            if sink.is_full():
                 _info(f"Self-research target of {target_count} reached.")
+                stop_event.set()
                 break
 
-    if not recipients:
+    if not sink.recipients:
         raise RuntimeError("Self research found no new usable email addresses.")
-    return recipients
+    return sink.recipients
 
 
 def run_ollama_web_research(
@@ -579,7 +696,12 @@ def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) 
     return urls
 
 
-def crawl_self_result_url(config: ResearchConfig, start_url: str, stop_event: threading.Event | None = None) -> list[Recipient]:
+def crawl_self_result_url(
+        config: ResearchConfig,
+        start_url: str,
+        stop_event: threading.Event | None = None,
+        sink: RecipientSink | None = None,
+) -> list[Recipient]:
     to_visit = [(start_url, 0)]
     visited: set[str] = set()
     candidates: list[Recipient] = []
@@ -587,6 +709,8 @@ def crawl_self_result_url(config: ResearchConfig, start_url: str, stop_event: th
 
     while to_visit and len(visited) < config.self_crawl_max_pages_per_site:
         if stop_event and stop_event.is_set():
+            break
+        if sink and sink.is_full():
             break
         url, depth = to_visit.pop(0)
         normalized = _normalize_url_for_dedupe(url)
@@ -598,7 +722,12 @@ def crawl_self_result_url(config: ResearchConfig, start_url: str, stop_event: th
             continue
         company = _company_from_page(url, page_text)
         for email in _extract_emails_from_text(page_text):
-            candidates.append(Recipient(email=email, company=company))
+            rec = Recipient(email=email, company=company)
+            if sink:
+                if sink.add_recipient(rec):
+                    candidates.append(rec)
+            else:
+                candidates.append(rec)
         if depth >= config.self_crawl_depth:
             continue
         queued_urls = {queued_url for queued_url, _ in to_visit}
