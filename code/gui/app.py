@@ -22,6 +22,7 @@ HOVER_TEXTS = {
     "Save All": "Write both settings.toml and .env now.",
     "Run Pipeline": "Run research and mail sending through code/main.py using the current settings.",
     "Research Only": "Run only the AI/self/Ollama research step.",
+    "Mail Only": "Run only the mail sender for the currently selected mode.",
     "Stop": "Terminate the currently running subprocess.",
     "Refresh": "Refresh file lists, mail tables, and log lists from disk.",
     "Import CSV/TXT": "Copy a CSV or TXT lead file into the selected input mode folder.",
@@ -32,14 +33,15 @@ class MailSenderWorkbench:
     """Tkinter workbench for settings, run logs, and output inspection."""
 
     PALETTE = {
-        "window_bg": "#f4f7fb",
+        "window_bg": "#eef5ff",
         "surface": "#ffffff",
-        "surface_alt": "#f7faff",
-        "border": "#d9e4f0",
-        "text": "#101828",
-        "muted": "#63758c",
-        "accent": "#5b6cff",
-        "accent_active": "#4656e6",
+        "surface_alt": "#e6f0ff",
+        "border": "#b9d3f2",
+        "text": "#09213f",
+        "muted": "#486581",
+        "accent": "#0b66c3",
+        "accent_active": "#084f96",
+        "navy": "#06213f",
         "danger": "#ef4444",
         "success": "#12b76a",
         "warning": "#f79009",
@@ -64,6 +66,7 @@ class MailSenderWorkbench:
         self.current_view_path: Path | None = None
         self._loading = True
         self._autosave_after_id: str | None = None
+        self._autosave_target = "all"
         self.auto_refresh = tk.BooleanVar(value=True)
 
         self.root.title("MailSenderSystem Workbench")
@@ -95,13 +98,16 @@ class MailSenderWorkbench:
         style.configure("Accent.TButton", background=self.PALETTE["accent"], foreground="#ffffff")
         style.map("Accent.TButton", background=[("active", self.PALETTE["accent_active"])])
         style.configure("Treeview", rowheight=26)
+        style.configure("Treeview.Heading", background=self.PALETTE["surface_alt"], foreground=self.PALETTE["text"])
         style.configure("Status.TLabel", background=self.PALETTE["surface_alt"], foreground=self.PALETTE["muted"])
+        style.configure("Header.TFrame", background=self.PALETTE["navy"])
+        style.configure("Header.TLabel", background=self.PALETTE["navy"], foreground="#ffffff")
 
     def _build_shell(self) -> None:
-        header = ttk.Frame(self.root, padding=(18, 14, 18, 8))
+        header = ttk.Frame(self.root, padding=(18, 14, 18, 10), style="Header.TFrame")
         header.pack(fill="x")
-        ttk.Label(header, text="MailSenderSystem", font=("Segoe UI", 18, "bold")).pack(side="left")
-        ttk.Label(header, text=f"Settings: {self.settings_path}", style="Muted.TLabel").pack(side="left", padx=(16, 0))
+        ttk.Label(header, text="MailSenderSystem", font=("Segoe UI", 18, "bold"), style="Header.TLabel").pack(side="left")
+        ttk.Label(header, text=f"Settings: {self.settings_path}", style="Header.TLabel").pack(side="left", padx=(16, 0))
 
         actions = ttk.Frame(header)
         actions.pack(side="right")
@@ -111,6 +117,7 @@ class MailSenderWorkbench:
         self._toolbar_button(actions, "Save All", self.save_all, style="Accent.TButton")
         self._toolbar_button(actions, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
         self._toolbar_button(actions, "Research Only", lambda: self.start_process(["code/research/research_leads.py"]))
+        self._toolbar_button(actions, "Mail Only", self.start_mail_only)
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -196,7 +203,7 @@ class MailSenderWorkbench:
         var = self._create_variable(spec, self.env_values if env else self.values)
         variables = self.env_variables if env else self.variables
         variables[spec.key] = var
-        var.trace_add("write", lambda *_args: self._schedule_autosave())
+        var.trace_add("write", lambda *_args, target="env" if env else "settings": self._schedule_autosave(target))
         widget: tk.Widget
         if spec.kind == "bool":
             widget = ttk.Checkbutton(parent, variable=var)
@@ -204,7 +211,17 @@ class MailSenderWorkbench:
             widget = ttk.Combobox(parent, textvariable=var, values=spec.choices, state="readonly", width=28)
         elif spec.kind in {"int", "float"} and spec.min_value is not None and spec.max_value is not None:
             wrapper = ttk.Frame(parent)
-            scale = ttk.Scale(wrapper, from_=spec.min_value, to=spec.max_value, orient="horizontal", variable=var)
+            if spec.kind == "int":
+                scale = ttk.Scale(
+                    wrapper,
+                    from_=spec.min_value,
+                    to=spec.max_value,
+                    orient="horizontal",
+                    variable=var,
+                    command=lambda value, variable=var: variable.set(int(float(value))),
+                )
+            else:
+                scale = ttk.Scale(wrapper, from_=spec.min_value, to=spec.max_value, orient="horizontal", variable=var)
             value_label = ttk.Label(wrapper, textvariable=var, width=8)
             scale.pack(side="left", fill="x", expand=True)
             value_label.pack(side="right", padx=(8, 0))
@@ -214,8 +231,8 @@ class MailSenderWorkbench:
             (self.env_text_widgets if env else self.text_widgets)[spec.key] = text
             if spec.key == "SELF_SEARCH_KEYWORDS":
                 self.keyword_text = text
-            text.bind("<KeyRelease>", lambda _event: self._schedule_autosave())
-            text.bind("<FocusOut>", lambda _event: self._schedule_autosave())
+            text.bind("<KeyRelease>", lambda _event, target="env" if env else "settings": self._schedule_autosave(target))
+            text.bind("<FocusOut>", lambda _event, target="env" if env else "settings": self._schedule_autosave(target))
             widget = text
         else:
             show = "*" if any(secret in spec.key.lower() for secret in ("password", "api_key", "token", "secret")) else ""
@@ -279,8 +296,16 @@ class MailSenderWorkbench:
         toolbar = ttk.Frame(self.sent_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
-        self.sent_tree = self._make_tree(self.sent_tab, ("file", "company", "mail", "source_url"))
-        self.sent_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.sent_tree, "sent"))
+        self.sent_notebook = ttk.Notebook(self.sent_tab)
+        self.sent_notebook.pack(fill="both", expand=True)
+        self.sent_trees: dict[str, ttk.Treeview] = {}
+        for mode_name in ("PhD", "Freelance_German", "Freelance_English"):
+            frame = ttk.Frame(self.sent_notebook, padding=4)
+            self.sent_notebook.add(frame, text=mode_name)
+            tree = self._make_tree(frame, ("file", "company", "mail", "source_url"))
+            tree.bind("<<TreeviewSelect>>", lambda _event, selected_tree=tree: self._show_selected_file(selected_tree, "sent"))
+            self.sent_trees[mode_name] = tree
+        self.sent_tree = self.sent_trees["PhD"]
 
     def _build_logs_tab(self) -> None:
         toolbar = ttk.Frame(self.logs_tab)
@@ -288,6 +313,7 @@ class MailSenderWorkbench:
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
         self.log_tree = self._make_tree(self.logs_tab, ("file", "modified", "size"))
         self.log_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.log_tree, "log"))
+        self.log_tree.bind("<Double-1>", lambda _event: self.open_selected_log_tab())
 
     def _build_console_tab(self) -> None:
         toolbar = ttk.Frame(self.console_tab)
@@ -409,13 +435,16 @@ class MailSenderWorkbench:
             self._refresh_logs()
 
     def _refresh_sent_mails(self) -> None:
-        self.sent_tree.delete(*self.sent_tree.get_children())
+        for tree in self.sent_trees.values():
+            tree.delete(*tree.get_children())
         output_dir = self.project_root / "output"
         for path in sorted(output_dir.glob("*.csv")) if output_dir.exists() else []:
+            mode_name = _mode_from_output_filename(path.name)
+            tree = self.sent_trees.get(mode_name, self.sent_trees["Freelance_German"])
             try:
                 with path.open(newline="", encoding="utf-8-sig") as handle:
                     for row in csv.DictReader(handle):
-                        self.sent_tree.insert("", "end", values=(
+                        tree.insert("", "end", values=(
                             path.name,
                             row.get("company", ""),
                             row.get("mail", ""),
@@ -502,6 +531,21 @@ class MailSenderWorkbench:
             return log_dir / filename
         return None
 
+    def open_selected_log_tab(self) -> None:
+        selection = self.log_tree.selection()
+        if not selection:
+            return
+        path = self._path_for_tree_row("log", self.log_tree.item(selection[0]).get("values", []))
+        if path is None or not path.exists():
+            return
+        frame = ttk.Frame(self.notebook, padding=8)
+        title = f"Log: {path.name}"
+        text = scrolledtext.ScrolledText(frame, wrap="word")
+        text.pack(fill="both", expand=True)
+        text.insert("1.0", path.read_text(encoding="utf-8", errors="replace"))
+        self.notebook.add(frame, text=title)
+        self.notebook.select(frame)
+
     def _refresh_logs(self) -> None:
         self.log_tree.delete(*self.log_tree.get_children())
         log_dir_value = self.collect_form_values().get("VERBOSE_LOG_DIR", "logs") if self.variables else "logs"
@@ -518,6 +562,51 @@ class MailSenderWorkbench:
             return
         self.save_all()
         command = [sys.executable, *script_args]
+        self._start_command(command)
+
+    def start_mail_only(self) -> None:
+        self.save_all()
+        command = self._mail_only_command()
+        self._start_command(command)
+
+    def _mail_only_command(self) -> list[str]:
+        settings = self.collect_form_values()
+        args = [
+            sys.executable,
+            "-c",
+            "from mail_sender.cli import main; raise SystemExit(main())",
+            "--mode",
+            str(settings["MODE"]),
+            "--base-dir",
+            str(self.project_root),
+            "--signature-logo",
+            str(settings["SIGNATURE_LOGO"]),
+            "--signature-logo-width",
+            str(settings["SIGNATURE_LOGO_WIDTH"]),
+            "--parallel-threads",
+            str(settings["PARALLEL_THREADS"]),
+            "--verify-email-smtp-timeout",
+            str(settings["VERIFY_EMAIL_SMTP_TIMEOUT"]),
+        ]
+        for flag, key in [
+            ("--send", "SEND"),
+            ("--verbose", "VERBOSE"),
+            ("--resend-existing", "RESEND_EXISTING"),
+            ("--allow-empty-attachments", "ALLOW_EMPTY_ATTACHMENTS"),
+            ("--log-dry-run", "LOG_DRY_RUN"),
+            ("--delete-input-after-success", "DELETE_INPUT_AFTER_SUCCESS"),
+            ("--verify-email-smtp", "VERIFY_EMAIL_SMTP"),
+        ]:
+            if settings[key]:
+                args.append(flag)
+        if not settings["WRITE_SENT_LOG"]:
+            args.append("--no-write-sent-log")
+        return args
+
+    def _start_command(self, command: list[str]) -> None:
+        if self.process and self.process.poll() is None:
+            messagebox.showwarning("Process running", "A process is already running.")
+            return
         self._append_console(f"[INFO] Starting: {' '.join(command)}\n")
         self.process = subprocess.Popen(
             command,
@@ -560,16 +649,22 @@ class MailSenderWorkbench:
         self.console.insert("end", text)
         self.console.see("end")
 
-    def _schedule_autosave(self) -> None:
+    def _schedule_autosave(self, target: str = "all") -> None:
         if self._loading or not self.autosave.get():
             return
+        self._autosave_target = target
         if self._autosave_after_id is not None:
             self.root.after_cancel(self._autosave_after_id)
         self._autosave_after_id = self.root.after(500, self._autosave_now)
 
     def _autosave_now(self) -> None:
         self._autosave_after_id = None
-        self.save_all()
+        if self._autosave_target == "settings":
+            self.save_settings()
+        elif self._autosave_target == "env":
+            self.save_env()
+        else:
+            self.save_all()
 
     def _auto_refresh_tick(self) -> None:
         if self.auto_refresh.get():
@@ -581,6 +676,15 @@ def _format_mtime(timestamp: float) -> str:
     from datetime import datetime
 
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _mode_from_output_filename(filename: str) -> str:
+    normalized = filename.lower()
+    if "phd" in normalized:
+        return "PhD"
+    if "english" in normalized:
+        return "Freelance_English"
+    return "Freelance_German"
 
 
 def main() -> int:

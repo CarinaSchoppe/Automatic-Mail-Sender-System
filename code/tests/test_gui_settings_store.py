@@ -53,12 +53,12 @@ def test_setting_coercion_matches_widget_value_types() -> None:
 def test_env_store_writes_and_loads_all_env_values(tmp_path: Path) -> None:
     path = tmp_path / ".env"
     values = default_env()
-    values.update({"SMTP_USERNAME": "user", "SMTP_PASSWORD": "secret", "RESEARCH_VERBOSE": True})
+    values.update({"SMTP_USERNAME": "user", "SMTP_PASSWORD": "secret", "GEMINI_API_KEY": "gem"})
 
     write_env(path, values)
     loaded = load_env(path)
 
     assert loaded["SMTP_USERNAME"] == "user"
     assert loaded["SMTP_PASSWORD"] == "secret"
-    assert loaded["RESEARCH_VERBOSE"] == "true"
+    assert loaded["GEMINI_API_KEY"] == "gem"
     assert {spec.key for spec in ENV_SCHEMA}.issuperset(loaded.keys())

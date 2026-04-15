@@ -111,3 +111,51 @@ def test_mail_sender_workbench_exposes_required_tabs(tmp_path: Path) -> None:
         assert app.auto_refresh.get() is True
     finally:
         root.destroy()
+
+
+def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: Path) -> None:
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        app.variables["MODE"].set("Freelance_English")
+        app.variables["PARALLEL_THREADS"].set(7)
+        app.variables["SEND"].set(True)
+        command = app._mail_only_command()
+
+        assert any("from mail_sender.cli import main" in part for part in command)
+        assert "--mode" in command
+        assert "Freelance_English" in command
+        assert "--send" in command
+        assert "--parallel-threads" in command
+        assert "7" in command
+        assert isinstance(app.variables["RESEARCH_MIN_COMPANIES"].get(), int)
+        assert isinstance(app.variables["RESEARCH_MAX_COMPANIES"].get(), int)
+    finally:
+        root.destroy()
+
+
+def test_mail_sender_workbench_opens_log_in_new_tab(tmp_path: Path) -> None:
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        (log_dir / "run.log").write_text("[INFO] visible log", encoding="utf-8")
+
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        app.refresh_tables()
+        app.log_tree.selection_set(app.log_tree.get_children()[0])
+        before = len(app.notebook.tabs())
+        app.open_selected_log_tab()
+
+        assert len(app.notebook.tabs()) == before + 1
+        assert app.notebook.tab(app.notebook.select(), "text") == "Log: run.log"
+    finally:
+        root.destroy()

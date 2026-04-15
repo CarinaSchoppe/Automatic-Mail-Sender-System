@@ -75,26 +75,10 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
 
 
 ENV_SCHEMA: tuple[SettingSpec, ...] = (
-    SettingSpec("SMTP_HOST", "SMTP host", "str", "smtp.hostinger.com", "SMTP", "SMTPS hostname. This .env value overrides settings.toml when present."),
-    SettingSpec("SMTP_PORT", "SMTP port", "int", 465, "SMTP", "SMTPS port. This .env value overrides settings.toml when present.", min_value=1, max_value=65535),
-    SettingSpec("SMTP_ENCRYPTION", "SMTP encryption", "choice", "ssl", "SMTP", "Encryption mode.", ("ssl",)),
     SettingSpec("SMTP_USERNAME", "SMTP username", "str", "", "SMTP Secrets", "Login username for SMTP. Keep this in .env."),
     SettingSpec("SMTP_PASSWORD", "SMTP password", "str", "", "SMTP Secrets", "Login password for SMTP. Keep this in .env."),
-    SettingSpec("SMTP_FROM_EMAIL", "SMTP from email", "str", "info@carinaschoppe.com", "SMTP", "Sender email address override."),
-    SettingSpec("SMTP_FROM_NAME", "SMTP from name", "str", "Carina Sophie Schoppe", "SMTP", "Sender display name override."),
-    SettingSpec("RESEARCH_AI_PROVIDER", "Research provider override", "choice", "gemini", "Research Overrides", "Provider override from .env.", ("gemini", "openai", "ollama", "self")),
     SettingSpec("GEMINI_API_KEY", "Gemini API key", "str", "", "AI Secrets", "Gemini API key. Keep this in .env."),
-    SettingSpec("GEMINI_MODEL", "Gemini model override", "str", "gemini-3-flash-preview", "Research Overrides", "Gemini model override."),
     SettingSpec("OPENAI_API_KEY", "OpenAI API key", "str", "", "AI Secrets", "OpenAI API key. Keep this in .env."),
-    SettingSpec("OPENAI_MODEL", "OpenAI model override", "str", "gpt-5.4-mini-2026-03-17", "Research Overrides", "OpenAI model override."),
-    SettingSpec("RESEARCH_MODE", "Research mode override", "choice", "", "Research Overrides", "Optional mode override. Empty means use MODE from settings.toml.", ("", "PhD", "Freelance_German", "Freelance_English", "Auto")),
-    SettingSpec("RESEARCH_MIN_COMPANIES", "Min companies override", "int", 15, "Research Overrides", "Minimum company count override.", min_value=1, max_value=500),
-    SettingSpec("RESEARCH_MAX_COMPANIES", "Max companies override", "int", 35, "Research Overrides", "Maximum company count override.", min_value=1, max_value=1000),
-    SettingSpec("RESEARCH_PERSON_EMAILS_PER_COMPANY", "Emails/company override", "int", 3, "Research Overrides", "Person emails per company override.", min_value=1, max_value=10),
-    SettingSpec("RESEARCH_WRITE_OUTPUT", "Write output override", "bool", True, "Research Overrides", "Write research CSV override."),
-    SettingSpec("RESEARCH_UPLOAD_ATTACHMENTS", "Upload attachments override", "bool", True, "Research Overrides", "Research context upload override."),
-    SettingSpec("RESEARCH_VERBOSE", "Research verbose override", "bool", False, "Research Overrides", "Verbose research output override."),
-    SettingSpec("RESEARCH_BASE_DIR", "Research base dir override", "str", "", "Research Overrides", "Optional project base directory override."),
 )
 
 
