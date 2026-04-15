@@ -28,11 +28,11 @@ if str(CODE_DIR) not in sys.path:
 from mail_sender.attachments import list_attachments
 from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MODE_NAMES, MailMode, get_mode
-from mail_sender.recipients import COMPANY_KEYS
-from mail_sender.recipients import EMAIL_KEYS
+from mail_sender.recipients import COMPANY_KEYS as COMPANY_KEYS
+from mail_sender.recipients import EMAIL_KEYS as EMAIL_KEYS
 from mail_sender.recipients import Recipient
 from mail_sender.recipients import list_recipient_files
-from mail_sender.recipients import normalize_key
+from mail_sender.recipients import normalize_key as normalize_key
 from mail_sender.recipients import read_recipients
 from mail_sender.sent_log import read_logged_emails
 from mail_sender.sent_log import read_logged_rows
@@ -41,33 +41,25 @@ from research import providers as _providers
 from research import self_research as _self_research
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
-from research.parsing import DefaultCsvDialect
+from research.parsing import DefaultCsvDialect as DefaultCsvDialect
 from research.parsing import _detect_dialect
-from research.parsing import _find_field
-from research.parsing import _parse_headerless_csv_recipients
-from research.parsing import _parse_json_recipients
-from research.parsing import _strip_csv_fence
-from research.parsing import _strip_json_fence
+from research.parsing import _find_field as _find_field
+from research.parsing import _parse_json_recipients as _parse_json_recipients
+from research.parsing import _strip_csv_fence as _strip_csv_fence
+from research.parsing import _strip_json_fence as _strip_json_fence
 from research.parsing import normalize_company as _normalize_company
 from research.parsing import parse_recipients
-from research.providers import _fake_txt_extensions
-from research.providers import _verbose_gemini_candidates
-from research.providers import _verbose_openai_output
-from research.providers import generate_with_gemini
-from research.providers import generate_with_ollama
-from research.providers import generate_with_openai
-from research.self_research import _extract_google_result_urls
+from research.providers import _fake_txt_extensions as _fake_txt_extensions
+from research.providers import _verbose_gemini_candidates as _verbose_gemini_candidates
+from research.providers import _verbose_openai_output as _verbose_openai_output
 from research.self_research import _company_from_page
 from research.self_research import _extract_emails_from_text
+from research.self_research import _extract_google_result_urls
 from research.self_research import _extract_relevant_same_site_links
 from research.self_research import _fetch_text
 from research.self_research import _is_blocked_result_url
 from research.self_research import _normalize_url_for_dedupe
-from research.self_research import crawl_self_result_url
-from research.self_research import collect_self_search_result_urls
 from research.self_research import default_self_keywords as _default_self_keywords
-from research.self_research import run_ollama_web_research
-from research.self_research import run_self_research
 
 mode_instructions = importlib.import_module(
     f"{__package__}.mode_instructions" if __package__ else "mode_instructions"
@@ -629,7 +621,7 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     output_dir = base_dir / "output"
     
     # Load all emails from output logs (excluding invalid_mails.csv)
-    from mail_sender.sent_log import read_known_output_emails, read_logged_emails
+    from mail_sender.sent_log import read_known_output_emails
     logged = read_known_output_emails(output_dir)
     emails.update(logged)
     _verbose(verbose, f"Loaded {len(logged)} logged email exclusion(s) from {output_dir}.")

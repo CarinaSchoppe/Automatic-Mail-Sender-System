@@ -1,0 +1,2 @@
+"""Tkinter GUI for MailSenderSystem."""
+
