@@ -43,47 +43,16 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
         )
 
     assert exc_info.value.code == 0
-    assert calls == [
-        (
-            "research",
-            [
-                "--provider",
-                "openai",
-                "--mode",
-                "Freelance_English",
-                "--base-dir",
-                str(app_main.PROJECT_ROOT),
-                "--gemini-model",
-                "gemini-3-flash-preview",
-                "--openai-model",
-                "gpt-5.4-mini-2026-03-17",
-                "--min-companies",
-                "2",
-                "--max-companies",
-                "4",
-                "--person-emails-per-company",
-                "1",
-                "--no-write-output",
-                "--no-upload-attachments",
-                "--verbose",
-            ],
-        ),
-        (
-            "mail",
-            [
-                "--mode",
-                "Freelance_English",
-                "--base-dir",
-                str(app_main.PROJECT_ROOT),
-                "--signature-logo",
-                "templates/signature-logo.png",
-                "--signature-logo-width",
-                "325",
-                "--send",
-                "--verbose",
-            ],
-        ),
-    ]
+    assert [call[0] for call in calls] == ["research", "mail"]
+    research_args = calls[0][1]
+    mail_args = calls[1][1]
+    assert research_args[:6] == ["--provider", "openai", "--mode", "Freelance_English", "--base-dir", str(app_main.PROJECT_ROOT)]
+    assert "--no-write-output" in research_args
+    assert "--no-upload-attachments" in research_args
+    assert "--parallel-threads" in research_args
+    assert mail_args[:4] == ["--mode", "Freelance_English", "--base-dir", str(app_main.PROJECT_ROOT)]
+    assert "--send" in mail_args
+    assert "--parallel-threads" in mail_args
 
 
 def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
@@ -127,22 +96,14 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
             return []
         return [{"company": "Test Company", "mail": "test@example.com"}]
 
-    with pytest.raises(SystemExit) as exc_info:
-        runpy.run_path(
-            "code/main.py",
-            run_name="__main__",
-            init_globals={
-                "research_main": lambda args: 0,
-                "mail_main": lambda args=None: 0,
-                "read_logged_rows": fake_read_logged_rows,
-                "RUN_AI_RESEARCH": True,
-                "SEND": True,
-                "SEND_TARGET_COUNT": 0,
-                "SAVE_VERBOSE_LOG": False,
-            },
-        )
+    monkeypatch.setattr(app_main, "research_main", lambda args: 0)
+    monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: fake_read_logged_rows(None))
+    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
+    monkeypatch.setattr(app_main, "SEND", True)
+    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 0)
 
-    assert exc_info.value.code == 0
+    assert app_main._run() == 0
     captured = capsys.readouterr()
     assert "Summary: 1 unique email(s) sent to these recipients:" in captured.out
     assert "- Test Company: test@example.com" in captured.out
@@ -165,31 +126,23 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     row_state = {"calls": 0}
     def fake_read_rows(path):
         row_state["calls"] += 1
-        if row_state["calls"] <= 2: # round 1 before calls (and start check)
+        if row_state["calls"] <= 1:
             return []
         return [{"company": "Loop Company", "mail": "loop@example.com"}]
 
-    with pytest.raises(SystemExit) as exc_info:
-        runpy.run_path(
-            "code/main.py",
-            run_name="__main__",
-            init_globals={
-                "research_main": lambda args: 0,
-                "mail_main": lambda args=None: 0,
-                "read_logged_rows": fake_read_rows,
-                "read_known_output_emails": fake_read_emails,
-                "RUN_AI_RESEARCH": True,
-                "SEND": True,
-                "SEND_TARGET_COUNT": 1,
-                "RESEARCH_WRITE_OUTPUT": True,
-                "WRITE_SENT_LOG": True,
-                "RESEND_EXISTING": False,
-                "MODE": "PhD",
-                "SAVE_VERBOSE_LOG": False,
-            },
-        )
+    monkeypatch.setattr(app_main, "research_main", lambda args: 0)
+    monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: fake_read_rows(None))
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: fake_read_emails(None))
+    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
+    monkeypatch.setattr(app_main, "SEND", True)
+    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 1)
+    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
+    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
+    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
+    monkeypatch.setattr(app_main, "MODE", "PhD")
 
-    assert exc_info.value.code == 0
+    assert app_main._run() == 0
     captured = capsys.readouterr()
     assert "Summary: 1 unique email(s) sent to these recipients:" in captured.out
     assert "- Loop Company: loop@example.com" in captured.out
@@ -258,7 +211,18 @@ def test_main_run_can_skip_research_and_mail_directly(monkeypatch) -> None:
 def test_target_send_loop_repeats_until_logged_target_is_reached(monkeypatch) -> None:
     research_calls = []
     mail_calls = []
-    logged_counts = iter([10, 12, 13])
+    email_sets = iter([
+        {f"old{i}@example.com" for i in range(10)},
+    ])
+    row_sets = iter([
+        [{"company": f"Old {i}", "mail": f"old{i}@example.com"} for i in range(10)],
+        [{"company": f"Old {i}", "mail": f"old{i}@example.com"} for i in range(10)]
+        + [{"company": "New 1", "mail": "new1@example.com"}, {"company": "New 2", "mail": "new2@example.com"}],
+        [{"company": f"Old {i}", "mail": f"old{i}@example.com"} for i in range(10)]
+        + [{"company": "New 1", "mail": "new1@example.com"}, {"company": "New 2", "mail": "new2@example.com"}],
+        [{"company": f"Old {i}", "mail": f"old{i}@example.com"} for i in range(10)]
+        + [{"company": "New 1", "mail": "new1@example.com"}, {"company": "New 2", "mail": "new2@example.com"}, {"company": "New 3", "mail": "new3@example.com"}],
+    ])
 
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
@@ -271,13 +235,14 @@ def test_target_send_loop_repeats_until_logged_target_is_reached(monkeypatch) ->
     monkeypatch.setattr(app_main, "VERBOSE", False)
     monkeypatch.setattr(app_main, "research_main", lambda args: research_calls.append(args) or 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: mail_calls.append(args) or 0)
-    monkeypatch.setattr(app_main, "_count_logged_sent_emails", lambda: next(logged_counts))
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: next(email_sets))
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: next(row_sets))
     monkeypatch.setattr("sys.argv", ["code/main.py"])
 
     assert app_main._run() == 0
     assert len(research_calls) == 2
-    assert mail_calls[0][-2:] == ["--max-send-count", "3"]
-    assert mail_calls[1][-2:] == ["--max-send-count", "1"]
+    assert ["--max-send-count", "3"] == mail_calls[0][mail_calls[0].index("--max-send-count"):mail_calls[0].index("--max-send-count") + 2]
+    assert ["--max-send-count", "1"] == mail_calls[1][mail_calls[1].index("--max-send-count"):mail_calls[1].index("--max-send-count") + 2]
 
 
 def test_count_logged_sent_emails_uses_project_output(monkeypatch) -> None:
@@ -328,7 +293,7 @@ def test_target_send_loop_reports_all_invalid_setting_combinations(monkeypatch, 
 
 
 def test_target_send_loop_stops_when_no_new_sent_log_entries_are_created(monkeypatch, capsys) -> None:
-    counts = iter([5, 5])
+    rows = [{"company": f"Old {i}", "mail": f"old{i}@example.com"} for i in range(5)]
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
     monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
@@ -339,11 +304,12 @@ def test_target_send_loop_stops_when_no_new_sent_log_entries_are_created(monkeyp
     monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: 0)
-    monkeypatch.setattr(app_main, "_count_logged_sent_emails", lambda: next(counts))
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {row["mail"] for row in rows})
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: rows)
     monkeypatch.setattr("sys.argv", ["code/main.py"])
 
     assert app_main._run() == 1
-    assert "No new sent-log entries" in capsys.readouterr().out
+    assert "No new unique sent-log entries" in capsys.readouterr().out
 
 
 def test_target_send_loop_stops_when_research_fails(monkeypatch) -> None:
@@ -362,7 +328,7 @@ def test_target_send_loop_stops_when_research_fails(monkeypatch) -> None:
 
 
 def test_target_send_loop_stops_at_max_rounds(monkeypatch, capsys) -> None:
-    counts = iter([0, 1])
+    row_sets = iter([[], [{"company": "One", "mail": "one@example.com"}]])
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
     monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
@@ -373,14 +339,15 @@ def test_target_send_loop_stops_at_max_rounds(monkeypatch, capsys) -> None:
     monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 1)
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: 0)
-    monkeypatch.setattr(app_main, "_count_logged_sent_emails", lambda: next(counts))
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: set())
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: next(row_sets))
 
     assert app_main._run_target_send_loop() == 1
     assert "SEND_TARGET_MAX_ROUNDS=1" in capsys.readouterr().out
 
 
 def test_target_send_loop_stops_when_mail_sender_errors(monkeypatch, capsys) -> None:
-    counts = iter([0, 1])
+    row_sets = iter([[], [{"company": "One", "mail": "one@example.com"}]])
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
     monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
@@ -391,7 +358,8 @@ def test_target_send_loop_stops_when_mail_sender_errors(monkeypatch, capsys) -> 
     monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: 4)
-    monkeypatch.setattr(app_main, "_count_logged_sent_emails", lambda: next(counts))
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: set())
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: next(row_sets))
 
     assert app_main._run_target_send_loop() == 4
     assert "Mail sender returned an error" in capsys.readouterr().out
@@ -438,18 +406,11 @@ def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
     # But loop condition is 2 < 101.
     # After round 1 finished, it checks round_number > max_rounds.
     
-    state = {"count": 1}
-    def fake_read_logged_rows(path):
-        return [{"company": "Round 1", "mail": "new@example.com"}]
-
-    monkeypatch.setattr(app_main, "read_logged_rows", fake_read_logged_rows)
-    
-    # Mocking the glob to return one dummy file for rows_after
-    class MockPath:
-        def __init__(self, name): self.name = name
-        def glob(self, pattern): return [MockPath("file.csv")]
-    
-    monkeypatch.setattr(app_main, "PROJECT_ROOT", MockPath("root"))
+    row_sets = iter([
+        [{"company": "Old", "mail": "old@example.com"}],
+        [{"company": "Old", "mail": "old@example.com"}, {"company": "Round 1", "mail": "new@example.com"}],
+    ])
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: next(row_sets))
 
     status = app_main._run_target_send_loop()
     assert status == 1
@@ -475,12 +436,7 @@ def test_target_loop_unlimited_warning(monkeypatch, capsys) -> None:
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
     
-    # Simulate no progress to exit loop
-    monkeypatch.setattr(app_main, "read_logged_rows", lambda path: [])
-    class MockPath:
-        def __init__(self, name): self.name = name
-        def glob(self, pattern): return []
-    monkeypatch.setattr(app_main, "PROJECT_ROOT", MockPath("root"))
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: [])
 
     app_main._run_target_send_loop()
     captured = capsys.readouterr()

@@ -12,12 +12,13 @@ RUN_AI_RESEARCH = true
 # What it does: Selects which batch/profile to use.
 # Allowed values: "PhD", "Freelance_German", "Freelance_English", or "Auto".
 # Default: "Freelance_German"
-MODE = "PhD"
+MODE = "Freelance_German"
 
 # RESEARCH_AI_PROVIDER
 # What it does: Selects the AI provider used for lead research.
 # "gemini" uses GEMINI_MODEL from .env.
 # "openai" uses OPENAI_MODEL from .env.
+# "ollama" uses a local Ollama server and OLLAMA_MODEL.
 # "self" uses local web search + website crawling without an AI provider.
 # Default: "gemini"
 RESEARCH_AI_PROVIDER = "gemini"
@@ -31,6 +32,17 @@ GEMINI_MODEL = "gemini-3-flash-preview"
 # What it does: The OpenAI model name to use for research.
 # Default: "gpt-5.4-mini-2026-03-17"
 OPENAI_MODEL = "gpt-5.4-mini-2026-03-17"
+
+# OLLAMA_MODEL
+# What it does: Local model name for RESEARCH_AI_PROVIDER = "ollama".
+# Good RTX 5090 laptop starting points: "llama3.1:8b", "qwen2.5:14b", or another installed model.
+# Default: "llama3.1:8b"
+OLLAMA_MODEL = "llama3.1:8b"
+
+# OLLAMA_BASE_URL
+# What it does: Local Ollama HTTP server URL.
+# Default: "http://localhost:11434"
+OLLAMA_BASE_URL = "http://localhost:11434"
 
 # RESEARCH_REASONING_EFFORT
 # What it does: Controls the AI reasoning effort/thinking level.
@@ -64,6 +76,12 @@ SELF_RESULTS_PER_PAGE = 10
 # What it does: Maximum same-website pages to crawl per result URL.
 # Default: 8
 SELF_CRAWL_MAX_PAGES_PER_SITE = 8
+
+# SELF_CRAWL_DEPTH
+# What it does: Maximum same-website link depth to follow from each search result.
+# 0 = only the result page, 1 = result page plus directly linked pages, 2-3 = deeper crawl.
+# Default: 2
+SELF_CRAWL_DEPTH = 2
 
 # SELF_REQUEST_TIMEOUT
 # What it does: HTTP timeout in seconds for self research fetches and optional SMTP probes.
@@ -131,7 +149,7 @@ SEND_TARGET_MAX_ROUNDS = 0
 # What it does: Maximum number of parallel AI research requests and parallel mail send workers.
 # Each real mail worker opens its own SMTP connection; CSV log writes are synchronized.
 # Default: 5
-PARALLEL_THREADS = 5
+PARALLEL_THREADS = 7
 
 # VERIFY_EMAIL_SMTP
 # What it does: Optionally probes recipient MX servers before sending and skips addresses
@@ -139,7 +157,7 @@ PARALLEL_THREADS = 5
 # This can reduce postmaster bounces, but cannot prove every mailbox exists because
 # many providers use catch-all, greylisting, or anti-harvesting.
 # Default: false
-VERIFY_EMAIL_SMTP = false
+VERIFY_EMAIL_SMTP = true
 
 # VERIFY_EMAIL_SMTP_TIMEOUT
 # What it does: Timeout in seconds for each optional SMTP mailbox probe.
@@ -152,7 +170,7 @@ VERIFY_EMAIL_SMTP_TIMEOUT = 8
 # false = normal status output only.
 # true = detailed [VERBOSE] output.
 # Default: false
-VERBOSE = false
+VERBOSE = true
 
 # SAVE_VERBOSE_LOG
 # What it does: Saves a copy of the terminal output into a timestamped log file.

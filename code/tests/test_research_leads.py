@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import runpy
 import sys
 import types as py_types
@@ -28,12 +29,14 @@ def config(
         model: str = "gemini-2.5-flash-lite",
         gemini_model: str = "gemini-2.5-flash-lite",
         openai_model: str = "gpt-5.4",
+        ollama_model: str = "llama3.1:8b",
         max_companies: int = 3,
         reasoning_effort: str = "middle",
         send_target_count: int = 0,
         max_iterations: int = 5,
         parallel_threads: int = 1,
         self_search_keywords: tuple[str, ...] = ("query",),
+        self_crawl_depth: int = 2,
 ) -> ResearchConfig:
     return ResearchConfig(
         provider=provider,
@@ -48,11 +51,13 @@ def config(
         upload_attachments=upload_attachments,
         gemini_model=gemini_model,
         openai_model=openai_model,
+        ollama_model=ollama_model,
         reasoning_effort=reasoning_effort,
         send_target_count=send_target_count,
         max_iterations=max_iterations,
         parallel_threads=parallel_threads,
         self_search_keywords=self_search_keywords,
+        self_crawl_depth=self_crawl_depth,
     )
 
 
@@ -64,6 +69,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "RESEARCH_MODE",
         "GEMINI_MODEL",
         "OPENAI_MODEL",
+        "OLLAMA_MODEL",
         "RESEARCH_MIN_COMPANIES",
         "RESEARCH_MAX_COMPANIES",
         "RESEARCH_PERSON_EMAILS_PER_COMPANY",
@@ -111,6 +117,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.max_companies == 4
     assert parsed.person_emails_per_company == 1
     assert parsed.model == "gpt-5.4-mini-2026-03-17"
+    assert parsed.ollama_model == "llama3.1:8b"
     assert parsed.write_output is False
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
@@ -490,6 +497,91 @@ def test_self_google_result_parser_decodes_result_links() -> None:
     assert research_leads._extract_google_result_urls(html_text) == [
         "https://example.com/contact",
         "https://direct.example/about",
+    ]
+
+
+def test_self_crawler_respects_depth_and_extracts_nested_emails(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    pages = {
+        "https://example.com": '<html><head><title>Example Co</title></head><body><a href="/about">About</a></body></html>',
+        "https://example.com/about": '<html><head><title>Example About</title></head><body><a href="/team">Team</a></body></html>',
+        "https://example.com/team": '<html><head><title>Example Team</title></head><body>hello@example.com</body></html>',
+    }
+
+    monkeypatch.setattr(research_leads, "_fetch_text", lambda url, timeout, verbose: pages.get(url, ""))
+
+    shallow = research_leads.crawl_self_result_url(config(project, provider="self", self_crawl_depth=1), "https://example.com")
+    deep = research_leads.crawl_self_result_url(config(project, provider="self", self_crawl_depth=2), "https://example.com")
+
+    assert shallow == []
+    assert deep == [Recipient(email="hello@example.com", company="Example Team")]
+
+
+def test_generate_with_ollama_posts_to_local_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+        @staticmethod
+        def read():
+            return b'{"response": "company,mail,source_url\\nA,a@example.com,https://a.example/contact\\n"}'
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(research_leads.urllib.request, "urlopen", fake_urlopen)
+
+    result = research_leads.generate_with_ollama("llama3.1:8b", "prompt", "http://localhost:11434", True)
+
+    assert result.startswith("company,mail,source_url")
+    assert captured["url"] == "http://localhost:11434/api/generate"
+    assert captured["payload"]["model"] == "llama3.1:8b"
+    assert captured["payload"]["prompt"] == "prompt"
+    assert captured["payload"]["stream"] is False
+    assert captured["timeout"] == 300
+
+
+def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    calls = []
+
+    monkeypatch.setattr(
+        research_leads,
+        "collect_self_search_result_urls",
+        lambda cfg, queries: calls.append(("search", tuple(queries))) or ["https://example.com"],
+    )
+    monkeypatch.setattr(
+        research_leads,
+        "crawl_self_result_url",
+        lambda cfg, url: calls.append(("crawl", url)) or [Recipient(email="lead@example.com", company="Lead Co")],
+    )
+    monkeypatch.setattr(
+        research_leads,
+        "validate_email_address",
+        lambda *args, **kwargs: py_types.SimpleNamespace(is_valid=True, reason=""),
+    )
+
+    def fake_ollama(model, prompt, base_url, verbose=False):
+        calls.append(("ollama", model, base_url, "lead@example.com" in prompt))
+        return "company,mail,source_url\nLead Co,lead@example.com,self-crawl\n"
+
+    monkeypatch.setattr(research_leads, "generate_with_ollama", fake_ollama)
+
+    _, recipients = research_leads.run_research(
+        config(project, provider="ollama", model="llama3.1:8b", max_companies=1)
+    )
+
+    assert recipients == [Recipient(email="lead@example.com", company="Lead Co")]
+    assert calls == [
+        ("search", ("query",)),
+        ("crawl", "https://example.com"),
+        ("ollama", "llama3.1:8b", "http://localhost:11434", True),
     ]
 
 

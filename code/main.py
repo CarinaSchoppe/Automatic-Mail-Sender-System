@@ -38,11 +38,14 @@ RESEARCH_WRITE_OUTPUT = _setting("RESEARCH_WRITE_OUTPUT", True)
 RESEARCH_UPLOAD_ATTACHMENTS = _setting("RESEARCH_UPLOAD_ATTACHMENTS", True)
 GEMINI_MODEL = _setting("GEMINI_MODEL", "gemini-3-flash-preview")
 OPENAI_MODEL = _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
+OLLAMA_MODEL = _setting("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_BASE_URL = _setting("OLLAMA_BASE_URL", "http://localhost:11434")
 RESEARCH_REASONING_EFFORT = _setting("RESEARCH_REASONING_EFFORT", "middle")
 SELF_SEARCH_KEYWORDS = _setting("SELF_SEARCH_KEYWORDS", [])
 SELF_SEARCH_PAGES = _setting("SELF_SEARCH_PAGES", 1)
 SELF_RESULTS_PER_PAGE = _setting("SELF_RESULTS_PER_PAGE", 10)
 SELF_CRAWL_MAX_PAGES_PER_SITE = _setting("SELF_CRAWL_MAX_PAGES_PER_SITE", 8)
+SELF_CRAWL_DEPTH = _setting("SELF_CRAWL_DEPTH", 2)
 SELF_REQUEST_TIMEOUT = _setting("SELF_REQUEST_TIMEOUT", 10)
 SELF_VERIFY_EMAIL_SMTP = _setting("SELF_VERIFY_EMAIL_SMTP", False)
 SEND = _setting("SEND", False)
@@ -126,7 +129,8 @@ def _print_effective_settings() -> None:
     _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
-    _verbose(VERBOSE, f"Self research settings: pages={SELF_SEARCH_PAGES}, results_per_page={SELF_RESULTS_PER_PAGE}, crawl_max_pages_per_site={SELF_CRAWL_MAX_PAGES_PER_SITE}, keywords={SELF_SEARCH_KEYWORDS}.")
+    _verbose(VERBOSE, f"Ollama settings: model={OLLAMA_MODEL}, base_url={OLLAMA_BASE_URL}.")
+    _verbose(VERBOSE, f"Self research settings: pages={SELF_SEARCH_PAGES}, results_per_page={SELF_RESULTS_PER_PAGE}, crawl_max_pages_per_site={SELF_CRAWL_MAX_PAGES_PER_SITE}, crawl_depth={SELF_CRAWL_DEPTH}, keywords={SELF_SEARCH_KEYWORDS}.")
     _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
     _verbose(VERBOSE, f"Target loop max rounds (safety gate): {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited (0)'}.")
     _verbose(VERBOSE, f"Signature logo: {SIGNATURE_LOGO}, width={SIGNATURE_LOGO_WIDTH}.")
@@ -145,6 +149,10 @@ def _build_research_args() -> list[str]:
         str(GEMINI_MODEL),
         "--openai-model",
         str(OPENAI_MODEL),
+        "--ollama-model",
+        str(OLLAMA_MODEL),
+        "--ollama-base-url",
+        str(OLLAMA_BASE_URL),
         "--reasoning-effort",
         str(RESEARCH_REASONING_EFFORT),
     ]
@@ -155,6 +163,7 @@ def _build_research_args() -> list[str]:
         ("--self-search-pages", SELF_SEARCH_PAGES),
         ("--self-results-per-page", SELF_RESULTS_PER_PAGE),
         ("--self-crawl-max-pages-per-site", SELF_CRAWL_MAX_PAGES_PER_SITE),
+        ("--self-crawl-depth", SELF_CRAWL_DEPTH),
         ("--self-request-timeout", SELF_REQUEST_TIMEOUT),
     ]:
         _add_value(args, flag, value)
@@ -211,6 +220,17 @@ def _count_logged_sent_emails() -> int:
 
 def _get_logged_emails() -> set[str]:
     return read_known_output_emails(PROJECT_ROOT / "output")
+
+
+def _read_output_sent_rows() -> list[dict[str, str]]:
+    output_dir = PROJECT_ROOT / "output"
+    rows: list[dict[str, str]] = []
+    if not output_dir.exists():
+        return rows
+    for path in output_dir.glob("*.csv"):
+        if path.name.lower() != "invalid_mails.csv":
+            rows.extend(read_logged_rows(path))
+    return rows
 
 
 def _print_run_summary(sent_details: list[dict[str, str]]) -> None:
@@ -328,22 +348,12 @@ def _run_target_send_loop() -> int:
 
         # Track what was in the logs before this round
         # We need the full rows to get company names for the summary
-        output_dir = PROJECT_ROOT / "output"
-        rows_before = []
-        for path in output_dir.glob("*.csv"):
-            if path.name.lower() != "invalid_mails.csv":
-                rows_before.extend(read_logged_rows(path))
-        
+        rows_before = _read_output_sent_rows()
         emails_before = {r["mail"].lower() for r in rows_before if r.get("mail")}
 
         mail_status = _run_mail_once(max_send_count=remaining)
         
-        # Track what is in the logs after this round
-        rows_after = []
-        for path in output_dir.glob("*.csv"):
-            if path.name.lower() != "invalid_mails.csv":
-                rows_after.extend(read_logged_rows(path))
-        
+        rows_after = _read_output_sent_rows()
         current_emails = {r["mail"].lower() for r in rows_after if r.get("mail")}
         current_count = len(current_emails)
         
@@ -388,12 +398,7 @@ def _run() -> int:
         return _run_target_send_loop()
 
     # Track unique emails for non-target run too
-    output_dir = PROJECT_ROOT / "output"
-    rows_before = []
-    if output_dir.exists():
-        for path in output_dir.glob("*.csv"):
-            if path.name.lower() != "invalid_mails.csv":
-                rows_before.extend(read_logged_rows(path))
+    rows_before = _read_output_sent_rows()
     emails_before = {r["mail"].lower() for r in rows_before if r.get("mail")}
 
     if RUN_AI_RESEARCH:
@@ -415,11 +420,7 @@ def _run() -> int:
     mail_status = _run_mail_once()
     
     # Identify newly logged emails
-    rows_after = []
-    if output_dir.exists():
-        for path in output_dir.glob("*.csv"):
-            if path.name.lower() != "invalid_mails.csv":
-                rows_after.extend(read_logged_rows(path))
+    rows_after = _read_output_sent_rows()
     
     run_sent_details = []
     seen_in_run = set()

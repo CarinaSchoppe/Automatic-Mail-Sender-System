@@ -6,18 +6,12 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import csv
-import html
 import importlib
-import json
 import os
 import re
-import shutil
 import sys
-import tempfile
 import tomllib
-import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -32,34 +26,53 @@ if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
 from mail_sender.attachments import list_attachments
+from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MODE_NAMES, MailMode, get_mode
 from mail_sender.recipients import COMPANY_KEYS
 from mail_sender.recipients import EMAIL_KEYS
 from mail_sender.recipients import Recipient
 from mail_sender.recipients import list_recipient_files
-from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
 from mail_sender.recipients import read_recipients
-from mail_sender.email_validation import validate_email_address
 from mail_sender.sent_log import read_logged_emails
 from mail_sender.sent_log import read_logged_rows
+from research import parsing as _parsing
+from research import providers as _providers
+from research import self_research as _self_research
+from research.logging_utils import info as _info
+from research.logging_utils import verbose as _verbose
+from research.parsing import DefaultCsvDialect
+from research.parsing import _detect_dialect
+from research.parsing import _find_field
+from research.parsing import _parse_headerless_csv_recipients
+from research.parsing import _parse_json_recipients
+from research.parsing import _strip_csv_fence
+from research.parsing import _strip_json_fence
+from research.parsing import normalize_company as _normalize_company
+from research.parsing import parse_recipients
+from research.providers import _fake_txt_extensions
+from research.providers import _verbose_gemini_candidates
+from research.providers import _verbose_openai_output
+from research.providers import generate_with_gemini
+from research.providers import generate_with_ollama
+from research.providers import generate_with_openai
+from research.self_research import _extract_google_result_urls
+from research.self_research import _company_from_page
+from research.self_research import _extract_emails_from_text
+from research.self_research import _extract_relevant_same_site_links
+from research.self_research import _fetch_text
+from research.self_research import _is_blocked_result_url
+from research.self_research import _normalize_url_for_dedupe
+from research.self_research import crawl_self_result_url
+from research.self_research import collect_self_search_result_urls
+from research.self_research import default_self_keywords as _default_self_keywords
+from research.self_research import run_ollama_web_research
+from research.self_research import run_self_research
 
 mode_instructions = importlib.import_module(
     f"{__package__}.mode_instructions" if __package__ else "mode_instructions"
 )
 
-SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-EMAIL_EXTRACT_PATTERN = re.compile(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", re.IGNORECASE)
-COMPANY_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
-HTML_TITLE_PATTERN = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
-HTML_LINK_PATTERN = re.compile(r"""href=["']([^"']+)["']""", re.IGNORECASE)
-BAD_EMAIL_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf")
-CONTACT_LINK_HINTS = ("contact", "about", "team", "people", "staff", "career", "impressum")
-HTTP_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; MailSenderSystemResearch/1.0; +https://example.local)",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
 RESUME_ATTACHMENT_PATTERN = re.compile(
     r"(?:^|[\s._-])(cv|resume|lebenslauf|curriculum(?:[\s._-]+vitae)?)(?:$|[\s._-])",
     re.IGNORECASE,
@@ -80,6 +93,8 @@ class ResearchConfig:
     upload_attachments: bool
     gemini_model: str
     openai_model: str
+    ollama_model: str = "llama3.1:8b"
+    ollama_base_url: str = "http://localhost:11434"
     reasoning_effort: str = "middle"
     send_target_count: int = 0
     max_iterations: int = 5
@@ -88,6 +103,7 @@ class ResearchConfig:
     self_search_pages: int = 1
     self_results_per_page: int = 10
     self_crawl_max_pages_per_site: int = 8
+    self_crawl_depth: int = 2
     self_request_timeout: float = 10.0
     self_verify_email_smtp: bool = False
 
@@ -124,6 +140,8 @@ def default_config() -> ResearchConfig:
     provider = _get("RESEARCH_AI_PROVIDER", "gemini")
     gemini_model = _get("GEMINI_MODEL", "gemini-3-flash-preview")
     openai_model = _get("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
+    ollama_model = _get("OLLAMA_MODEL", "llama3.1:8b")
+    ollama_base_url = _get("OLLAMA_BASE_URL", "http://localhost:11434")
 
     # Mode name: check RESEARCH_MODE (env) then MODE (env or toml)
     mode_name = os.getenv("RESEARCH_MODE")
@@ -135,7 +153,9 @@ def default_config() -> ResearchConfig:
         mode_name=mode_name,
         gemini_model=gemini_model,
         openai_model=openai_model,
-        model=_model_for_provider(provider, gemini_model, openai_model),
+        ollama_model=ollama_model,
+        ollama_base_url=ollama_base_url,
+        model=_model_for_provider(provider, gemini_model, openai_model, ollama_model),
         min_companies=_get("RESEARCH_MIN_COMPANIES", 15),
         max_companies=_get("RESEARCH_MAX_COMPANIES", 25),
         person_emails_per_company=_get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3),
@@ -151,6 +171,7 @@ def default_config() -> ResearchConfig:
         self_search_pages=_get("SELF_SEARCH_PAGES", 1),
         self_results_per_page=_get("SELF_RESULTS_PER_PAGE", 10),
         self_crawl_max_pages_per_site=_get("SELF_CRAWL_MAX_PAGES_PER_SITE", 8),
+        self_crawl_depth=_get("SELF_CRAWL_DEPTH", 2),
         self_request_timeout=float(_get("SELF_REQUEST_TIMEOUT", 10.0)),
         self_verify_email_smtp=_get("SELF_VERIFY_EMAIL_SMTP", False),
     )
@@ -175,10 +196,12 @@ def main(argv: list[str] | None = None) -> int:
 def parse_args(argv: list[str]) -> ResearchConfig:
     env_config = default_config()
     parser = argparse.ArgumentParser(description="research new lead CSV files with AI providers or self-hosted web scraping.")
-    parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai", "self"], help="Research provider.")
+    parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai", "ollama", "self"], help="Research provider.")
     parser.add_argument("--mode", default=env_config.mode_name, choices=MODE_NAMES, help="research mode.")
     parser.add_argument("--gemini-model", default=env_config.gemini_model)
     parser.add_argument("--openai-model", default=env_config.openai_model)
+    parser.add_argument("--ollama-model", default=env_config.ollama_model)
+    parser.add_argument("--ollama-base-url", default=env_config.ollama_base_url)
     parser.add_argument("--min-companies", type=int, default=env_config.min_companies)
     parser.add_argument("--max-companies", type=int, default=env_config.max_companies)
     parser.add_argument("--person-emails-per-company", type=int, default=env_config.person_emails_per_company)
@@ -192,6 +215,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--self-search-pages", type=int, default=env_config.self_search_pages, help="Number of Google result pages to scan in self research.")
     parser.add_argument("--self-results-per-page", type=int, default=env_config.self_results_per_page, help="Expected search results per page in self research.")
     parser.add_argument("--self-crawl-max-pages-per-site", type=int, default=env_config.self_crawl_max_pages_per_site, help="Maximum same-site pages to crawl per result in self research.")
+    parser.add_argument("--self-crawl-depth", type=int, default=env_config.self_crawl_depth, help="Maximum same-site link depth to crawl per result in self research.")
     parser.add_argument("--self-request-timeout", type=float, default=env_config.self_request_timeout, help="HTTP timeout in seconds for self research.")
     parser.add_argument("--self-verify-email-smtp", action="store_true", default=env_config.self_verify_email_smtp, help="Use optional SMTP mailbox probes for self-researched emails.")
     parser.add_argument("--reasoning-effort", default=env_config.reasoning_effort, choices=["low", "middle", "high"], help="AI reasoning effort.")
@@ -203,7 +227,9 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         mode_name=args.mode,
         gemini_model=args.gemini_model,
         openai_model=args.openai_model,
-        model=_model_for_provider(args.provider, args.gemini_model, args.openai_model),
+        ollama_model=args.ollama_model,
+        ollama_base_url=args.ollama_base_url,
+        model=_model_for_provider(args.provider, args.gemini_model, args.openai_model, args.ollama_model),
         min_companies=args.min_companies,
         max_companies=args.max_companies,
         person_emails_per_company=args.person_emails_per_company,
@@ -219,6 +245,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         self_search_pages=args.self_search_pages,
         self_results_per_page=args.self_results_per_page,
         self_crawl_max_pages_per_site=args.self_crawl_max_pages_per_site,
+        self_crawl_depth=args.self_crawl_depth,
         self_request_timeout=args.self_request_timeout,
         self_verify_email_smtp=args.self_verify_email_smtp,
     )
@@ -236,6 +263,8 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         raise ValueError("self_results_per_page must be at least 1.")
     if config.self_crawl_max_pages_per_site < 1:
         raise ValueError("self_crawl_max_pages_per_site must be at least 1.")
+    if config.self_crawl_depth < 0:
+        raise ValueError("self_crawl_depth must be at least 0.")
 
     _info(
         f"Starting AI research: mode={config.mode_name}, provider={config.provider}, "
@@ -245,6 +274,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"AI provider: {config.provider}")
     _verbose(config.verbose, f"research mode setting: {config.mode_name}")
     _verbose(config.verbose, f"AI model: {config.model}")
+    _verbose(config.verbose, f"Ollama base URL: {config.ollama_base_url}")
     _verbose(config.verbose, f"Reasoning effort: {config.reasoning_effort}")
     _verbose(config.verbose, f"Company target range: {config.min_companies}-{config.max_companies}")
     _verbose(config.verbose, f"Person emails per company target: {config.person_emails_per_company}")
@@ -293,6 +323,18 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         else:
             _info("Research CSV writing is disabled; no output file was written.")
         _info("Self research finished successfully.")
+        return output_path, recipients
+
+    if config.provider.strip().lower() == "ollama":
+        recipients = run_ollama_web_research(config, mode, existing_emails, existing_companies)
+        output_path = None
+        if config.write_output:
+            output_path = write_recipients_csv(mode.recipients_dir, mode.label, recipients)
+            _info(f"Wrote Ollama web-research CSV: {output_path}.")
+            _verbose(config.verbose, f"Wrote Ollama web-research CSV: {output_path}")
+        else:
+            _info("Research CSV writing is disabled; no output file was written.")
+        _info("Ollama web research finished successfully.")
         return output_path, recipients
 
     all_recipients: list[Recipient] = []
@@ -393,13 +435,13 @@ def _generate_research_response(
         input_context: str,
 ) -> str:
     raw_response = generate_with_provider(
-        config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose
+        config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose, config.ollama_base_url
     )
     if _needs_retry(raw_response, existing_emails, config.verbose) and attachments:
         _info("AI response was not usable yet; retrying once without CV/resume uploads.")
         _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
         raw_response = generate_with_provider(
-            config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose
+            config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
     if _needs_retry(raw_response, existing_emails, config.verbose):
         retry_prompt = build_prompt(config, mode, set(), set(), input_context)
@@ -407,7 +449,7 @@ def _generate_research_response(
         _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
         _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
         raw_response = generate_with_provider(
-            config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose
+            config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
     return raw_response
 
@@ -418,48 +460,32 @@ def run_self_research(
         existing_emails: set[str],
         existing_companies: set[str],
 ) -> list[Recipient]:
-    """Run local web-search/crawl research and return centrally deduplicated recipients."""
+    """Compatibility wrapper around the self research base workflow."""
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
     seen_emails = {email.lower() for email in existing_emails}
     seen_companies = {company for company in existing_companies if company}
     recipients: list[Recipient] = []
 
     queries = _self_search_queries(config, mode)
-    _info(
-        f"Starting self research with {len(queries)} keyword(s), "
-        f"{config.self_search_pages} search page(s), {config.parallel_threads} worker(s)."
-    )
     result_urls = collect_self_search_result_urls(config, queries)
-    _info(f"Self research search result URLs found: {len(result_urls)}.")
-
     if not result_urls:
         raise RuntimeError("Self research found no search result URLs.")
 
     with ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls))) as executor:
-        futures = {
-            executor.submit(crawl_self_result_url, config, url): url
-            for url in result_urls
-        }
+        futures = {executor.submit(crawl_self_result_url, config, url): url for url in result_urls}
         for future in as_completed(futures):
-            url = futures[future]
             try:
                 candidates = future.result()
             except Exception as exc:
-                _verbose(config.verbose, f"Self research crawl failed for {url}: {exc}")
+                _verbose(config.verbose, f"Self research crawl failed for {futures[future]}: {exc}")
                 continue
-
             for candidate in candidates:
                 if len(recipients) >= target_count:
                     break
                 email_key = candidate.email.lower()
                 company_key = _normalize_company(candidate.company)
-                if email_key in seen_emails:
-                    _verbose(config.verbose, f"Self candidate skipped because email already exists: {candidate.email}")
+                if email_key in seen_emails or (company_key and company_key in seen_companies):
                     continue
-                if company_key and company_key in seen_companies:
-                    _verbose(config.verbose, f"Self candidate skipped because company already exists: {candidate.company}")
-                    continue
-
                 validation = validate_email_address(
                     candidate.email,
                     verify_mailbox=config.self_verify_email_smtp,
@@ -468,21 +494,30 @@ def run_self_research(
                 if not validation.is_valid:
                     _verbose(config.verbose, f"Self candidate skipped by validation: {candidate.email} | {validation.reason}")
                     continue
-
                 recipients.append(candidate)
                 seen_emails.add(email_key)
                 if company_key:
                     seen_companies.add(company_key)
-                _verbose(config.verbose, f"Self candidate accepted: {candidate.company} <{candidate.email}>")
-
             if len(recipients) >= target_count:
                 break
 
     if not recipients:
         raise RuntimeError("Self research found no new usable email addresses.")
-
-    _info(f"Self research usable recipients found: {len(recipients)}.")
     return recipients
+
+
+def run_ollama_web_research(
+        config: ResearchConfig,
+        mode: MailMode,
+        existing_emails: set[str],
+        existing_companies: set[str],
+) -> list[Recipient]:
+    candidates = run_self_research(config, mode, existing_emails, existing_companies)
+    prompt = _self_research.build_ollama_web_research_prompt(config, mode, _self_research._recipients_to_csv_text(candidates))
+    raw_response = generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
+    recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
+    target_count = config.send_target_count or config.max_companies
+    return (recipients or candidates)[:target_count]
 
 
 def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) -> list[str]:
@@ -491,8 +526,7 @@ def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) 
     for query in queries:
         for page in range(config.self_search_pages):
             start = page * config.self_results_per_page
-            search_url = _google_search_url(query, start)
-            _verbose(config.verbose, f"Self research search page: {search_url}")
+            search_url = _self_research._google_search_url(query, start)
             html_text = _fetch_text(search_url, config.self_request_timeout, config.verbose)
             if not html_text:
                 continue
@@ -506,153 +540,35 @@ def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) 
 
 
 def crawl_self_result_url(config: ResearchConfig, start_url: str) -> list[Recipient]:
-    to_visit = [start_url]
+    to_visit = [(start_url, 0)]
     visited: set[str] = set()
-    same_site_limit = config.self_crawl_max_pages_per_site
     candidates: list[Recipient] = []
     base_netloc = urllib.parse.urlparse(start_url).netloc.lower().removeprefix("www.")
 
-    while to_visit and len(visited) < same_site_limit:
-        url = to_visit.pop(0)
+    while to_visit and len(visited) < config.self_crawl_max_pages_per_site:
+        url, depth = to_visit.pop(0)
         normalized = _normalize_url_for_dedupe(url)
         if normalized in visited:
             continue
         visited.add(normalized)
-
         page_text = _fetch_text(url, config.self_request_timeout, config.verbose)
         if not page_text:
             continue
-
         company = _company_from_page(url, page_text)
         for email in _extract_emails_from_text(page_text):
             candidates.append(Recipient(email=email, company=company))
-
+        if depth >= config.self_crawl_depth:
+            continue
+        queued_urls = {queued_url for queued_url, _ in to_visit}
         for link in _extract_relevant_same_site_links(url, page_text, base_netloc):
-            if _normalize_url_for_dedupe(link) not in visited and link not in to_visit:
-                to_visit.append(link)
-
+            if _normalize_url_for_dedupe(link) not in visited and link not in queued_urls:
+                to_visit.append((link, depth + 1))
     return candidates
 
 
 def _self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
     keywords = [keyword.strip() for keyword in config.self_search_keywords if keyword.strip()]
-    if not keywords:
-        keywords = list(_default_self_keywords(mode.label))
-    return keywords
-
-
-def _default_self_keywords(mode_name: str) -> tuple[str, ...]:
-    normalized = mode_name.strip().lower()
-    if normalized == "phd":
-        return (
-            '"industry phd" "contact" email Australia',
-            '"research partnership" "contact" email Australia',
-            '"innovation" "university partnership" email Australia',
-        )
-    if normalized == "freelance_english":
-        return (
-            '"freelance lecturer" "contact" email',
-            '"online trainer" "contact" email',
-            '"AI trainer" "contact" email',
-        )
-    return (
-        '"AVGS" "Dozent" email',
-        '"Weiterbildung" "Dozent" email',
-        '"Bildungsträger" "Kontakt" email',
-    )
-
-
-def _google_search_url(query: str, start: int) -> str:
-    params = urllib.parse.urlencode({"q": query, "num": "10", "start": str(start), "hl": "en"})
-    return f"https://www.google.com/search?{params}"
-
-
-def _fetch_text(url: str, timeout: float, verbose: bool) -> str:
-    try:
-        request = urllib.request.Request(url, headers=HTTP_HEADERS)
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            content_type = response.headers.get("content-type", "")
-            if "text/html" not in content_type and "text/plain" not in content_type and content_type:
-                _verbose(verbose, f"Skipping non-text response from {url}: {content_type}")
-                return ""
-            raw = response.read(1_500_000)
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        _verbose(verbose, f"Fetch failed for {url}: {exc}")
-        return ""
-
-    return raw.decode("utf-8", errors="replace")
-
-
-def _extract_google_result_urls(html_text: str) -> list[str]:
-    urls: list[str] = []
-    for href in HTML_LINK_PATTERN.findall(html_text):
-        decoded = html.unescape(href)
-        if decoded.startswith("/url?"):
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(decoded).query)
-            target = query.get("q", [""])[0]
-        elif decoded.startswith("http"):
-            target = decoded
-        else:
-            continue
-        if target.startswith("http"):
-            urls.append(target)
-    return urls
-
-
-def _extract_relevant_same_site_links(current_url: str, html_text: str, base_netloc: str) -> list[str]:
-    links: list[str] = []
-    for href in HTML_LINK_PATTERN.findall(html_text):
-        target = urllib.parse.urljoin(current_url, html.unescape(href))
-        parsed = urllib.parse.urlparse(target)
-        if parsed.scheme not in {"http", "https"}:
-            continue
-        if parsed.netloc.lower().removeprefix("www.") != base_netloc:
-            continue
-        path = parsed.path.lower()
-        if any(hint in path for hint in CONTACT_LINK_HINTS):
-            links.append(target)
-    return links
-
-
-def _extract_emails_from_text(text: str) -> list[str]:
-    emails = []
-    seen = set()
-    cleaned_text = html.unescape(text).replace("[at]", "@").replace("(at)", "@").replace(" at ", "@")
-    for match in EMAIL_EXTRACT_PATTERN.findall(cleaned_text):
-        email = normalize_email(match).strip(".,;:()[]<>").lower()
-        if email.endswith(BAD_EMAIL_SUFFIXES) or email in seen:
-            continue
-        seen.add(email)
-        emails.append(email)
-    return emails
-
-
-def _company_from_page(url: str, page_text: str) -> str:
-    title_match = HTML_TITLE_PATTERN.search(page_text)
-    if title_match:
-        title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html.unescape(title_match.group(1)))).strip()
-        if title:
-            return title[:120]
-    parsed = urllib.parse.urlparse(url)
-    return parsed.netloc.lower().removeprefix("www.")
-
-
-def _normalize_url_for_dedupe(url: str) -> str:
-    parsed = urllib.parse.urlparse(url)
-    return urllib.parse.urlunparse((
-        parsed.scheme.lower(),
-        parsed.netloc.lower(),
-        parsed.path.rstrip("/"),
-        "",
-        parsed.query,
-        "",
-    ))
-
-
-def _is_blocked_result_url(url: str) -> bool:
-    netloc = urllib.parse.urlparse(url).netloc.lower()
-    blocked = ("google.", "youtube.", "facebook.", "instagram.", "linkedin.", "twitter.", "x.com")
-    return any(domain in netloc for domain in blocked)
+    return keywords or list(_default_self_keywords(mode.label))
 
 
 def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path]:
@@ -751,10 +667,6 @@ def collect_mode_existing_companies(mode: MailMode, verbose: bool = False) -> se
         companies.update(_normalize_company(recipient.company) for recipient in recipients if _normalize_company(recipient.company))
         _verbose(verbose, f"Loaded company exclusions from input file: {path}.")
     return companies
-
-
-def _normalize_company(company: str) -> str:
-    return COMPANY_NORMALIZE_PATTERN.sub("", company.strip().lower())
 
 
 def read_input_context(directory: Path, max_chars: int = 6000, verbose: bool = False) -> str:
@@ -856,13 +768,16 @@ def generate_with_provider(
         attachment_paths: list[Path],
         reasoning_effort: str = "middle",
         verbose: bool = False,
+        ollama_base_url: str | None = None,
 ) -> str:
     normalized = provider.strip().lower()
     if normalized == "gemini":
         return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
     if normalized == "openai":
         return generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
-    raise ValueError("Unknown research provider. Use gemini, openai, or self.")
+    if normalized == "ollama":
+        return generate_with_ollama(model, prompt, ollama_base_url or "http://localhost:11434", verbose)
+    raise ValueError("Unknown research provider. Use gemini, openai, ollama, or self.")
 
 
 def generate_with_gemini(
@@ -872,64 +787,8 @@ def generate_with_gemini(
         reasoning_effort: str = "middle",
         verbose: bool = False,
 ) -> str:
-    load_dotenv()
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Set GEMINI_API_KEY before running research.")
-
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError as exc:  # pragma: no cover - depends on optional local package state
-        raise RuntimeError("Install google-genai first: pip install -r requirements.txt") from exc
-
-    client = genai.Client(api_key=api_key)
-    _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to Gemini.")
-    uploaded_files = []
-    with _fake_txt_extensions(attachment_paths, verbose) as faked_paths:
-        for path in faked_paths:
-            _verbose(verbose, f"Uploading Gemini context file: {path}.")
-            uploaded_files.append(client.files.upload(file=path))
-    _verbose(verbose, f"Gemini uploaded file handles: {len(uploaded_files)}.")
-
-    # Map reasoning effort to Gemini thinking level
-    thinking_level = types.ThinkingLevel.MEDIUM
-    if reasoning_effort == "low":
-        thinking_level = types.ThinkingLevel.BRIEF
-    elif reasoning_effort == "high":
-        thinking_level = types.ThinkingLevel.FULL
-
-    _verbose(verbose, "Calling Gemini with Google Search grounding enabled.")
-    _verbose(
-        verbose,
-        f"Gemini config: google_search enabled, tool auto mode enabled, "
-        f"thinking_level={thinking_level.name}, temperature=0.3."
-    )
-    response = client.models.generate_content(
-        model=model,
-        contents=[prompt, *uploaded_files],  # type: ignore[arg-type]
-        config=types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-            tool_config=types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(
-                    mode=types.FunctionCallingConfigMode.AUTO,
-                ),
-                include_server_side_tool_invocations=True,
-            ),
-            thinking_config=types.ThinkingConfig(
-                thinking_level=thinking_level,
-            ),
-            temperature=0.3,
-        ),
-    )
-    _verbose(verbose, "Gemini response received.")
-    response_text = _extract_response_text(response)
-    _verbose(verbose, f"Gemini response.text raw: {response_text!r}")
-    prompt_feedback = getattr(response, "prompt_feedback", None)
-    if prompt_feedback is not None:
-        _verbose(verbose, f"Gemini prompt_feedback: {prompt_feedback!r}")
-    _verbose_gemini_candidates(verbose, response)
-    return response_text
+    _providers.load_dotenv = load_dotenv
+    return _providers.generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
 
 
 def generate_with_openai(
@@ -939,202 +798,17 @@ def generate_with_openai(
         reasoning_effort: str = "middle",
         verbose: bool = False,
 ) -> str:
-    load_dotenv()
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Set OPENAI_API_KEY before running OpenAI research.")
-
-    try:
-        from openai import OpenAI
-    except ImportError as exc:  # pragma: no cover - depends on optional local package state
-        raise RuntimeError("Install openai first: pip install -r requirements.txt") from exc
-
-    client = OpenAI(api_key=api_key)
-    _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to OpenAI.")
-    uploaded_files = []
-    with _fake_txt_extensions(attachment_paths, verbose) as faked_paths:
-        for path in faked_paths:
-            _verbose(verbose, f"Uploading OpenAI context file: {path}.")
-            with path.open("rb") as handle:
-                uploaded_files.append(client.files.create(file=handle, purpose="user_data"))
-    _verbose(verbose, f"OpenAI uploaded file handles: {len(uploaded_files)}.")
-
-    content = [{"type": "input_text", "text": prompt}]
-    content.extend({"type": "input_file", "file_id": uploaded_file.id} for uploaded_file in uploaded_files)
-
-    # Map reasoning effort to OpenAI reasoning effort
-    openai_effort = "medium"
-    if reasoning_effort == "low":
-        openai_effort = "low"
-    elif reasoning_effort == "high":
-        openai_effort = "high"
-
-    _verbose(verbose, "Calling OpenAI Responses API with web_search enabled.")
-    _verbose(verbose, f"OpenAI config: web_search enabled, tool_choice=auto, reasoning_effort={openai_effort}.")
-    response = client.responses.create(  # type: ignore[call-overload]
-        model=model,
-        input=[
-            {
-                "role": "user",
-                "content": content,
-            }
-        ],
-        tools=[{"type": "web_search"}],
-        tool_choice="auto",
-        reasoning={
-            "effort": openai_effort
-        },
-    )
-    _verbose(verbose, "OpenAI response received.")
-    response_text = _extract_openai_response_text(response)
-    _verbose(verbose, f"OpenAI response output_text raw: {response_text!r}")
-    _verbose_openai_output(verbose, response)
-    return response_text
+    _providers.load_dotenv = load_dotenv
+    return _providers.generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
 
 
-@contextlib.contextmanager
-def _fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
-    """Temporary copy .csv files to .txt for upload to avoid MIME type issues."""
-    temp_files: list[Path] = []
-    new_paths: list[Path] = []
-    try:
-        for path in attachment_paths:
-            if path.suffix.lower() == ".csv":
-                temp_dir = Path(tempfile.gettempdir())
-                # Copy with .txt extension to the system's temp directory
-                fake_path = temp_dir / (path.name + ".txt")
-                _verbose(verbose, f"Faking extension for AI upload: {path.name} -> {fake_path.name}")
-                shutil.copy2(path, fake_path)
-                temp_files.append(fake_path)
-                new_paths.append(fake_path)
-            else:
-                new_paths.append(path)
-        yield new_paths
-    finally:
-        for temp_file in temp_files:
-            try:
-                temp_file.unlink(missing_ok=True)
-            except Exception:  # pragma: no cover
-                pass
-
-
-def _extract_openai_response_text(response) -> str:
-    output_text = getattr(response, "output_text", None)
-    if output_text:
-        return output_text
-
-    texts: list[str] = []
-    for output_item in getattr(response, "output", None) or []:
-        for content_item in getattr(output_item, "content", None) or []:
-            text = getattr(content_item, "text", None)
-            if text:
-                texts.append(text)
-    return "\n".join(texts)
-
-
-def _verbose_openai_output(verbose: bool, response) -> None:
-    if not verbose:
-        return
-    output_items = getattr(response, "output", None) or []
-    if not output_items:
-        _verbose(verbose, "OpenAI output items: none")
-        return
-
-    _verbose(verbose, f"OpenAI output items: {len(output_items)}")
-    for index, output_item in enumerate(output_items, start=1):
-        item_type = getattr(output_item, "type", None)
-        status = getattr(output_item, "status", None)
-        _verbose(verbose, f"OpenAI output item {index} type: {item_type!r}")
-        _verbose(verbose, f"OpenAI output item {index} status: {status!r}")
-
-
-def _extract_response_text(response) -> str:
-    direct_text = getattr(response, "text", None)
-    if direct_text:
-        return direct_text
-
-    texts: list[str] = []
-    for candidate in getattr(response, "candidates", None) or []:
-        content = getattr(candidate, "content", None)
-        for part in getattr(content, "parts", None) or []:
-            part_text = getattr(part, "text", None)
-            if part_text:
-                texts.append(part_text)
-    return "\n".join(texts)
-
-
-def _verbose(enabled: bool, message: str) -> None:
-    if enabled:
-        print(f"[VERBOSE] {message}")
-
-
-def _info(message: str) -> None:
-    print(f"[INFO] {message}")
-
-
-def _verbose_gemini_candidates(verbose: bool, response) -> None:
-    if not verbose:
-        return
-
-    candidates = getattr(response, "candidates", None) or []
-    if not candidates:
-        _verbose(verbose, "Gemini candidates: none")
-        return
-
-    _verbose(verbose, f"Gemini candidates: {len(candidates)}")
-    for index, candidate in enumerate(candidates, start=1):
-        finish_reason = getattr(candidate, "finish_reason", None)
-        safety_ratings = getattr(candidate, "safety_ratings", None)
-        _verbose(verbose, f"Gemini candidate {index} finish_reason: {finish_reason!r}")
-        _verbose(verbose, f"Gemini candidate {index} safety_ratings: {safety_ratings!r}")
-        content = getattr(candidate, "content", None)
-        parts = getattr(content, "parts", None) if content is not None else None
-        if parts:
-            for part_index, part in enumerate(parts, start=1):
-                part_text = getattr(part, "text", None)
-                _verbose(verbose, f"Gemini candidate {index} part {part_index} text: {part_text!r}")
-        else:
-            _verbose(verbose, f"Gemini candidate {index} content parts: none")
-
-
-def parse_recipients(
-        raw_response: str,
-        existing_emails: set[str],
-        existing_companies: set[str] | None = None,
+def generate_with_ollama(
+        model: str,
+        prompt: str,
+        base_url: str = "http://localhost:11434",
         verbose: bool = False,
-) -> list[Recipient]:
-    """Parse AI output into recipients and apply local email/company exclusion filters."""
-    if isinstance(existing_companies, bool):
-        verbose = existing_companies
-        existing_companies = None
-    _verbose(verbose, f"Parsing AI response with {len(raw_response)} character(s).")
-    csv_text = _strip_csv_fence(raw_response)
-    _verbose(verbose, f"CSV candidate text length after fence stripping: {len(csv_text)}.")
-    rows = list(csv.DictReader(csv_text.splitlines(), dialect=_detect_dialect(csv_text))) if csv_text.strip() else []
-    _verbose(verbose, f"CSV DictReader row count: {len(rows)}.")
-    if rows:
-        company_field = _find_field(rows[0], COMPANY_KEYS)
-        email_field = _find_field(rows[0], EMAIL_KEYS)
-        _verbose(verbose, f"Detected CSV fields: company={company_field!r}, email={email_field!r}.")
-        if company_field and email_field:
-            source_field = _find_field(rows[0], SOURCE_KEYS)
-            _verbose(verbose, f"Detected CSV source field: {source_field!r}.")
-            recipients = _extract_from_rows(rows, company_field, email_field, existing_emails, existing_companies, source_field, verbose)
-            _verbose(verbose, f"Parsed CSV recipients: {len(recipients)}")
-            return recipients
-
-    recipients = _parse_headerless_csv_recipients(csv_text, existing_emails, existing_companies, verbose)
-    if recipients:
-        _verbose(verbose, f"Parsed headerless CSV recipients: {len(recipients)}")
-        return recipients
-
-    recipients = _parse_json_recipients(raw_response, existing_emails, existing_companies, verbose)
-    if recipients:
-        _verbose(verbose, f"Parsed JSON recipients: {len(recipients)}")
-        return recipients
-
-    _verbose(verbose, "No recipients could be parsed from AI response.")
-    return []
+) -> str:
+    return _providers.generate_with_ollama(model, prompt, base_url, verbose)
 
 
 def _parse_headerless_csv_recipients(
@@ -1143,112 +817,12 @@ def _parse_headerless_csv_recipients(
         existing_companies: set[str] | None = None,
         verbose: bool = False,
 ) -> list[Recipient]:
-    if isinstance(existing_companies, bool):
-        verbose = existing_companies
-        existing_companies = None
-    text = raw_text.strip().strip("'\"`").replace("\\n", "\n")
-    if not text:
-        _verbose(verbose, "Headerless CSV parser skipped empty text.")
-        return []
-
+    original = _parsing._detect_dialect
+    _parsing._detect_dialect = _detect_dialect
     try:
-        rows = list(csv.reader(text.splitlines(), dialect=_detect_dialect(text)))
-    except csv.Error:
-        _verbose(verbose, "Headerless CSV parser failed to read CSV rows.")
-        return []
-
-    _verbose(verbose, f"Headerless CSV row count: {len(rows)}.")
-    parsed_rows: list[dict[str, str]] = []
-    for row in rows:
-        cells = [cell.strip().strip("'\"`") for cell in row if cell.strip()]
-        if len(cells) < 2:
-            _verbose(verbose, f"Headerless CSV row skipped because it has fewer than 2 cells: {row!r}.")
-            continue
-        email = cells[-1]
-        company = ", ".join(cells[:-1]).strip()
-        parsed_rows.append({"company": company, "mail": email})
-
-    return _extract_from_rows(parsed_rows, "company", "mail", existing_emails, existing_companies, verbose=verbose)
-
-
-def _parse_json_recipients(
-        raw_response: str,
-        existing_emails: set[str],
-        existing_companies: set[str] | None = None,
-        verbose: bool = False,
-) -> list[Recipient]:
-    if isinstance(existing_companies, bool):
-        verbose = existing_companies
-        existing_companies = None
-    payload_text = _strip_json_fence(raw_response)
-    try:
-        payload = json.loads(payload_text)
-    except json.JSONDecodeError:
-        _verbose(verbose, "JSON parser skipped response because it is not valid JSON.")
-        return []
-
-    if isinstance(payload, dict):
-        lead_rows = payload.get("leads", [])
-    elif isinstance(payload, list):
-        lead_rows = payload
-    else:
-        _verbose(verbose, f"JSON parser skipped unsupported payload type: {type(payload).__name__}.")
-        return []
-
-    _verbose(verbose, f"JSON lead row count: {len(lead_rows)}.")
-    rows: list[dict[str, str]] = []
-    for lead in lead_rows:
-        if not isinstance(lead, dict):
-            continue
-        company = str(lead.get("company", "")).strip()
-        emails = lead.get("emails", lead.get("mail", lead.get("email", "")))
-        email_values = emails if isinstance(emails, list) else [emails]
-        sources = lead.get("source_urls", lead.get("source_url", lead.get("source", "")))
-        source_values = sources if isinstance(sources, list) else [sources]
-        source = str(source_values[0]) if source_values else ""
-        for email in email_values:
-            rows.append({"company": company, "mail": str(email), "source_url": source})
-
-    return _extract_from_rows(rows, "company", "mail", existing_emails, existing_companies, "source_url", verbose)
-
-
-def _extract_from_rows(
-        rows: list[dict[str, str]],
-        company_field: str,
-        email_field: str,
-        existing_emails: set[str],
-        existing_companies: set[str] | None = None,
-        source_field: str | None = None,
-        verbose: bool = False,
-) -> list[Recipient]:
-    recipients: list[Recipient] = []
-    seen_emails = {email.lower() for email in existing_emails}
-    seen_companies = {company for company in existing_companies or set() if company}
-
-    for row in rows:
-        company = str(row.get(company_field, "")).strip()
-        company_key = _normalize_company(company)
-        email = normalize_email(str(row.get(email_field, ""))).lower()
-        source_url = str(row.get(source_field, "")).strip() if source_field else ""
-        if not company or not email:
-            _verbose(verbose, f"Recipient row skipped because company or email is missing: {row!r}.")
-            continue
-        if source_field and not source_url:
-            _verbose(verbose, f"Recipient row skipped because source URL is missing: {row!r}.")
-            continue
-        if company_key in seen_companies:
-            _verbose(verbose, f"Recipient row skipped because company already exists for this mode: {company}.")
-            continue
-        if email in seen_emails or not EMAIL_PATTERN.match(email):
-            reason = "duplicate/existing" if email in seen_emails else "invalid email format"
-            _verbose(verbose, f"Recipient row skipped because of {reason}: {email}.")
-            continue
-
-        recipients.append(Recipient(email=email, company=company))
-        seen_emails.add(email)
-        _verbose(verbose, f"Recipient row accepted: {company} <{email}>.")
-
-    return recipients
+        return _parsing._parse_headerless_csv_recipients(raw_text, existing_emails, existing_companies, verbose)
+    finally:
+        _parsing._detect_dialect = original
 
 
 def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Recipient]) -> Path:
@@ -1263,59 +837,6 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
         for recipient in recipients:
             writer.writerow([recipient.company, recipient.email, ""])
     return path
-
-
-def _strip_csv_fence(text: str) -> str:
-    stripped = text.strip()
-    matches = re.findall(r"```csv\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
-    for match in matches:
-        candidate = match.strip()
-        first_line = candidate.splitlines()[0].strip().lower() if candidate.splitlines() else ""
-        if "company" in first_line and ("mail" in first_line or "email" in first_line):
-            return candidate
-    if matches:
-        return matches[0].strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:csv|json)?\s*", "", stripped, flags=re.IGNORECASE)
-        stripped = re.sub(r"\s*```$", "", stripped)
-    return stripped
-
-
-def _strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    matches = re.findall(r"```json\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
-    if matches:
-        return matches[0].strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:json|csv)?\s*", "", stripped, flags=re.IGNORECASE)
-        stripped = re.sub(r"\s*```$", "", stripped)
-    return stripped
-
-
-class DefaultCsvDialect(csv.Dialect):
-    """Standard CSV dialect (equivalent to Excel) without using the Excel name."""
-    delimiter = ','
-    quotechar = '"'
-    doublequote = True
-    skipinitialspace = False
-    lineterminator = '\r\n'
-    quoting = csv.QUOTE_MINIMAL
-
-
-def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
-    try:
-        return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
-    except csv.Error:
-        return DefaultCsvDialect
-
-
-def _find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
-    for field in row:
-        if not field:
-            continue
-        if normalize_key(field) in allowed_keys:
-            return field
-    return None
 
 
 def _env_int(name: str, default: int) -> int:
@@ -1339,10 +860,12 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(value).resolve()
 
 
-def _model_for_provider(provider: str, gemini_model: str, openai_model: str) -> str:
+def _model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:
     normalized = provider.strip().lower()
     if normalized == "self":
         return "self"
+    if normalized == "ollama":
+        return os.getenv("OLLAMA_MODEL", ollama_model)
     if normalized == "openai":
         return os.getenv("OPENAI_MODEL", openai_model)
     return os.getenv("GEMINI_MODEL", gemini_model)
@@ -1350,3 +873,5 @@ def _model_for_provider(provider: str, gemini_model: str, openai_model: str) -> 
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
+
+
