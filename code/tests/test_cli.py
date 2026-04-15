@@ -127,6 +127,62 @@ def test_cli_resend_existing_and_skip_invalid_check_allows_invalid_log_address(p
     assert "Invalid CSV check: disabled (--skip-invalid-check)" in output
 
 
+def test_cli_skip_invalid_check_sends_invalid_log_address_when_not_sent(project: Path, capsys) -> None:
+    """Prueft, dass Skip-invalid nur die Invalid-Liste ignoriert."""
+    write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
+    with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
+        writer.writerow(["Bad", "bad@example.invalid", "old invalid result", "2026-04-14T10:00+10:00"])
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--allow-empty-attachments",
+        "--skip-invalid-check",
+        "--skip-email-dns-check",
+    ])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "[DRY_RUN] bad@example.invalid" in output
+    assert "[SKIP_INVALID]" not in output
+    assert "Existing CSV check: enabled" in output
+    assert "Invalid CSV check: disabled (--skip-invalid-check)" in output
+
+
+def test_cli_skip_invalid_check_still_blocks_sent_log_address_without_resend(project: Path, capsys) -> None:
+    """Prueft, dass Skip-invalid den bestehenden Sent-Log-Check nicht deaktiviert."""
+    write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
+    with (project / "output/send_freelance.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["Bad", "bad@example.invalid", "2026-04-14T10:00+10:00"])
+    with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
+        writer.writerow(["Bad", "bad@example.invalid", "old invalid result", "2026-04-14T10:00+10:00"])
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--allow-empty-attachments",
+        "--skip-invalid-check",
+        "--skip-email-dns-check",
+    ])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "already present in an output CSV log" in output
+    assert "[DRY_RUN] bad@example.invalid" not in output
+    assert "Existing CSV check: enabled" in output
+    assert "Invalid CSV check: disabled (--skip-invalid-check)" in output
+
+
 def test_cli_checks_all_output_csv_logs(project: Path, capsys) -> None:
     """Prueft das Verhalten fuer cli checks all output csv logs."""
     write_recipient(project / "input/PhD/phd.csv", "Existing", "existing@example.com")
