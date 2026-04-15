@@ -123,6 +123,7 @@ class _Tee:
     """
     Hilfsklasse, um Ausgaben parallel in mehrere Streams (z.B. stdout und Datei) zu schreiben.
     """
+
     def __init__(self, *streams) -> None:
         """
         Initialisiert den Tee mit den Ziel-Streams.

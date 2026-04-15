@@ -9,15 +9,14 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
+load_dotenv: Callable[..., Any]
 try:
     from dotenv import load_dotenv as _dotenv_load
 
     load_dotenv = _dotenv_load
 except ImportError:  # pragma: no cover
-    _dotenv_load = None
-
-
     def _dotenv_load_stub():
         """Ersetzt python-dotenv, wenn das Paket in einer Minimalumgebung fehlt."""
         return False
@@ -59,8 +58,6 @@ def _load_settings() -> dict:
         with SETTINGS_PATH.open("rb") as handle:
             return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
-        return {}
-    except Exception:  # Fallback for unexpected errors
         return {}
 
 

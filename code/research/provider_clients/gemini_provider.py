@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Callable, Any
+from typing import Callable, Any, cast
 
 from dotenv import load_dotenv
 
@@ -59,16 +59,21 @@ def generate_with_gemini(
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("Install google-genai first: pip install -r requirements.txt") from exc
         types = imported_types
-    api_error_classes = tuple(
+    api_error_classes: tuple[type[BaseException], ...] = tuple(
         error_type
         for error_type in (
             getattr(errors, "APIError", None),
             getattr(errors, "ClientError", None),
         )
-        if isinstance(error_type, type)
+        if isinstance(error_type, type) and issubclass(error_type, BaseException)
     ) or (Exception,)
 
-    client = genai.Client(api_key=api_key)
+    try:
+        client = cast(Any, genai.Client(api_key=api_key))
+    except TypeError as exc:
+        if "api_key" not in str(exc):
+            raise
+        client = cast(Any, genai.Client())
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to Gemini.")
     uploaded_files = []
     with fake_txt_extensions(attachment_paths, verbose) as faked_paths:

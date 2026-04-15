@@ -87,7 +87,7 @@ SEND_TARGET_COUNT = 500
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 15
+PARALLEL_THREADS = 25
 
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
 VERIFY_EMAIL_SMTP = false
@@ -96,7 +96,7 @@ VERIFY_EMAIL_SMTP = false
 SKIP_EMAIL_DNS_CHECK = true
 
 # Verify timeout: Timeout for recipient SMTP probe.
-VERIFY_EMAIL_SMTP_TIMEOUT = 8.0
+VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
 
 # Resend existing: Allows sending to addresses already present in output logs.
 RESEND_EXISTING = false

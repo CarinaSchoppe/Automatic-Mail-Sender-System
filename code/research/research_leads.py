@@ -116,6 +116,7 @@ class ThreadSafeRecipientSink:
     Ein thread-sicherer Container zum Sammeln von validierten Leads (Empfängern).
     Verhindert doppelte Einträge und bricht die Suche ab, sobald das Ziel erreicht ist.
     """
+
     def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig):
         """
         Initialisiert den Sink mit Zielvorgaben und bereits bekannten Daten.
@@ -220,8 +221,6 @@ def _load_settings() -> dict:
         with settings_path.open("rb") as handle:
             return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
-        return {}
-    except Exception:  # Fallback for unexpected errors
         return {}
 
 
@@ -521,7 +520,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
                     if sink.is_full():
                         _info(f"Target of {target_count} reached. Stopping batch.")
                         stop_event.set()
-                except Exception as e:
+                except (OSError, RuntimeError, ValueError) as e:
                     _info(f"AI request failed in thread: {type(e).__name__}: {e}")
 
         batch_actually_added = 0
@@ -697,6 +696,7 @@ def _fetch_text(*args, **kwargs):
 def normalize_company(company: str) -> str:
     """Normalisiert Unternehmen."""
     return _parsing.normalize_company(company)
+
 
 def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path]:
     """

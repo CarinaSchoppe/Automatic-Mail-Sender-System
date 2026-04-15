@@ -51,6 +51,7 @@ class RecipientSink(Protocol):
     Schnittstellen-Definition für Objekte, die gefundene Leads (Recipient) sammeln.
     Ermöglicht eine Entkoppelung zwischen der Suche (Crawler/KI) und der Speicherung.
     """
+
     def add_recipient(self, recipient: Recipient) -> bool:
         """
         Fügt einen Empfänger hinzu.

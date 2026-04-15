@@ -442,7 +442,7 @@ def _process_recipients(
                     write_sent_log=write_sent_log,
                     verbose=verbose,
                 )
-            except Exception as exc:  # Keep the batch moving and log the failed recipient.
+            except (OSError, RuntimeError, ValueError) as exc:
                 errors += 1
                 print(f"[ERROR] {recipient.email} | {exc}")
         _info(f"Recipient processing finished with {errors} error(s).")
@@ -474,7 +474,7 @@ def _process_recipients(
             recipient = futures[future]
             try:
                 future.result()
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 errors += 1
                 print(f"[ERROR] {recipient.email} | {exc}")
     _info(f"Recipient processing finished with {errors} error(s).")

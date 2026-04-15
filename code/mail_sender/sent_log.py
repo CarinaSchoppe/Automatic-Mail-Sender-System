@@ -107,8 +107,6 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
             return rows
     except (OSError, csv.Error):
         return []
-    except Exception:  # Fallback for unexpected errors during read
-        return []
 
 
 def read_invalid_emails(log_path: Path) -> set[str]:

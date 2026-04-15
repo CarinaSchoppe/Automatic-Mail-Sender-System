@@ -76,7 +76,7 @@ def run_self_research(
             url = futures[future]
             try:
                 candidates = future.result()
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 _verbose(config.verbose, f"Self research crawl failed for {url}: {exc}")
                 continue
 

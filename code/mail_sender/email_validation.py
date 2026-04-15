@@ -75,7 +75,7 @@ def _mail_exchange_hosts(domain: str) -> list[str]:
     """Liest MX-Hosts einer Domain sortiert nach Priorität aus."""
     try:
         import dns.resolver
-        import dns.exception
+        from dns.exception import DNSException
     except ImportError:
         return []
 
@@ -91,7 +91,7 @@ def _mail_exchange_hosts(domain: str) -> list[str]:
             if str(answer.exchange).strip(".")
         ]
         return [host for host in hosts if host != "."]
-    except Exception:
+    except (DNSException, AttributeError, RuntimeError, TypeError, ValueError):
         return []
 
 
@@ -112,9 +112,7 @@ def _probe_mailbox_exists(email: str, mx_hosts: list[str], smtp_from_email: str,
                 smtp.ehlo_or_helo_if_needed()
                 smtp.mail(smtp_from_email)
                 code, message = smtp.rcpt(email)
-        except (OSError, smtplib.SMTPException):
-            continue
-        except Exception:  # Fallback for unexpected socket or SMTP errors during probe
+        except (OSError, TimeoutError, smtplib.SMTPException):
             continue
 
         if code in DEFINITE_MAILBOX_REJECT_CODES:

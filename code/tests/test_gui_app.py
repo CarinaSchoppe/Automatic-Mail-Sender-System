@@ -79,6 +79,42 @@ def test_mail_sender_workbench_refreshes_output_and_log_tables(tmp_path: Path) -
         root.destroy()
 
 
+def test_mail_sender_workbench_routes_sent_tabs_by_mail_file(tmp_path: Path) -> None:
+    """Prueft die PhD-, Freelance- und Invalid-Zuordnung der Versandlisten."""
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        (output_dir / "send_phd.csv").write_text(
+            "company,mail,source_url\nPhD Co,phd@example.com,https://phd.example\n",
+            encoding="utf-8",
+        )
+        (output_dir / "send_freelance.csv").write_text(
+            "company,mail,source_url\nFree Co,free@example.com,https://free.example\n",
+            encoding="utf-8",
+        )
+        (output_dir / "invalid_mails.csv").write_text(
+            "company,mail,invalid_reason,detected_at\nBad Co,bad@example.invalid,no mx,2026-04-15T10:00:00+10:00\n",
+            encoding="utf-8",
+        )
+
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        sent_tabs = [app.sent_notebook.tab(tab_id, "text") for tab_id in app.sent_notebook.tabs()]
+
+        assert sent_tabs == ["PhD", "Freelance", "Invalid"]
+        assert len(app.sent_trees["PhD"].get_children()) == 1
+        assert len(app.sent_trees["Freelance"].get_children()) == 1
+        assert len(app.sent_trees["Invalid"].get_children()) == 1
+        invalid_values = app.sent_trees["Invalid"].item(app.sent_trees["Invalid"].get_children()[0])["values"]
+        assert invalid_values == ["invalid_mails.csv", "Bad Co", "bad@example.invalid", "no mx"]
+    finally:
+        root.destroy()
+
+
 def test_mail_sender_workbench_imports_input_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Prueft das Verhalten fuer mail sender workbench imports input file."""
     try:

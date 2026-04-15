@@ -9,7 +9,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Callable, Any
+from typing import Callable, Any, cast
 
 from dotenv import load_dotenv
 
@@ -61,13 +61,19 @@ def generate_with_openai(
         if "api_key" not in str(exc):
             raise
         client = OpenAI()
+    client_any = cast(Any, client)
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to OpenAI.")
     uploaded_files = []
     with fake_txt_extensions(attachment_paths, verbose) as faked_paths:
         for path in faked_paths:
             _verbose(verbose, f"Uploading OpenAI context file: {path}.")
             with path.open("rb") as handle:
-                uploaded_files.append(client.files.create(file=handle, purpose="user_data"))
+                try:
+                    uploaded_files.append(client_any.files.create(file=handle, purpose="user_data"))
+                except TypeError as exc:
+                    if "purpose" not in str(exc):
+                        raise
+                    uploaded_files.append(client_any.files.create(file=handle))
     _verbose(verbose, f"OpenAI uploaded file handles: {len(uploaded_files)}.")
 
     content = [{"type": "input_text", "text": prompt}]
@@ -86,7 +92,7 @@ def generate_with_openai(
     response: Any = None
     for attempt in range(max_retries):
         try:
-            request_payload = {
+            request_payload: dict[str, Any] = {
                 "model": model,
                 "input": [{"role": "user", "content": content}],
                 "tools": [{"type": "web_search"}],
@@ -94,13 +100,13 @@ def generate_with_openai(
                 "reasoning": {"effort": openai_effort},
             }
             try:
-                response = client.responses.create(**request_payload)  # type: ignore[call-overload]
+                response = client_any.responses.create(**request_payload)
             except TypeError as exc:
                 if "input" not in str(exc):
-                    response = client.responses.create()
+                    response = client_any.responses.create()
                     break
                 request_payload["input_data"] = request_payload.pop("input")
-                response = client.responses.create(**request_payload)
+                response = client_any.responses.create(**request_payload)
             break
         except RateLimitError as e:
             if attempt == max_retries - 1:

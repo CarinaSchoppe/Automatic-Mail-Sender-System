@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import threading
 from pathlib import Path
 
 from mail_sender import cli
@@ -179,16 +178,9 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def send_wrapper(recipient, subject, _text_body, _html_body, attachments, inline_images):
-        """Kapselt den Hilfsschritt send_wrapper."""
-        sent.append((recipient.email, subject, len(attachments), len(inline_images)))
-
-    def send(*args, **kwargs):
-        """Kapselt den Hilfsschritt send."""
-        send_wrapper(*args, **kwargs)
-
     class FakeMailer:
         """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
+
         def __init__(self, config) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
@@ -201,9 +193,9 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
-        def send(self, *args, **kwargs):
-            """Kapselt den Hilfsschritt send."""
-            send_wrapper(*args, **kwargs)
+        def send(self, recipient, subject, _text_body, _html_body, attachments, inline_images) -> None:
+            """Merkt den simulierten Versand mit Betreff und Anlagenanzahl."""
+            sent.append((recipient.email, subject, len(attachments), len(inline_images)))
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -226,19 +218,9 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def send_wrapper(*args, **kwargs):
-        """Kapselt den Hilfsschritt send_wrapper."""
-        if len(args) > 0:
-            sent.append(args[0].email)
-        elif "recipient" in kwargs:
-            sent.append(kwargs["recipient"].email)
-
-    def send(*args, **kwargs):
-        """Kapselt den Hilfsschritt send."""
-        send_wrapper(*args, **kwargs)
-
     class FakeMailer:
         """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
+
         def __init__(self, config) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
@@ -251,9 +233,9 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
             """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
-        def send(self, *args, **kwargs):
-            """Kapselt den Hilfsschritt send."""
-            send_wrapper(*args, **kwargs)
+        def send(self, recipient, *_args, **_kwargs) -> None:
+            """Merkt die Empfängeradresse des simulierten Versands."""
+            sent.append(recipient.email)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -275,22 +257,10 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
     )
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
-    lock = threading.Lock()
-
-    def send_wrapper(*args, **kwargs):
-        """Kapselt den Hilfsschritt send_wrapper."""
-        with lock:
-            if len(args) > 0:
-                sent.append(args[0].email)
-            elif "recipient" in kwargs:
-                sent.append(kwargs["recipient"].email)
-
-    def send(*args, **kwargs):
-        """Kapselt den Hilfsschritt send."""
-        send_wrapper(*args, **kwargs)
 
     class FakeMailer:
         """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
+
         def __init__(self, config) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
@@ -303,9 +273,9 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
             """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
-        def send(self, *args, **kwargs):
-            """Kapselt den Hilfsschritt send."""
-            send_wrapper(*args, **kwargs)
+        def send(self, recipient, *_args, **_kwargs) -> None:
+            """Merkt die Empfängeradresse des simulierten parallelen Versands."""
+            sent.append(recipient.email)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -334,6 +304,7 @@ def test_cli_can_disable_sent_csv_logging(monkeypatch, project: Path) -> None:
 
     class FakeMailer:
         """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
+
         def __init__(self, config) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
@@ -367,6 +338,7 @@ def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project
 
     class FakeMailer:
         """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
+
         def __init__(self, config) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config

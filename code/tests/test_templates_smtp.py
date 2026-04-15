@@ -136,3 +136,10 @@ def test_smtp_mailer_requires_open_connection() -> None:
     config = SmtpConfig("host", 465, "user", "pass", "from@example.com", "From")
     with pytest.raises(RuntimeError, match="not open"):
         SmtpMailer(config).send(Recipient(email="to@example.com"), "Subject", "text", "<p>text</p>", [], [])
+
+
+def test_smtp_mailer_exit_without_open_connection() -> None:
+    """Prueft, dass ein ungeoeffneter SMTP-Mailer sauber verlassen werden kann."""
+    config = SmtpConfig("host", 465, "user", "pass", "from@example.com", "From")
+
+    SmtpMailer(config).__exit__(None, None, None)

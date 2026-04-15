@@ -15,7 +15,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
-from typing import Any
+from typing import Any, Sequence, cast
 
 from gui.settings_store import (
     ENV_SCHEMA,
@@ -43,6 +43,12 @@ HOVER_TEXTS = {
     "Import CSV/TXT": "Copy a CSV or TXT lead file into the selected input mode folder.",
 }
 
+SENT_MAIL_TABS = (
+    ("PhD", "PhD"),
+    ("Freelance", "Freelance"),
+    ("Invalid", "Invalid"),
+)
+
 
 def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
     """
@@ -59,7 +65,7 @@ def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
     return tk.StringVar(value=str(value))
 
 
-def _make_tree(parent: ttk.Frame, columns: tuple[str, ...]) -> ttk.Treeview:
+def _make_tree(parent: tk.Widget, columns: tuple[str, ...]) -> ttk.Treeview:
     """
     Hilfsfunktion zum Erstellen einer konfigurierten Tabellenansicht (Treeview).
     """
@@ -117,6 +123,9 @@ class MailSenderWorkbench:
         self.process: subprocess.Popen[str] | None = None
         self.message_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self.current_view_path: Path | None = None
+        self.current_view_kind: str | None = None
+        self._last_prompt_mode: str | None = None
+        self._save_after_id: str | None = None
         self._loading = True
         self._autosave_after_id: str | None = None
         self._autosave_target = "all"
@@ -356,7 +365,7 @@ class MailSenderWorkbench:
         scrollbar.pack(side="right", fill="y")
         return body
 
-    def _add_setting_row(self, parent: ttk.Frame, row: int, spec: SettingSpec, *, env: bool = False) -> None:
+    def _add_setting_row(self, parent: tk.Widget, row: int, spec: SettingSpec, *, env: bool = False) -> None:
         """
         Fügt eine einzelne Einstellungszeile (Label + Widget) zur UI hinzu.
         Unterstützt Checkboxen, Schieberegler, Auswahlmenüs und Textfelder.
@@ -410,16 +419,23 @@ class MailSenderWorkbench:
             var.trace_add("write", sync_entry)
             entry_var.trace_add("write", sync_slider)
             if spec.kind == "int":
+                int_var = cast(tk.IntVar, var)
                 scale = ttk.Scale(
                     wrapper,
                     from_=spec.min_value,
                     to=spec.max_value,
                     orient="horizontal",
-                    variable=var,
-                    command=lambda value, variable=var: variable.set(int(float(value))),
+                    variable=int_var,
+                    command=lambda value: int_var.set(int(float(value))),
                 )
             else:
-                scale = ttk.Scale(wrapper, from_=spec.min_value, to=spec.max_value, orient="horizontal", variable=var)
+                scale = ttk.Scale(
+                    wrapper,
+                    from_=spec.min_value,
+                    to=spec.max_value,
+                    orient="horizontal",
+                    variable=cast(tk.DoubleVar, var),
+                )
             scale.pack(side="left", fill="x", expand=True)
             value_entry = ttk.Entry(wrapper, textvariable=entry_var, width=8, justify="right")
             value_entry.pack(side="right", padx=(8, 0))
@@ -430,8 +446,14 @@ class MailSenderWorkbench:
             (self.env_text_widgets if env else self.text_widgets)[spec.key] = text
             if spec.key == "SELF_SEARCH_KEYWORDS":
                 self.keyword_text = text
-            text.bind("<KeyRelease>", lambda _event, target="env" if env else "settings": self._schedule_autosave(target))
-            text.bind("<FocusOut>", lambda _event, target="env" if env else "settings": self._schedule_autosave(target))
+            autosave_target = "env" if env else "settings"
+
+            def schedule_text_autosave(_event: tk.Event) -> None:
+                """Plant Autosave für mehrzeilige Eingabefelder."""
+                self._schedule_autosave(autosave_target)
+
+            text.bind("<KeyRelease>", schedule_text_autosave)
+            text.bind("<FocusOut>", schedule_text_autosave)
             widget = text
         else:
             show = "*" if any(secret in spec.key.lower() for secret in ("password", "api_key", "token", "secret")) else ""
@@ -556,7 +578,7 @@ class MailSenderWorkbench:
     def _build_sent_tab(self) -> None:
         """
         Baut den Reiter für die bereits versendeten Mails.
-        Unterteilt in Unter-Reiter für jeden Modus.
+        Unterteilt in PhD-, Freelance- und Invalid-Reiter.
         """
         toolbar = ttk.Frame(self.sent_tab)
         toolbar.pack(fill="x", pady=(0, 8))
@@ -564,12 +586,17 @@ class MailSenderWorkbench:
         self.sent_notebook = ttk.Notebook(self.sent_tab)
         self.sent_notebook.pack(fill="both", expand=True)
         self.sent_trees: dict[str, ttk.Treeview] = {}
-        for mode_name in ("PhD", "Freelance_German", "Freelance_English"):
+        for tab_key, tab_label in SENT_MAIL_TABS:
             frame = ttk.Frame(self.sent_notebook, padding=4)
-            self.sent_notebook.add(frame, text=mode_name)
-            tree = _make_tree(frame, ("file", "company", "mail", "source_url"))
-            tree.bind("<<TreeviewSelect>>", lambda _event, selected_tree=tree: self._show_selected_file(selected_tree, "sent"))
-            self.sent_trees[mode_name] = tree
+            self.sent_notebook.add(frame, text=tab_label)
+            tree = _make_tree(frame, ("file", "company", "mail", "detail"))
+
+            def show_sent_file(_event: tk.Event, selected_tree: ttk.Treeview = tree) -> None:
+                """Öffnet die zur aktuell gewählten Versandzeile gehörende CSV-Datei."""
+                self._show_selected_file(selected_tree, "sent")
+
+            tree.bind("<<TreeviewSelect>>", show_sent_file)
+            self.sent_trees[tab_key] = tree
         self.sent_tree = self.sent_trees["PhD"]
 
     def _build_logs_tab(self) -> None:
@@ -597,7 +624,7 @@ class MailSenderWorkbench:
         self.console.pack(fill="both", expand=True)
 
     @staticmethod
-    def _load_values(schema: list[SettingSpec], source: dict[str, Any], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> None:
+    def _load_values(schema: Sequence[SettingSpec], source: dict[str, Any], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> None:
         """
         Überträgt Werte aus einem Dictionary in die entsprechenden UI-Variablen und Text-Widgets.
         """
@@ -622,7 +649,7 @@ class MailSenderWorkbench:
         self._load_values(ENV_SCHEMA, self.env_values, self.env_variables, self.env_text_widgets)
 
     @staticmethod
-    def _collect_values(schema: list[SettingSpec], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> dict[str, Any]:
+    def _collect_values(schema: Sequence[SettingSpec], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> dict[str, Any]:
         """Sammelt Werte."""
         values: dict[str, Any] = {}
         for spec in schema:
@@ -760,15 +787,15 @@ class MailSenderWorkbench:
         output_dir = self.project_root / "output"
         for path in sorted(output_dir.glob("*.csv")) if output_dir.exists() else []:
             mode_name = _mode_from_output_filename(path.name)
-            tree = self.sent_trees.get(mode_name, self.sent_trees["Freelance_German"])
+            tree = self.sent_trees.get(mode_name, self.sent_trees["Freelance"])
             try:
                 with path.open(newline="", encoding="utf-8-sig") as handle:
                     for row in csv.DictReader(handle):
                         tree.insert("", "end", values=(
                             path.name,
                             row.get("company", ""),
-                            row.get("mail", ""),
-                            row.get("source_url", ""),
+                            row.get("mail", row.get("email", "")),
+                            _sent_row_detail(mode_name, row),
                         ))
             except OSError:
                 continue
@@ -826,7 +853,7 @@ class MailSenderWorkbench:
         if not selection:
             return
         item = tree.item(selection[0])
-        values = item.get("values", [])
+        values = list(item.get("values", []))
         path = self._path_for_tree_row(kind, values)
         if path is None or not path.exists() or not hasattr(self, "file_viewer"):
             return
@@ -849,15 +876,13 @@ class MailSenderWorkbench:
 
     def _on_input_edit(self, _event=None) -> None:
         """Reagiert auf das Ereignis fuer Eingabe edit."""
-        if hasattr(self, "_save_after_id") and self._save_after_id:
+        if self._save_after_id:
             self.root.after_cancel(self._save_after_id)
         self._save_after_id = self.root.after(500, self._perform_input_save)
 
     def _perform_input_save(self) -> None:
         """Speichert den aktuellen Inhalt des Eingabedatei-Editors."""
         self._save_after_id = None
-        if not hasattr(self, "current_view_path") or not hasattr(self, "current_view_kind"):
-            return
         if self.current_view_kind != "input" or not self.current_view_path:
             return
 
@@ -867,7 +892,7 @@ class MailSenderWorkbench:
             if content.endswith("\n"):
                 content = content[:-1]
             self.current_view_path.write_text(content, encoding="utf-8-sig")
-        except Exception as exc:
+        except (OSError, tk.TclError) as exc:
             self._append_console(f"[ERROR] Auto-save failed for {self.current_view_path.name}: {exc}\n")
 
     def _delete_selected_input(self) -> None:
@@ -878,7 +903,7 @@ class MailSenderWorkbench:
             return
 
         item = self.input_tree.item(selection[0])
-        values = item.get("values", [])
+        values = list(item.get("values", []))
         path = self._path_for_tree_row("input", values)
 
         if not path or not path.exists():
@@ -899,7 +924,7 @@ class MailSenderWorkbench:
                     self.file_view_title.set("Select a file to edit or preview.")
                     self.current_view_path = None
                 self.refresh_tables()
-            except Exception as exc:
+            except OSError as exc:
                 messagebox.showerror("Error", f"Could not delete file: {exc}")
 
     def _path_for_tree_row(self, kind: str, values: list[Any]) -> Path | None:
@@ -924,7 +949,7 @@ class MailSenderWorkbench:
         selection = self.log_tree.selection()
         if not selection:
             return
-        path = self._path_for_tree_row("log", self.log_tree.item(selection[0]).get("values", []))
+        path = self._path_for_tree_row("log", list(self.log_tree.item(selection[0]).get("values", [])))
         if path is None or not path.exists():
             return
         frame = ttk.Frame(self.notebook, padding=8)
@@ -932,7 +957,12 @@ class MailSenderWorkbench:
         toolbar = ttk.Frame(frame)
         toolbar.pack(fill="x", pady=(0, 8))
         ttk.Label(toolbar, text=str(path), style="Muted.TLabel").pack(side="left")
-        ttk.Button(toolbar, text="Close Log Tab", command=lambda tab=frame: self.close_tab(tab)).pack(side="right")
+
+        def close_current_log_tab(tab: ttk.Frame = frame) -> None:
+            """Schließt den gerade geöffneten Log-Reiter."""
+            self.close_tab(tab)
+
+        ttk.Button(toolbar, text="Close Log Tab", command=close_current_log_tab).pack(side="right")
         text = scrolledtext.ScrolledText(frame, wrap="word")
         self._style_text_widget(text)
         text.pack(fill="both", expand=True)
@@ -1116,11 +1146,20 @@ def _format_mtime(timestamp: float) -> str:
 def _mode_from_output_filename(filename: str) -> str:
     """Leitet den Versandmodus aus dem Namen einer Output-CSV-Datei ab."""
     normalized = filename.lower()
+    if "invalid" in normalized:
+        return "Invalid"
     if "phd" in normalized:
         return "PhD"
-    if "english" in normalized:
-        return "Freelance_English"
-    return "Freelance_German"
+    if "freelance" in normalized or "english" in normalized or "german" in normalized:
+        return "Freelance"
+    return "Freelance"
+
+
+def _sent_row_detail(mode_name: str, row: dict[str, str]) -> str:
+    """Liest je nach Versandliste die relevante Detailspalte fuer die GUI."""
+    if mode_name == "Invalid":
+        return row.get("invalid_reason", row.get("reason", ""))
+    return row.get("source_url", row.get("source", ""))
 
 
 def main() -> int:

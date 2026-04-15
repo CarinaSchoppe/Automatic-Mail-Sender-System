@@ -460,8 +460,13 @@ def test_run_research_parallel_batch_deduplicates_responses(monkeypatch: pytest.
     counter = {"value": 0}
     lock = threading.Lock()
 
-    def fake_generate(*args, **kwargs):
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         """Kapselt den Hilfsschritt fake_generate."""
+        assert model == "gemini-2.5-flash-lite"
+        assert prompt
+        assert attachments == []
+        assert reasoning_effort == "middle"
+        assert verbose is False
         with lock:
             counter["value"] += 1
             index = counter["value"]
@@ -551,6 +556,7 @@ def test_generate_with_ollama_posts_to_local_api(monkeypatch: pytest.MonkeyPatch
 
     class FakeResponse:
         """Dokumentiert die Test- oder Hilfsklasse FakeResponse."""
+
         def __enter__(self):
             """Initialisiert oder verwaltet das Testobjekt."""
             return self
@@ -606,6 +612,7 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
 
     def fake_ollama(model, prompt, base_url, verbose=False):
         """Kapselt den Hilfsschritt fake_ollama."""
+        assert verbose is False
         calls.append(("ollama", model, base_url, "lead@example.com" in prompt))
         return "company,mail,source_url\nLead Co,lead@example.com,self-crawl\n"
 
@@ -654,9 +661,11 @@ def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch
     """Prueft das Verhalten fuer run research can skip attachment upload."""
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
-    def fake_generate(model, prompt, attachments, *args, **kwargs):
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         """Kapselt den Hilfsschritt fake_generate."""
-        verbose = kwargs.get("verbose", False)
+        assert model == "gemini-2.5-flash-lite"
+        assert prompt
+        assert reasoning_effort == "middle"
         assert attachments == []
         assert verbose is True
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
@@ -681,8 +690,12 @@ def test_run_research_retries_without_attachments_after_empty_response(
     cv.write_text("cv", encoding="utf-8")
     calls = []
 
-    def fake_generate(model, prompt, attachments, *args, **kwargs):
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         """Kapselt den Hilfsschritt fake_generate."""
+        assert model == "gemini-2.5-flash-lite"
+        assert prompt
+        assert reasoning_effort == "middle"
+        assert verbose is True
         calls.append(attachments)
         if attachments and len(calls) == 1:
             return ""
@@ -706,8 +719,12 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
     """Prueft das Verhalten fuer run research retries with lite prompt after model error."""
     calls = []
 
-    def fake_generate(model, prompt, *args, **kwargs):
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
         """Kapselt den Hilfsschritt fake_generate."""
+        assert model == "gemini-2.5-flash-lite"
+        assert attachments == []
+        assert reasoning_effort == "middle"
+        assert verbose is True
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
@@ -806,6 +823,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
 
     class FakeFiles:
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
+
         @staticmethod
         def create(file, purpose: str):
             """Kapselt den Hilfsschritt create."""
@@ -815,6 +833,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
 
     class FakeResponses:
         """Dokumentiert die Test- oder Hilfsklasse FakeResponses."""
+
         @staticmethod
         def create(model, input_data, tools, **kwargs):
             """Kapselt den Hilfsschritt create."""
@@ -836,6 +855,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
 
     class FakeOpenAI:
         """Dokumentiert die Test- oder Hilfsklasse FakeOpenAI."""
+
         def __init__(self, api_key: str) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             assert api_key == "key"
@@ -862,6 +882,7 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
 
     class FakeFiles:
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
+
         @staticmethod
         def create():
             """Kapselt den Hilfsschritt create."""
@@ -869,6 +890,7 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
 
     class FakeResponses:
         """Dokumentiert die Test- oder Hilfsklasse FakeResponses."""
+
         @staticmethod
         def create():
             """Kapselt den Hilfsschritt create."""
@@ -878,6 +900,7 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
 
     class FakeOpenAI:
         """Dokumentiert die Test- oder Hilfsklasse FakeOpenAI."""
+
         def __init__(self) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
@@ -916,14 +939,17 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
 
     class FakeFiles:
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
+
         @staticmethod
         def upload(*args, **kwargs):
             """Kapselt den Hilfsschritt upload."""
+            assert kwargs["file"] == attachment
             return uploaded
 
     # noinspection PyShadowingNames
     class FakeModels:
         """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
+
         @staticmethod
         def generate_content(*args, **kwargs):
             # args[1] might be contents list in Gemini API
@@ -939,7 +965,8 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
 
     class FakeClient:
         """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
-        def __init__(self, *args, **kwargs) -> None:
+
+        def __init__(self) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
@@ -981,16 +1008,19 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
     class FakeFiles:
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
+
         @staticmethod
-        def upload(*args, **kwargs):
+        def upload():
             """Kapselt den Hilfsschritt upload."""
             return object()
 
     class FakeModels:
         """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
+
         @staticmethod
         def generate_content(*args, **kwargs):
             """Kapselt den Hilfsschritt generate_content."""
+            assert kwargs["model"] == "gemini-2.5-flash-lite"
             part = py_types.SimpleNamespace(text=None)
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -1002,7 +1032,8 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
     class FakeClient:
         """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
-        def __init__(self, *args, **kwargs) -> None:
+
+        def __init__(self) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
@@ -1076,6 +1107,7 @@ def test_generate_with_gemini_fakes_csv_extension(
 
     class FakeFiles:
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
+
         @staticmethod
         def upload(*args, **kwargs):
             """Kapselt den Hilfsschritt upload."""
@@ -1087,14 +1119,17 @@ def test_generate_with_gemini_fakes_csv_extension(
 
     class FakeModels:
         """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
+
         @staticmethod
         def generate_content(*args, **kwargs):
             """Kapselt den Hilfsschritt generate_content."""
+            assert kwargs["model"] == "model"
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
         """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
-        def __init__(self, *args, **kwargs) -> None:
+
+        def __init__(self) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
@@ -1142,22 +1177,25 @@ def test_generate_with_openai_fakes_csv_extension(
 
     class FakeFiles:
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
+
         @staticmethod
-        def create(file, purpose: str):
+        def create(file):
             """Kapselt den Hilfsschritt create."""
             captured_paths.append(Path(file.name))
             return py_types.SimpleNamespace(id="file_123")
 
     class FakeResponses:
         """Dokumentiert die Test- oder Hilfsklasse FakeResponses."""
+
         @staticmethod
-        def create(*args, **kwargs):
+        def create():
             """Kapselt den Hilfsschritt create."""
             return py_types.SimpleNamespace(output_text='{"leads": []}', output=[])
 
     class FakeClient:
         """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
-        def __init__(self, *args, **kwargs) -> None:
+
+        def __init__(self) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.responses = FakeResponses()
@@ -1184,16 +1222,19 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
 
     class FakeFiles:
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
+
         @staticmethod
-        def upload(*args, **kwargs):
+        def upload():
             """Kapselt den Hilfsschritt upload."""
             return object()
 
     class FakeModels:
         """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
+
         @staticmethod
         def generate_content(*args, **kwargs):
             """Kapselt den Hilfsschritt generate_content."""
+            assert kwargs["model"] == "gemini-2.5-flash-lite"
             part = py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -1205,7 +1246,8 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
 
     class FakeClient:
         """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
-        def __init__(self, *args, **kwargs) -> None:
+
+        def __init__(self) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
@@ -1297,6 +1339,7 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
 
 def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     """Prueft das Verhalten fuer retry handles parse errors."""
+
     def broken_parse(*_args, **_kwargs):
         """Kapselt den Hilfsschritt broken_parse."""
         raise ValueError("bad csv")
@@ -1345,6 +1388,7 @@ def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
 
 def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     """Prueft das Verhalten fuer headerless csv parser handles csv errors."""
+
     def broken_dialect(*_args, **_kwargs):
         """Kapselt den Hilfsschritt broken_dialect."""
         raise csv.Error("bad dialect")

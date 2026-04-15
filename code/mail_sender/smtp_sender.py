@@ -23,6 +23,7 @@ class SmtpMailer:
     Verwaltet eine SMTPS-Sitzung. Kann als Context Manager genutzt werden,
     um die Verbindung automatisch zu öffnen und zu schließen.
     """
+
     def __init__(self, config: SmtpConfig) -> None:
         """Initialisiert die Instanz und ihre benoetigten Zustandswerte."""
         self._config = config

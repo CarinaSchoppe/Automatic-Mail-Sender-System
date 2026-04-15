@@ -102,12 +102,10 @@ def test_validate_email_address_can_probe_mailbox_rejects(monkeypatch) -> None:
 
 def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
     """Prueft das Verhalten fuer probe mailbox accepts definitive smtp responses."""
-    def rcpt(email):
-        """Kapselt den Hilfsschritt rcpt."""
-        return 550, "user unknown"
 
     class FakeSmtp:
         """Dokumentiert die Test- oder Hilfsklasse FakeSmtp."""
+
         def __init__(self, host, port, timeout):
             """Initialisiert oder verwaltet das Testobjekt."""
             assert (host, port, timeout) == ("mx.example.com", 25, 3)
@@ -129,8 +127,8 @@ def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
             pass
 
         def rcpt(self, email):
-            """Kapselt den Hilfsschritt rcpt."""
-            return rcpt(email)
+            """Simuliert eine endgültige SMTP-Mailbox-Ablehnung."""
+            return 550, "user unknown"
 
     monkeypatch.setattr(email_validation.smtplib, "SMTP", FakeSmtp)
 
@@ -146,6 +144,7 @@ def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
 
 def test_domain_accepts_mail_uses_mx_and_falls_back_on_resolver_error(monkeypatch) -> None:
     """Prueft das Verhalten fuer domain accepts mail uses mx and falls back on resolver error."""
+
     class FakeAnswer:
         """Dokumentiert die Test- oder Hilfsklasse FakeAnswer."""
         exchange = "mail.example.com."
@@ -173,6 +172,7 @@ def test_domain_accepts_mail_uses_mx_and_falls_back_on_resolver_error(monkeypatc
 
     class BrokenResolver(FakeResolver):
         """Dokumentiert die Test- oder Hilfsklasse BrokenResolver."""
+
         @staticmethod
         def resolve(domain, record_type):
             """Kapselt den Hilfsschritt resolve."""
