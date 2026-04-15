@@ -1,4 +1,7 @@
-"""Kapselt SMTPS-Verbindungen und den Versand gerenderter Mails."""
+"""
+Modul für den E-Mail-Versand über SMTP (SSL/TLS).
+Kapselt die Verbindung zum Mail-Server und die Erstellung von MIME-Nachrichten (Text, HTML, Anhänge, Bilder).
+"""
 
 from __future__ import annotations
 
@@ -16,7 +19,10 @@ from mail_sender.templates import InlineImage
 
 
 class SmtpMailer:
-    """Verwaltet eine SMTPS-Sitzung und verschickt MIME-Nachrichten."""
+    """
+    Verwaltet eine SMTPS-Sitzung. Kann als Context Manager genutzt werden,
+    um die Verbindung automatisch zu öffnen und zu schließen.
+    """
     def __init__(self, config: SmtpConfig) -> None:
         """Initialisiert die Instanz und ihre benoetigten Zustandswerte."""
         self._config = config
@@ -45,7 +51,17 @@ class SmtpMailer:
             attachments: list[Path],
             inline_images: list[InlineImage],
     ) -> None:
-        """Versendet Daten."""
+        """
+        Erstellt und versendet eine E-Mail an einen Empfänger.
+
+        Args:
+            recipient (Recipient): Der Empfänger der Mail.
+            subject (str): Der Betreff.
+            text_body (str): Der reine Text-Inhalt.
+            html_body (str): Der HTML-Inhalt.
+            attachments (list[Path]): Liste von Dateianhängen.
+            inline_images (list[InlineImage]): Liste von eingebetteten Bildern (CIDs).
+        """
         if self._server is None:
             raise RuntimeError("SMTP connection is not open.")
 
@@ -82,7 +98,9 @@ class SmtpMailer:
 
 
 def guess_content_type(path: Path, fallback: tuple[str, str]) -> tuple[str, str]:
-    """Ermittelt content type."""
+    """
+    Versucht den MIME-Typ einer Datei basierend auf ihrer Endung zu ermitteln.
+    """
     content_type, encoding = mimetypes.guess_type(path)
     if content_type is None or encoding is not None:
         return fallback

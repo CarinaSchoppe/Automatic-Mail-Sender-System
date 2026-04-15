@@ -18,7 +18,7 @@ COMPANY_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 
 class DefaultCsvDialect(csv.Dialect):
     """
-    Ein robuster Standard-CSV-Dialekt, der verwendet wird, wenn die automatische 
+    Ein robuster Standard-CSV-Dialekt, der verwendet wird, wenn die automatische
     Erkennung (Sniffer) fehlschlägt.
     """
     delimiter = ","
@@ -38,13 +38,13 @@ def parse_recipients(
     """
     Versucht, Empfänger-Informationen aus einem rohen Text (KI-Antwort) zu extrahieren.
     Probiert nacheinander CSV mit Header, Headerless CSV und JSON.
-    
+
     Args:
         raw_response (str): Der rohe Text von der KI.
         existing_emails (set[str]): Menge bereits bekannter E-Mails zur Duplikatprüfung.
         existing_companies (set[str] | None): Menge bereits bekannter Firmen.
         verbose (bool): Aktiviert detaillierte Protokollierung.
-        
+
     Returns:
         list[Recipient]: Eine Liste der erfolgreich parsierten und validierten Empfänger.
     """
@@ -84,10 +84,10 @@ def parse_recipients(
 def normalize_company(company: str) -> str:
     """
     Normalisiert einen Firmennamen für einen robusten Vergleich (Kleinschreibung, keine Sonderzeichen).
-    
+
     Args:
         company (str): Der zu normalisierende Name.
-        
+
     Returns:
         str: Der normalisierte Name.
     """
@@ -101,7 +101,7 @@ def parse_headerless_csv_recipients(
         verbose: bool = False,
 ) -> list[Recipient]:
     """
-    Parst CSV-Daten, die keinen Header besitzen. 
+    Parst CSV-Daten, die keinen Header besitzen.
     Nimmt an, dass die letzte Spalte die E-Mail ist und davor der Firmenname steht.
     """
     if isinstance(existing_companies, bool):

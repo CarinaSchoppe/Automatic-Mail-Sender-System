@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_cli.py."""
+
 from __future__ import annotations
 
 import csv
@@ -9,10 +11,12 @@ from mail_sender.recipients import Recipient
 
 
 def write_recipient(path: Path, company: str, email: str) -> None:
+    """Kapselt den Hilfsschritt write_recipient."""
     path.write_text(f"company,mail\n{company},{email}\n", encoding="utf-8")
 
 
 def test_cli_auto_processes_each_input_folder_and_logs_dry_run(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli auto processes each input folder and logs dry run."""
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
     write_recipient(project / "input/Freelance_German/de.txt", "DE Co", "de@example.com")
     write_recipient(project / "input/Freelance_English/en.csv", "EN Co", "en@example.com")
@@ -39,6 +43,7 @@ def test_cli_auto_processes_each_input_folder_and_logs_dry_run(project: Path, ca
 
 
 def test_cli_skips_logged_and_duplicate_addresses(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli skips logged and duplicate addresses."""
     write_recipient(project / "input/PhD/one.csv", "One", "one@example.com")
     (project / "input/PhD/two.csv").write_text("company,mail\nTwo,one@example.com\nLogged,logged@example.com\n", encoding="utf-8")
     with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
@@ -56,10 +61,12 @@ def test_cli_skips_logged_and_duplicate_addresses(project: Path, capsys) -> None
 
 
 def test_cli_skips_invalid_addresses_and_persists_invalid_log(monkeypatch, project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli skips invalid addresses and persists invalid log."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
     write_recipient(project / "input/PhD/good.csv", "Good", "good@example.com")
 
     def fake_validate(email: str):
+        """Kapselt den Hilfsschritt fake_validate."""
         if email == "bad@example.invalid":
             return type("Result", (), {"is_valid": False, "reason": "domain has no MX or A record"})()
         return type("Result", (), {"is_valid": True, "reason": ""})()
@@ -78,6 +85,7 @@ def test_cli_skips_invalid_addresses_and_persists_invalid_log(monkeypatch, proje
 
 
 def test_cli_skips_addresses_already_in_invalid_log(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli skips addresses already in invalid log."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
     with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
@@ -91,6 +99,7 @@ def test_cli_skips_addresses_already_in_invalid_log(project: Path, capsys) -> No
 
 
 def test_cli_checks_all_output_csv_logs(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli checks all output csv logs."""
     write_recipient(project / "input/PhD/phd.csv", "Existing", "existing@example.com")
     with (project / "output/send_freelance.csv").open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
@@ -104,6 +113,7 @@ def test_cli_checks_all_output_csv_logs(project: Path, capsys) -> None:
 
 
 def test_cli_returns_zero_when_all_recipients_are_logged(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli returns zero when all recipients are logged."""
     write_recipient(project / "input/PhD/one.csv", "One", "one@example.com")
     with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
@@ -119,6 +129,7 @@ def test_cli_returns_zero_when_all_recipients_are_logged(project: Path, capsys) 
 
 
 def test_cli_returns_zero_when_auto_has_no_files(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli returns zero when auto has no files."""
     result = cli.main(["--mode", "Auto", "--base-dir", str(project)])
 
     assert result == 0
@@ -126,6 +137,7 @@ def test_cli_returns_zero_when_auto_has_no_files(project: Path, capsys) -> None:
 
 
 def test_cli_specific_mode_reports_missing_input_files(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli specific mode reports missing input files."""
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments", "--verbose"])
 
     assert result == 1
@@ -135,6 +147,7 @@ def test_cli_specific_mode_reports_missing_input_files(project: Path, capsys) ->
 
 
 def test_cli_errors_for_missing_attachments(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli errors for missing attachments."""
     write_recipient(project / "input/Freelance_English/en.csv", "EN Co", "en@example.com")
 
     result = cli.main(["--mode", "Freelance_English", "--base-dir", str(project)])
@@ -144,6 +157,7 @@ def test_cli_errors_for_missing_attachments(project: Path, capsys) -> None:
 
 
 def test_cli_resend_existing_bypasses_output_log(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli resend existing bypasses output log."""
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
     result = cli.main([
         "--mode",
@@ -160,25 +174,36 @@ def test_cli_resend_existing_bypasses_output_log(project: Path, capsys) -> None:
 
 
 def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
+    """Prueft das Verhalten fuer cli send path uses mailer."""
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def send_wrapper(recipient, subject, attachments, inline_images):
+    def send_wrapper(recipient, subject, _text_body, _html_body, attachments, inline_images):
+        """Kapselt den Hilfsschritt send_wrapper."""
         sent.append((recipient.email, subject, len(attachments), len(inline_images)))
 
     def send(*args, **kwargs):
+        """Kapselt den Hilfsschritt send."""
         send_wrapper(*args, **kwargs)
 
     class FakeMailer:
+        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
         def __init__(self, config) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
 
         def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
             return self
 
         def __exit__(self, exc_type, exc, traceback) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             return None
+
+        def send(self, *args, **kwargs):
+            """Kapselt den Hilfsschritt send."""
+            send_wrapper(*args, **kwargs)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -193,6 +218,7 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
 
 
 def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli send path respects max send count."""
     (project / "input/PhD/phd.csv").write_text(
         "company,mail\nA,a@example.com\nB,b@example.com\nC,c@example.com\n",
         encoding="utf-8",
@@ -201,23 +227,33 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
     sent = []
 
     def send_wrapper(*args, **kwargs):
+        """Kapselt den Hilfsschritt send_wrapper."""
         if len(args) > 0:
             sent.append(args[0].email)
         elif "recipient" in kwargs:
             sent.append(kwargs["recipient"].email)
 
     def send(*args, **kwargs):
+        """Kapselt den Hilfsschritt send."""
         send_wrapper(*args, **kwargs)
 
     class FakeMailer:
+        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
         def __init__(self, config) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
 
         def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
             return self
 
         def __exit__(self, exc_type, exc, traceback) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             return None
+
+        def send(self, *args, **kwargs):
+            """Kapselt den Hilfsschritt send."""
+            send_wrapper(*args, **kwargs)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -232,6 +268,7 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
 
 
 def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) -> None:
+    """Prueft das Verhalten fuer cli parallel send logs each recipient once."""
     (project / "input/PhD/phd.csv").write_text(
         "company,mail\nA,a@example.com\nB,b@example.com\nC,c@example.com\n",
         encoding="utf-8",
@@ -241,6 +278,7 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
     lock = threading.Lock()
 
     def send_wrapper(*args, **kwargs):
+        """Kapselt den Hilfsschritt send_wrapper."""
         with lock:
             if len(args) > 0:
                 sent.append(args[0].email)
@@ -248,17 +286,26 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
                 sent.append(kwargs["recipient"].email)
 
     def send(*args, **kwargs):
+        """Kapselt den Hilfsschritt send."""
         send_wrapper(*args, **kwargs)
 
     class FakeMailer:
+        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
         def __init__(self, config) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
 
         def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
             return self
 
         def __exit__(self, exc_type, exc, traceback) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             return None
+
+        def send(self, *args, **kwargs):
+            """Kapselt den Hilfsschritt send."""
+            send_wrapper(*args, **kwargs)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -273,6 +320,7 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
 
 
 def test_cli_rejects_invalid_max_send_count(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli rejects invalid max send count."""
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--max-send-count", "0"])
 
     assert result == 1
@@ -280,20 +328,26 @@ def test_cli_rejects_invalid_max_send_count(project: Path, capsys) -> None:
 
 
 def test_cli_can_disable_sent_csv_logging(monkeypatch, project: Path) -> None:
+    """Prueft das Verhalten fuer cli can disable sent csv logging."""
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
 
     class FakeMailer:
+        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
         def __init__(self, config) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
 
         def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
             return self
 
         def __exit__(self, exc_type, exc, traceback) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
         def send(self, *args, **kwargs):
+            """Kapselt den Hilfsschritt send."""
             pass
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -306,21 +360,27 @@ def test_cli_can_disable_sent_csv_logging(monkeypatch, project: Path) -> None:
 
 
 def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project: Path) -> None:
+    """Prueft das Verhalten fuer cli deletes input files after successful real send."""
     input_file = project / "input/PhD/phd.csv"
     write_recipient(input_file, "PhD Co", "phd@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
 
     class FakeMailer:
+        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
         def __init__(self, config) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.config = config
 
         def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
             return self
 
         def __exit__(self, exc_type, exc, traceback) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
         def send(self, *args, **kwargs):
+            """Kapselt den Hilfsschritt send."""
             pass
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
@@ -340,6 +400,7 @@ def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project
 
 
 def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Path) -> None:
+    """Prueft das Verhalten fuer cli keeps input files after dry run and error."""
     input_file = project / "input/PhD/phd.csv"
     write_recipient(input_file, "PhD Co", "phd@example.com")
 
@@ -354,7 +415,8 @@ def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Pat
     assert result == 0
     assert input_file.exists()
 
-    def broken_render():
+    def broken_render(*_args, **_kwargs):
+        """Kapselt den Hilfsschritt broken_render."""
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)
@@ -372,6 +434,7 @@ def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Pat
 
 
 def test_cli_deletes_input_files_when_everything_was_already_logged(project: Path) -> None:
+    """Prueft das Verhalten fuer cli deletes input files when everything was already logged."""
     input_file = project / "input/PhD/phd.csv"
     write_recipient(input_file, "PhD Co", "phd@example.com")
     with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
@@ -394,9 +457,11 @@ def test_cli_deletes_input_files_when_everything_was_already_logged(project: Pat
 
 
 def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer cli returns error when processing recipient fails."""
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
 
-    def broken_render():
+    def broken_render(*_args, **_kwargs):
+        """Kapselt den Hilfsschritt broken_render."""
         raise ValueError("boom")
 
     monkeypatch.setattr("mail_sender.cli.render_mail", broken_render)
@@ -408,6 +473,7 @@ def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project:
 
 
 def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> None:
+    """Prueft das Verhalten fuer process recipients requires mailer when not dry run."""
     errors = cli._process_recipients(
         mailer=None,
         template_path=project / "templates/phd.txt",

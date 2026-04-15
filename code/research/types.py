@@ -53,7 +53,7 @@ class RecipientSink(Protocol):
     """
     def add_recipient(self, recipient: Recipient) -> bool:
         """
-        Fügt einen Empfänger hinzu. 
+        Fügt einen Empfänger hinzu.
         Gibt True zurück, wenn dieser akzeptiert wurde und noch im Zielbereich liegt.
         """
         ...

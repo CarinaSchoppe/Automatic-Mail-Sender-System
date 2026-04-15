@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_gui_settings_store.py."""
+
 from __future__ import annotations
 
 import tomllib
@@ -8,6 +10,7 @@ from gui.settings_store import coerce_value, default_env, default_settings, load
 
 
 def test_settings_store_writes_and_loads_full_settings(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer settings store writes and loads full settings."""
     path = tmp_path / "settings.toml"
     values = default_settings()
     values.update(
@@ -30,6 +33,7 @@ def test_settings_store_writes_and_loads_full_settings(tmp_path: Path) -> None:
 
 
 def test_settings_store_can_omit_defaults(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer settings store can omit defaults."""
     path = tmp_path / "settings.toml"
     values = default_settings()
     values["MODE"] = "Freelance_English"
@@ -42,6 +46,7 @@ def test_settings_store_can_omit_defaults(tmp_path: Path) -> None:
 
 
 def test_setting_coercion_matches_widget_value_types() -> None:
+    """Prueft das Verhalten fuer setting coercion matches widget value types."""
     specs = {spec.key: spec for spec in SETTINGS_SCHEMA}
 
     assert specs["SMTP_PORT"].slider is False
@@ -52,6 +57,7 @@ def test_setting_coercion_matches_widget_value_types() -> None:
 
 
 def test_env_store_writes_and_loads_all_env_values(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer env store writes and loads all env values."""
     path = tmp_path / ".env"
     values = default_env()
     values.update({"SMTP_USERNAME": "user", "SMTP_PASSWORD": "secret", "GEMINI_API_KEY": "gem"})

@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_gui_prompts.py."""
+
 import tkinter as tk
 
 import pytest
@@ -7,7 +9,11 @@ from gui.app import MailSenderWorkbench
 
 @pytest.fixture
 def workbench(tmp_path):
-    root = tk.Tk()
+    """Kapselt den Hilfsschritt workbench."""
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
     # Mock project root to avoid touching real files
     project_root = tmp_path
     # Create necessary dirs/files for WB initialization
@@ -21,12 +27,14 @@ def workbench(tmp_path):
 
 
 def test_workbench_loads_prompts(workbench):
+    """Prueft das Verhalten fuer workbench loads prompts."""
     assert hasattr(workbench, "prompts")
     assert "PhD" in workbench.prompts
 
 
 def test_workbench_updates_prompt_on_change(workbench):
     # Select another mode
+    """Prueft das Verhalten fuer workbench updates prompt on change."""
     workbench.prompt_mode_var.set("Freelance German")
     workbench._on_prompt_mode_change()
 
@@ -35,6 +43,7 @@ def test_workbench_updates_prompt_on_change(workbench):
 
 
 def test_workbench_saves_prompts(workbench, tmp_path):
+    """Prueft das Verhalten fuer workbench saves prompts."""
     workbench.prompt_text.delete("1.0", "end")
     workbench.prompt_text.insert("1.0", "My New Prompt")
 

@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_gui_app.py."""
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -9,6 +11,7 @@ from gui.app import MailSenderWorkbench
 
 
 def test_mail_sender_workbench_collects_and_saves_settings(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer mail sender workbench collects and saves settings."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -38,6 +41,7 @@ def test_mail_sender_workbench_collects_and_saves_settings(tmp_path: Path) -> No
 
 
 def test_mail_sender_workbench_refreshes_output_and_log_tables(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer mail sender workbench refreshes output and log tables."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -76,6 +80,7 @@ def test_mail_sender_workbench_refreshes_output_and_log_tables(tmp_path: Path) -
 
 
 def test_mail_sender_workbench_imports_input_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer mail sender workbench imports input file."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -98,6 +103,7 @@ def test_mail_sender_workbench_imports_input_file(monkeypatch: pytest.MonkeyPatc
 
 
 def test_mail_sender_workbench_exposes_required_tabs(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer mail sender workbench exposes required tabs."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -107,7 +113,7 @@ def test_mail_sender_workbench_exposes_required_tabs(tmp_path: Path) -> None:
         app = MailSenderWorkbench(root, project_root=tmp_path)
         tabs = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
 
-        assert tabs == ["Settings", ".env", "AI Inputs", "Found Mails", "Sent Mails", "Saved Logs", "Run Console"]
+        assert tabs == ["Settings", ".env", "Prompts", "AI Inputs", "Found Mails", "Sent Mails", "Saved Logs", "Run Console"]
         assert app.autosave.get() is True
         assert app.auto_refresh.get() is True
     finally:
@@ -115,6 +121,7 @@ def test_mail_sender_workbench_exposes_required_tabs(tmp_path: Path) -> None:
 
 
 def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer mail sender workbench mail only command and integer sliders."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -141,6 +148,7 @@ def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: P
 
 
 def test_mail_sender_workbench_opens_log_in_new_tab(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer mail sender workbench opens log in new tab."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability

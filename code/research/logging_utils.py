@@ -9,7 +9,7 @@ from __future__ import annotations
 def verbose(enabled: bool, message: str) -> None:
     """
     Gibt eine detaillierte Protokollnachricht aus, falls das Verbose-Logging aktiviert ist.
-    
+
     Args:
         enabled (bool): Ob die Nachricht ausgegeben werden soll.
         message (str): Die auszugebende Nachricht.
@@ -21,7 +21,7 @@ def verbose(enabled: bool, message: str) -> None:
 def info(message: str) -> None:
     """
     Gibt eine allgemeine Informationsnachricht aus.
-    
+
     Args:
         message (str): Die auszugebende Nachricht.
     """

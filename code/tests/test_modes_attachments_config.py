@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_modes_attachments_config.py."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,6 +12,7 @@ from mail_sender.modes import get_mode
 
 
 def test_modes_point_to_input_attachments_and_output(project: Path) -> None:
+    """Prueft das Verhalten fuer modes point to input attachments and output."""
     phd = get_mode("PhD", project)
     german = get_mode("Freelance_German", project)
     english = get_mode("freelance english", project)
@@ -27,6 +30,7 @@ def test_modes_point_to_input_attachments_and_output(project: Path) -> None:
 
 
 def test_list_attachments_filters_gitkeep_and_sorts(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer list attachments filters gitkeep and sorts."""
     (tmp_path / ".gitkeep").write_text("", encoding="utf-8")
     (tmp_path / "b.pdf").write_text("b", encoding="utf-8")
     (tmp_path / "nested").mkdir()
@@ -44,6 +48,7 @@ def test_list_attachments_filters_gitkeep_and_sorts(tmp_path: Path) -> None:
 
 
 def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prueft das Verhalten fuer load smtp config."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda: None)
     for key in [
         "SMTP_HOST",

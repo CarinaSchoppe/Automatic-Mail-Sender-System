@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_sent_log.py."""
+
 from __future__ import annotations
 
 import csv
@@ -15,6 +17,7 @@ from mail_sender.sent_log import (
 
 
 def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer append log creates three column output."""
     log_path = tmp_path / "output/send_phd.csv"
 
     append_log(log_path, Recipient(email="person@example.com", company="ACME"))
@@ -31,6 +34,7 @@ def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
 
 
 def test_read_logged_emails_normalizes_mailto_and_handles_missing_headers(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer read logged emails normalizes mailto and handles missing headers."""
     assert read_logged_emails(tmp_path / "missing.csv") == set()
 
     log_path = tmp_path / "send.csv"
@@ -50,6 +54,7 @@ def test_read_logged_emails_normalizes_mailto_and_handles_missing_headers(tmp_pa
 
 
 def test_append_log_uses_correct_headers_even_if_file_empty(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer append log uses correct headers even if file empty."""
     log_path = tmp_path / "send.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.touch()
@@ -63,6 +68,7 @@ def test_append_log_uses_correct_headers_even_if_file_empty(tmp_path: Path) -> N
 
 
 def test_invalid_email_log_and_known_output_email_scan(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer invalid email log and known output email scan."""
     output_dir = tmp_path / "output"
     sent_path = output_dir / "send_phd.csv"
     invalid_path = output_dir / "invalid_mails.csv"
@@ -83,4 +89,5 @@ def test_invalid_email_log_and_known_output_email_scan(tmp_path: Path) -> None:
 
 
 def test_known_output_email_scan_handles_missing_output_dir(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer known output email scan handles missing output dir."""
     assert read_known_output_emails(tmp_path / "missing-output") == set()

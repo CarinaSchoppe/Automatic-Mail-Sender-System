@@ -45,7 +45,7 @@ def generate_with_provider(
 ) -> str | None | Any:
     """
     Wählt basierend auf dem 'provider' den entsprechenden KI-Dienst aus.
-    
+
     Args:
         provider (str): Der Name des Providers (gemini, openai, ollama).
         model (str): Das zu verwendende KI-Modell.
@@ -54,17 +54,34 @@ def generate_with_provider(
         reasoning_effort (str): Die gewünschte Stufe der Denk-Leistung (low, middle, high).
         verbose (bool): Ob detaillierte Logs ausgegeben werden sollen.
         ollama_base_url (str | None): Optionale URL für lokale Ollama-Instanzen.
-        
+
     Returns:
         Das Ergebnis der Generierung (meist ein String oder CSV-Inhalt).
     """
     normalized = provider.strip().lower()
     if normalized == "gemini":
-        return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
+        return generate_with_gemini(
+            model,
+            prompt,
+            attachment_paths,
+            reasoning_effort=reasoning_effort,
+            verbose=verbose,
+        )
     if normalized == "openai":
-        return generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
+        return generate_with_openai(
+            model,
+            prompt,
+            attachment_paths,
+            reasoning_effort=reasoning_effort,
+            verbose=verbose,
+        )
     if normalized == "ollama":
-        return generate_with_ollama(model, prompt, ollama_base_url or "http://localhost:11434", verbose)
+        return generate_with_ollama(
+            model,
+            prompt,
+            ollama_base_url or "http://localhost:11434",
+            verbose=verbose,
+        )
     raise ValueError("Unknown research provider. Use gemini, openai, ollama, or self.")
 
 

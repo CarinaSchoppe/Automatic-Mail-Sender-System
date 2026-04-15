@@ -1,4 +1,8 @@
-"""Verwaltet Prompt-Vorlagen fuer die Workbench."""
+"""
+Zentrale Verwaltung der KI-Prompts für die Recherche-Pipeline.
+Ermöglicht das Laden und Speichern von Prompts aus einer TOML-Datei
+und stellt Standard-Prompts für verschiedene Modi bereit.
+"""
 
 from __future__ import annotations
 
@@ -190,7 +194,16 @@ Mode-specific input CSV/TXT context:
 
 
 def load_prompts(path: Path = PROMPTS_PATH) -> dict[str, str]:
-    """Loads prompts from a TOML file. Returns defaults if file missing or keys absent."""
+    """
+    Lädt die Prompts aus der prompts.toml Datei.
+    Falls die Datei nicht existiert oder fehlerhaft ist, werden die Standardwerte zurückgegeben.
+
+    Args:
+        path (Path): Pfad zur TOML-Datei.
+
+    Returns:
+        dict[str, str]: Ein Dictionary mit den Prompt-Vorlagen.
+    """
     prompts = DEFAULT_PROMPTS.copy()
     if path.exists():
         try:
@@ -209,7 +222,14 @@ def load_prompts(path: Path = PROMPTS_PATH) -> dict[str, str]:
 
 
 def save_prompts(prompts: dict[str, str], path: Path = PROMPTS_PATH) -> None:
-    """Saves prompts to a TOML file."""
+    """
+    Speichert die übergebenen Prompts in einer TOML-Datei.
+    Verwendet Multi-Line-Strings für bessere Lesbarkeit.
+
+    Args:
+        prompts (dict[str, str]): Die zu speichernden Prompts.
+        path (Path): Zielpfad der TOML-Datei.
+    """
     lines = ["# MailSenderSystem AI Prompts", "", "[prompts]"]
     for key, value in prompts.items():
         if "\n" in value:

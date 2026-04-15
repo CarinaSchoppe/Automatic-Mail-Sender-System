@@ -1,4 +1,7 @@
-"""CSV log helpers for sent and invalid email tracking."""
+"""
+Modul zur Protokollierung von versendeten und ungültigen E-Mails in CSV-Dateien.
+Stellt thread-sichere Schreiboperationen und Funktionen zum Auslesen der Historie bereit.
+"""
 
 from __future__ import annotations
 
@@ -34,7 +37,13 @@ def append_log(
         log_path: Path,
         recipient: Recipient,
 ) -> None:
-    """Haengt einen Versanddatensatz an die Logdatei an."""
+    """
+    Protokolliert einen erfolgreichen E-Mail-Versand.
+
+    Args:
+        log_path (Path): Pfad zur Log-Datei des aktuellen Modus.
+        recipient (Recipient): Der Empfänger, an den gesendet wurde.
+    """
     _append_csv_row(log_path, HEADERS, [
         recipient.company,
         recipient.email,
@@ -43,7 +52,9 @@ def append_log(
 
 
 def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> None:
-    """Haengt eine ungueltige E-Mail an das Fehlerlog an."""
+    """
+    Protokolliert eine ungültige E-Mail-Adresse inklusive Fehlergrund.
+    """
     _append_csv_row(log_path, INVALID_HEADERS, [
         recipient.company,
         recipient.email,
@@ -53,13 +64,17 @@ def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> N
 
 
 def read_logged_emails(log_path: Path) -> set[str]:
-    """Liest logged E-Mails."""
+    """
+    Extrahiert alle E-Mail-Adressen aus einer Log-Datei als Menge (für schnellen Check).
+    """
     rows = read_logged_rows(log_path)
     return {row["mail"] for row in rows if row["mail"]}
 
 
 def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
-    """Read normalized company/email rows from a sent or invalid CSV log."""
+    """
+    Liest normalisierte Firmen- und E-Mail-Daten aus einer CSV-Log-Datei.
+    """
     if not log_path.exists():
         return []
 
@@ -102,7 +117,9 @@ def read_invalid_emails(log_path: Path) -> set[str]:
 
 
 def read_known_output_emails(output_dir: Path) -> set[str]:
-    """Liest bekannte Eintraege Ausgabe E-Mails."""
+    """
+    Sammelt alle bereits kontaktierten E-Mails aus allen CSV-Dateien im Output-Ordner.
+    """
     if not output_dir.exists() or not output_dir.is_dir():
         return set()
 
@@ -115,7 +132,10 @@ def read_known_output_emails(output_dir: Path) -> set[str]:
 
 
 def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index: int | None = None) -> None:
-    """Haengt eine Zeile an eine CSV-Datei an."""
+    """
+    Interne Hilfsfunktion zum thread-sicheren Anhängen einer Zeile an eine CSV-Datei.
+    Prüft optional auf Duplikate anhand eines Indexes (unique_index).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with _CSV_WRITE_LOCK:
         file_exists = path.exists()

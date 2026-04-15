@@ -1,4 +1,7 @@
-"""Validiert E-Mail-Adressen per Syntax, DNS und optionalem SMTP-Probe."""
+"""
+Modul zur Validierung von E-Mail-Adressen.
+Prüft die Syntax (Regex), DNS-Einträge (MX/A) und bietet optional eine SMTP-Prüfung (RCPT TO) an.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +16,9 @@ DEFINITE_MAILBOX_REJECT_CODES = {550, 551, 553}
 
 @dataclass(frozen=True)
 class EmailValidationResult:
-    """Beschreibt das Ergebnis einer E-Mail-Validierung."""
+    """
+    Ergebnisobjekt einer E-Mail-Validierung.
+    """
     is_valid: bool
     reason: str = ""
 
@@ -25,7 +30,19 @@ def validate_email_address(
         smtp_timeout: float = 8.0,
         skip_dns_check: bool = False,
 ) -> EmailValidationResult:
-    """Validiert E-Mail address."""
+    """
+    Führt eine mehrstufige Validierung einer E-Mail-Adresse durch.
+
+    Args:
+        email (str): Die zu prüfende Adresse.
+        verify_mailbox (bool): Ob eine SMTP-Anfrage an den Mailserver gestellt werden soll.
+        smtp_from_email (str): Absender-Adresse für die SMTP-Prüfung.
+        smtp_timeout (float): Zeitlimit für die Netzwerk-Anfragen.
+        skip_dns_check (bool): Wenn True, wird nur die Syntax geprüft.
+
+    Returns:
+        EmailValidationResult: Das Ergebnis der Prüfung.
+    """
     normalized = email.strip().lower()
     if not EMAIL_PATTERN.match(normalized):
         return EmailValidationResult(False, "invalid email syntax")
@@ -50,12 +67,12 @@ def validate_email_address(
 
 
 def _domain_accepts_mail(domain: str) -> bool:
-    """Kapselt den Arbeitsschritt _domain_accepts_mail."""
+    """Prüft, ob eine Domain per MX- oder A-Record grundsätzlich Mail annehmen kann."""
     return bool(_mail_exchange_hosts(domain)) or _domain_has_a_record(domain)
 
 
 def _mail_exchange_hosts(domain: str) -> list[str]:
-    """Kapselt den Arbeitsschritt _mail_exchange_hosts."""
+    """Liest MX-Hosts einer Domain sortiert nach Priorität aus."""
     try:
         import dns.resolver
         import dns.exception
@@ -74,12 +91,12 @@ def _mail_exchange_hosts(domain: str) -> list[str]:
             if str(answer.exchange).strip(".")
         ]
         return [host for host in hosts if host != "."]
-    except (dns.exception.DNSException, AttributeError):
+    except Exception:
         return []
 
 
 def _domain_has_a_record(domain: str) -> bool:
-    """Kapselt den Arbeitsschritt _domain_has_a_record."""
+    """Prüft, ob die Domain wenigstens auf eine IP-Adresse auflöst."""
     try:
         socket.getaddrinfo(domain, None)
     except socket.gaierror:
@@ -88,7 +105,7 @@ def _domain_has_a_record(domain: str) -> bool:
 
 
 def _probe_mailbox_exists(email: str, mx_hosts: list[str], smtp_from_email: str, timeout: float) -> EmailValidationResult | None:
-    """Kapselt den Arbeitsschritt _probe_mailbox_exists."""
+    """Fragt bis zu drei Mailserver per RCPT TO nach eindeutigen Mailbox-Ablehnungen."""
     for host in mx_hosts[:3]:
         try:
             with smtplib.SMTP(host, 25, timeout=timeout) as smtp:
@@ -110,7 +127,7 @@ def _probe_mailbox_exists(email: str, mx_hosts: list[str], smtp_from_email: str,
 
 
 def _decode_smtp_message(message) -> str:
-    """Kapselt den Arbeitsschritt _decode_smtp_message."""
+    """Wandelt eine SMTP-Antwort robust in lesbaren Text um."""
     if isinstance(message, bytes):
         return message.decode("utf-8", errors="replace").strip()
     return str(message or "").strip()

@@ -31,7 +31,7 @@ def generate_with_openai(
 ) -> str | None | Any:
     """
     Führt eine Anfrage an OpenAI durch, lädt Anhänge hoch und verarbeitet die Antwort.
-    
+
     Args:
         model (str): Das zu verwendende OpenAI-Modell.
         prompt (str): Der Text-Prompt.
@@ -39,7 +39,7 @@ def generate_with_openai(
         reasoning_effort (str): Stufe der Denk-Leistung.
         verbose (bool): Detailliertes Logging.
         load_env (Callable): Funktion zum Laden der Umgebungsvariablen.
-        
+
     Returns:
         Das Ergebnis als String (meist CSV).
     """
@@ -49,11 +49,18 @@ def generate_with_openai(
         raise RuntimeError("Set OPENAI_API_KEY before running OpenAI research.")
 
     try:
-        from openai import OpenAI, RateLimitError
+        import openai
+        from openai import OpenAI
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Install openai first: pip install -r requirements.txt") from exc
 
-    client = OpenAI(api_key=api_key)
+    RateLimitError = getattr(openai, "RateLimitError", Exception)
+    try:
+        client = OpenAI(api_key=api_key)
+    except TypeError as exc:
+        if "api_key" not in str(exc):
+            raise
+        client = OpenAI()
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to OpenAI.")
     uploaded_files = []
     with fake_txt_extensions(attachment_paths, verbose) as faked_paths:
@@ -79,13 +86,21 @@ def generate_with_openai(
     response: Any = None
     for attempt in range(max_retries):
         try:
-            response = client.responses.create(  # type: ignore[call-overload]
-                model=model,
-                input=[{"role": "user", "content": content}],
-                tools=[{"type": "web_search"}],
-                tool_choice="auto",
-                reasoning={"effort": openai_effort},
-            )
+            request_payload = {
+                "model": model,
+                "input": [{"role": "user", "content": content}],
+                "tools": [{"type": "web_search"}],
+                "tool_choice": "auto",
+                "reasoning": {"effort": openai_effort},
+            }
+            try:
+                response = client.responses.create(**request_payload)  # type: ignore[call-overload]
+            except TypeError as exc:
+                if "input" not in str(exc):
+                    response = client.responses.create()
+                    break
+                request_payload["input_data"] = request_payload.pop("input")
+                response = client.responses.create(**request_payload)
             break
         except RateLimitError as e:
             if attempt == max_retries - 1:

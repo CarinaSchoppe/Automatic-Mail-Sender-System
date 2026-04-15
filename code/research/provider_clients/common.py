@@ -18,7 +18,7 @@ from research.logging_utils import verbose as _verbose
 def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
     """
     Ein Context-Manager, der CSV-Dateien temporär mit einer .txt Endung kopiert.
-    Dies ist nötig, da einige KI-APIs (z.B. OpenAI) CSV-Dateien beim Upload 
+    Dies ist nötig, da einige KI-APIs (z.B. OpenAI) CSV-Dateien beim Upload
     besser verarbeiten, wenn sie als .txt getarnt sind.
     """
     temp_files: list[Path] = []

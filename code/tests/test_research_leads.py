@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_research_leads.py."""
+
 from __future__ import annotations
 
 import csv
@@ -12,9 +14,9 @@ import pytest
 
 from mail_sender.recipients import Recipient
 from mail_sender.sent_log import append_log
+from research import providers
 from research import research_leads
 from research import self_research
-from research import providers
 from research.research_leads import ResearchConfig
 
 CODE_DIR = Path(__file__).resolve().parents[1]
@@ -39,6 +41,7 @@ def config(
         self_search_keywords: tuple[str, ...] = ("query",),
         self_crawl_depth: int = 2,
 ) -> ResearchConfig:
+    """Kapselt den Hilfsschritt config."""
     return ResearchConfig(
         provider=provider,
         mode_name=mode,
@@ -63,6 +66,7 @@ def config(
 
 
 def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Prueft das Verhalten fuer default config and parse args."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setattr(research_leads, "_load_settings", lambda: {})
     for key in [
@@ -129,6 +133,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
 
 
 def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Prueft das Verhalten fuer default config reads env."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setattr(research_leads, "_load_settings", lambda: {})
     monkeypatch.setenv("RESEARCH_AI_PROVIDER", "openai")
@@ -160,6 +165,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
 
 
 def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prueft das Verhalten fuer default config ignores empty base dir env."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setenv("RESEARCH_BASE_DIR", "")
 
@@ -168,6 +174,7 @@ def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPat
 
 
 def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
+    """Prueft das Verhalten fuer collect existing emails reads output and input."""
     append_log(project / "output/send_phd.csv", Recipient(email="logged@example.com", company="Logged"))
     (project / "input/Freelance_German/existing.csv").write_text(
         "company,mail\nInput,mailto:input@example.com\n",
@@ -178,6 +185,7 @@ def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
 
 
 def test_collect_mode_existing_companies_reads_mode_log_and_input(project: Path) -> None:
+    """Prueft das Verhalten fuer collect mode existing companies reads mode log and input."""
     mode = research_leads.get_mode("PhD", project)
     append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Company GmbH"))
     (project / "input/PhD/existing.csv").write_text(
@@ -189,6 +197,7 @@ def test_collect_mode_existing_companies_reads_mode_log_and_input(project: Path)
 
 
 def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
+    """Prueft das Verhalten fuer build prompt uses mode specific instructions."""
     phd_prompt = research_leads.build_prompt(
         config(project),
         research_leads.get_mode("PhD", project),
@@ -218,6 +227,7 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
 
 
 def test_build_prompt_accepts_legacy_input_context_position(project: Path) -> None:
+    """Prueft das Verhalten fuer build prompt accepts legacy input context position."""
     prompt = research_leads.build_prompt(
         config(project),
         research_leads.get_mode("PhD", project),
@@ -229,6 +239,7 @@ def test_build_prompt_accepts_legacy_input_context_position(project: Path) -> No
 
 
 def test_read_input_context_reads_mode_files_and_truncates(project: Path) -> None:
+    """Prueft das Verhalten fuer read input context reads mode files and truncates."""
     (project / "input/PhD/example.csv").write_text("company,mail\nA,a@example.com\n", encoding="utf-8")
     (project / "input/PhD/notes.txt").write_text("lead style note", encoding="utf-8")
 
@@ -240,6 +251,7 @@ def test_read_input_context_reads_mode_files_and_truncates(project: Path) -> Non
 
 
 def test_read_input_context_replaces_invalid_bytes(project: Path) -> None:
+    """Prueft das Verhalten fuer read input context replaces invalid bytes."""
     (project / "input/PhD/broken.csv").write_bytes(b"\xffcompany,mail\nA,a@example.com\n")
 
     context = research_leads.read_input_context(project / "input/PhD")
@@ -249,6 +261,7 @@ def test_read_input_context_replaces_invalid_bytes(project: Path) -> None:
 
 
 def test_list_resume_attachments_only_returns_cv_resume_files(project: Path) -> None:
+    """Prueft das Verhalten fuer list resume attachments only returns cv resume files."""
     attachment_dir = project / "attachments/Freelance_German"
     cv = attachment_dir / "Lebenslauf Carina Sophie Schoppe.pdf"
     cert = attachment_dir / "Master Certificate.pdf"
@@ -263,6 +276,7 @@ def test_list_resume_attachments_only_returns_cv_resume_files(project: Path) -> 
 
 
 def test_list_research_context_files_adds_matching_sent_log(project: Path) -> None:
+    """Prueft das Verhalten fuer list research context files adds matching sent log."""
     cv = project / "attachments/PhD/CV.pdf"
     other = project / "attachments/PhD/certificate.pdf"
     cv.write_text("cv", encoding="utf-8")
@@ -274,6 +288,7 @@ def test_list_research_context_files_adds_matching_sent_log(project: Path) -> No
 
 
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
+    """Prueft das Verhalten fuer parse recipients filters duplicates existing bad email and company limit."""
     raw = """
 ```csv
 company,mail,source_url
@@ -298,6 +313,7 @@ D,d@example.com,
 
 
 def test_parse_recipients_filters_existing_company_but_allows_multiple_new_company_emails() -> None:
+    """Prueft das Verhalten fuer parse recipients filters existing company but allows multiple new company emails."""
     raw = """company,mail,source_url
 Old Company,old-new@example.com,https://old.example/contact
 New Company,one@example.com,https://new.example/contact
@@ -314,6 +330,7 @@ New Company,two@example.com,https://new.example/team
 
 def test_parse_recipients_no_longer_requires_headers() -> None:
     # Previously it required headers, now it should handle headerless data if it looks like company,email
+    """Prueft das Verhalten fuer parse recipients no longer requires headers."""
     assert research_leads.parse_recipients("A,a@example.com", set()) == [
         Recipient(email="a@example.com", company="A")
     ]
@@ -322,6 +339,7 @@ def test_parse_recipients_no_longer_requires_headers() -> None:
 
 
 def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:
+    """Prueft das Verhalten fuer parse recipients handles gemini dump and company commas."""
     raw = (
         "'com.au\\n"
         "AI Engineers, Inc.,info@aiengineers.com\\n"
@@ -339,6 +357,7 @@ def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:
 
 
 def test_parse_recipients_prefers_csv_block_from_mixed_gemini_output() -> None:
+    """Prueft das Verhalten fuer parse recipients prefers csv block from mixed gemini output."""
     raw = """```json
 [
   {"company": "Wrong", "mail": "wrong@example.com"}
@@ -361,6 +380,7 @@ The University of Queensland,enquire@uq.edu.au,https://uq.edu.au/contact
 def test_parse_recipients_from_example_raw() -> None:
     # This test verifies that parse_recipients can handle the full example.raw file
     # and extract the expected data correctly.
+    """Prueft das Verhalten fuer parse recipients from example raw."""
     raw_path = Path("example.raw")
     if not raw_path.exists():
         pytest.skip("example.raw not found in project root")
@@ -391,6 +411,7 @@ def test_parse_recipients_from_example_raw() -> None:
 
 
 def test_write_recipients_csv(project: Path) -> None:
+    """Prueft das Verhalten fuer write recipients csv."""
     path = research_leads.write_recipients_csv(
         project / "input/PhD",
         "PhD",
@@ -402,6 +423,7 @@ def test_write_recipients_csv(project: Path) -> None:
 
 
 def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer run research writes output."""
     cv = project / "attachments/PhD/CV.pdf"
     cert = project / "attachments/PhD/context.pdf"
     cv.write_text("cv", encoding="utf-8")
@@ -409,6 +431,7 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
     append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Co"))
 
     def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+        """Kapselt den Hilfsschritt fake_generate."""
         assert model == "gemini-2.5-flash-lite"
         # The test originally expected [cv, project / "output/send_phd.csv"] but due to iteration 2 it might be called again with []
         if not attachments:
@@ -433,10 +456,12 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
 
 
 def test_run_research_parallel_batch_deduplicates_responses(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Prueft das Verhalten fuer run research parallel batch deduplicates responses."""
     counter = {"value": 0}
     lock = threading.Lock()
 
     def fake_generate(*args, **kwargs):
+        """Kapselt den Hilfsschritt fake_generate."""
         with lock:
             counter["value"] += 1
             index = counter["value"]
@@ -459,6 +484,7 @@ def test_run_research_parallel_batch_deduplicates_responses(monkeypatch: pytest.
 
 
 def test_run_research_self_provider_crawls_and_deduplicates(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Prueft das Verhalten fuer run research self provider crawls and deduplicates."""
     append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Co"))
 
     monkeypatch.setattr(
@@ -490,6 +516,7 @@ def test_run_research_self_provider_crawls_and_deduplicates(monkeypatch: pytest.
 
 
 def test_self_google_result_parser_decodes_result_links() -> None:
+    """Prueft das Verhalten fuer self google result parser decodes result links."""
     html_text = '''
     <a href="/url?q=https%3A%2F%2Fexample.com%2Fcontact&sa=U">result</a>
     <a href="https://direct.example/about">direct</a>
@@ -502,6 +529,7 @@ def test_self_google_result_parser_decodes_result_links() -> None:
 
 
 def test_self_crawler_respects_depth_and_extracts_nested_emails(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Prueft das Verhalten fuer self crawler respects depth and extracts nested emails."""
     pages = {
         "https://example.com": '<html><head><title>Example Co</title></head><body><a href="/about">About</a></body></html>',
         "https://example.com/about": '<html><head><title>Example About</title></head><body><a href="/team">Team</a></body></html>',
@@ -518,20 +546,26 @@ def test_self_crawler_respects_depth_and_extracts_nested_emails(monkeypatch: pyt
 
 
 def test_generate_with_ollama_posts_to_local_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prueft das Verhalten fuer generate with ollama posts to local api."""
     captured = {}
 
     class FakeResponse:
+        """Dokumentiert die Test- oder Hilfsklasse FakeResponse."""
         def __enter__(self):
+            """Initialisiert oder verwaltet das Testobjekt."""
             return self
 
         def __exit__(self, exc_type, exc, traceback):
+            """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
         @staticmethod
         def read():
+            """Kapselt den Hilfsschritt read."""
             return b'{"response": "company,mail,source_url\\nA,a@example.com,https://a.example/contact\\n"}'
 
     def fake_urlopen(request, timeout):
+        """Kapselt den Hilfsschritt fake_urlopen."""
         captured["url"] = request.full_url
         captured["payload"] = json.loads(request.data.decode("utf-8"))
         captured["timeout"] = timeout
@@ -551,6 +585,7 @@ def test_generate_with_ollama_posts_to_local_api(monkeypatch: pytest.MonkeyPatch
 
 
 def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Prueft das Verhalten fuer ollama provider uses self web candidates before llm."""
     calls = []
 
     monkeypatch.setattr(
@@ -570,10 +605,13 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
     )
 
     def fake_ollama(model, prompt, base_url, verbose=False):
+        """Kapselt den Hilfsschritt fake_ollama."""
         calls.append(("ollama", model, base_url, "lead@example.com" in prompt))
         return "company,mail,source_url\nLead Co,lead@example.com,self-crawl\n"
 
     monkeypatch.setattr(providers, "generate_with_ollama", fake_ollama)
+    # Also patch research_leads alias just in case
+    monkeypatch.setattr(research_leads, "generate_with_ollama", fake_ollama)
 
     _, recipients = research_leads.run_research(
         config(project, provider="ollama", model="llama3.1:8b", max_companies=2)
@@ -588,6 +626,7 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
 
 
 def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Prueft das Verhalten fuer run research can skip output and validates."""
     monkeypatch.setattr(
         providers,
         "generate_with_gemini",
@@ -612,9 +651,11 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 
 
 def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer run research can skip attachment upload."""
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
     def fake_generate(model, prompt, attachments, *args, **kwargs):
+        """Kapselt den Hilfsschritt fake_generate."""
         verbose = kwargs.get("verbose", False)
         assert attachments == []
         assert verbose is True
@@ -633,6 +674,7 @@ def test_run_research_retries_without_attachments_after_empty_response(
         project: Path,
         capsys,
 ) -> None:
+    """Prueft das Verhalten fuer run research retries without attachments after empty response."""
     attachment = project / "attachments/PhD/context.pdf"
     cv = project / "attachments/PhD/CV.pdf"
     attachment.write_text("context", encoding="utf-8")
@@ -640,6 +682,7 @@ def test_run_research_retries_without_attachments_after_empty_response(
     calls = []
 
     def fake_generate(model, prompt, attachments, *args, **kwargs):
+        """Kapselt den Hilfsschritt fake_generate."""
         calls.append(attachments)
         if attachments and len(calls) == 1:
             return ""
@@ -660,9 +703,11 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
         project: Path,
         capsys,
 ) -> None:
+    """Prueft das Verhalten fuer run research retries with lite prompt after model error."""
     calls = []
 
     def fake_generate(model, prompt, *args, **kwargs):
+        """Kapselt den Hilfsschritt fake_generate."""
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
@@ -681,10 +726,12 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
 
 
 def test_needs_retry_handles_invalid_csv() -> None:
+    """Prueft das Verhalten fuer needs retry handles invalid csv."""
     assert research_leads._needs_retry("not,csv\nonly-one-value\n", set()) is True
 
 
 def test_model_for_provider_uses_provider_specific_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prueft das Verhalten fuer model for provider uses provider specific env."""
     monkeypatch.setenv("GEMINI_MODEL", "generic-model")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
 
@@ -693,6 +740,7 @@ def test_model_for_provider_uses_provider_specific_env(monkeypatch: pytest.Monke
 
 
 def test_generate_with_provider_selects_openai_and_rejects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prueft das Verhalten fuer generate with provider selects openai and rejects unknown."""
     monkeypatch.setattr(
         providers,
         "generate_with_openai",
@@ -708,6 +756,7 @@ def test_generate_with_provider_selects_openai_and_rejects_unknown(monkeypatch: 
 
 
 def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer main success and error."""
     monkeypatch.setattr(
         research_leads,
         "run_research",
@@ -718,6 +767,7 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
     assert "New recipients: 1" in capsys.readouterr().out
 
     def broken_run(_cfg):
+        """Kapselt den Hilfsschritt broken_run."""
         raise RuntimeError("boom")
 
     monkeypatch.setattr(research_leads, "run_research", broken_run)
@@ -727,7 +777,8 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
 
 
 def test_generate_with_gemini_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    """Prueft das Verhalten fuer generate with gemini requires api key."""
+    monkeypatch.setattr(providers, "load_dotenv", lambda: None)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
@@ -735,7 +786,8 @@ def test_generate_with_gemini_requires_api_key(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_generate_with_openai_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    """Prueft das Verhalten fuer generate with openai requires api key."""
+    monkeypatch.setattr(providers, "load_dotenv", lambda: None)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
@@ -747,20 +799,25 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
         tmp_path: Path,
         capsys,
 ) -> None:
-    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    """Prueft das Verhalten fuer generate with openai uses web search and uploaded files."""
+    monkeypatch.setattr(providers, "load_dotenv", lambda: None)
     attachment = tmp_path / "context.pdf"
     attachment.write_text("context", encoding="utf-8")
 
     class FakeFiles:
+        """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
         @staticmethod
         def create(file, purpose: str):
+            """Kapselt den Hilfsschritt create."""
             assert file.read() == b"context"
             assert purpose == "user_data"
             return py_types.SimpleNamespace(id="file_123")
 
     class FakeResponses:
+        """Dokumentiert die Test- oder Hilfsklasse FakeResponses."""
         @staticmethod
         def create(model, input_data, tools, **kwargs):
+            """Kapselt den Hilfsschritt create."""
             assert model == "gpt-5.4"
             assert input_data == [
                 {
@@ -778,7 +835,9 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
             return py_types.SimpleNamespace(output_text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n", output=[output_item])
 
     class FakeOpenAI:
+        """Dokumentiert die Test- oder Hilfsklasse FakeOpenAI."""
         def __init__(self, api_key: str) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             assert api_key == "key"
             self.files = FakeFiles()
             self.responses = FakeResponses()
@@ -798,22 +857,29 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
 
 
 def test_generate_with_openai_reads_output_content_when_output_text_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    """Prueft das Verhalten fuer generate with openai reads output content when output text empty."""
+    monkeypatch.setattr(providers, "load_dotenv", lambda: None)
 
     class FakeFiles:
+        """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
         @staticmethod
         def create():
+            """Kapselt den Hilfsschritt create."""
             return py_types.SimpleNamespace(id="file_123")
 
     class FakeResponses:
+        """Dokumentiert die Test- oder Hilfsklasse FakeResponses."""
         @staticmethod
         def create():
+            """Kapselt den Hilfsschritt create."""
             input_data = [py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")]
             output = [py_types.SimpleNamespace(type="message", status="completed", content=input_data)]
             return py_types.SimpleNamespace(output_text="", output=output)
 
     class FakeOpenAI:
+        """Dokumentiert die Test- oder Hilfsklasse FakeOpenAI."""
         def __init__(self) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -829,6 +895,7 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
 
 
 def test_verbose_openai_output_handles_disabled_and_empty(capsys) -> None:
+    """Prueft das Verhalten fuer verbose openai output handles disabled and empty."""
     research_leads._verbose_openai_output(False, py_types.SimpleNamespace(output=[]))
     assert capsys.readouterr().out == ""
 
@@ -841,21 +908,26 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
         tmp_path: Path,
         capsys,
 ) -> None:
-    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    """Prueft das Verhalten fuer generate with gemini uses google search and uploaded files."""
+    monkeypatch.setattr(providers, "load_dotenv", lambda: None)
     uploaded = object()
     attachment = tmp_path / "context.pdf"
     attachment.write_text("context", encoding="utf-8")
 
     class FakeFiles:
+        """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
         @staticmethod
         def upload(*args, **kwargs):
+            """Kapselt den Hilfsschritt upload."""
             return uploaded
 
     # noinspection PyShadowingNames
     class FakeModels:
+        """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
         @staticmethod
         def generate_content(*args, **kwargs):
             # args[1] might be contents list in Gemini API
+            """Kapselt den Hilfsschritt generate_content."""
             contents = kwargs.get("contents", args[1] if len(args) > 1 else [])
             assert contents == ["prompt", uploaded]
             config_val = kwargs.get("config")
@@ -866,7 +938,9 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
+        """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
         def __init__(self, *args, **kwargs) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -902,16 +976,21 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
 
 
 def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """Prueft das Verhalten fuer generate with gemini logs empty candidate metadata."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
 
     class FakeFiles:
+        """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
         @staticmethod
         def upload(*args, **kwargs):
+            """Kapselt den Hilfsschritt upload."""
             return object()
 
     class FakeModels:
+        """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
         @staticmethod
         def generate_content(*args, **kwargs):
+            """Kapselt den Hilfsschritt generate_content."""
             part = py_types.SimpleNamespace(text=None)
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -922,7 +1001,9 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             return py_types.SimpleNamespace(text="", candidates=[candidate], prompt_feedback="ok")
 
     class FakeClient:
+        """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
         def __init__(self, *args, **kwargs) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -960,6 +1041,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
 
 def test_fake_txt_extensions(tmp_path: Path) -> None:
+    """Prueft das Verhalten fuer fake txt extensions."""
     csv_file = tmp_path / "test.csv"
     csv_file.write_text("a,b,c", encoding="utf-8")
     pdf_file = tmp_path / "test.pdf"
@@ -985,6 +1067,7 @@ def test_generate_with_gemini_fakes_csv_extension(
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
 ) -> None:
+    """Prueft das Verhalten fuer generate with gemini fakes csv extension."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     csv_attachment = tmp_path / "data.csv"
     csv_attachment.write_text("col1,col2", encoding="utf-8")
@@ -992,8 +1075,10 @@ def test_generate_with_gemini_fakes_csv_extension(
     captured_paths = []
 
     class FakeFiles:
+        """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
         @staticmethod
         def upload(*args, **kwargs):
+            """Kapselt den Hilfsschritt upload."""
             if args:
                 captured_paths.append(args[0])
             elif "file" in kwargs:
@@ -1001,12 +1086,16 @@ def test_generate_with_gemini_fakes_csv_extension(
             return object()
 
     class FakeModels:
+        """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
         @staticmethod
         def generate_content(*args, **kwargs):
+            """Kapselt den Hilfsschritt generate_content."""
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
+        """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
         def __init__(self, *args, **kwargs) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -1044,6 +1133,7 @@ def test_generate_with_openai_fakes_csv_extension(
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
 ) -> None:
+    """Prueft das Verhalten fuer generate with openai fakes csv extension."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     csv_attachment = tmp_path / "data.csv"
     csv_attachment.write_text("col1,col2", encoding="utf-8")
@@ -1051,18 +1141,24 @@ def test_generate_with_openai_fakes_csv_extension(
     captured_paths = []
 
     class FakeFiles:
+        """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
         @staticmethod
         def create(file, purpose: str):
+            """Kapselt den Hilfsschritt create."""
             captured_paths.append(Path(file.name))
             return py_types.SimpleNamespace(id="file_123")
 
     class FakeResponses:
+        """Dokumentiert die Test- oder Hilfsklasse FakeResponses."""
         @staticmethod
         def create(*args, **kwargs):
+            """Kapselt den Hilfsschritt create."""
             return py_types.SimpleNamespace(output_text='{"leads": []}', output=[])
 
     class FakeClient:
+        """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
         def __init__(self, *args, **kwargs) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -1083,16 +1179,21 @@ def test_generate_with_openai_fakes_csv_extension(
 def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_empty(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Prueft das Verhalten fuer generate with gemini reads candidate part text when response text is empty."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
 
     class FakeFiles:
+        """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
         @staticmethod
         def upload(*args, **kwargs):
+            """Kapselt den Hilfsschritt upload."""
             return object()
 
     class FakeModels:
+        """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
         @staticmethod
         def generate_content(*args, **kwargs):
+            """Kapselt den Hilfsschritt generate_content."""
             part = py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -1103,7 +1204,9 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             return py_types.SimpleNamespace(text="", candidates=[candidate])
 
     class FakeClient:
+        """Dokumentiert die Test- oder Hilfsklasse FakeClient."""
         def __init__(self, *args, **kwargs) -> None:
+            """Initialisiert oder verwaltet das Testobjekt."""
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -1137,6 +1240,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
 
 
 def test_verbose_gemini_candidates_handles_disabled_and_missing_parts(capsys) -> None:
+    """Prueft das Verhalten fuer verbose gemini candidates handles disabled and missing parts."""
     response = py_types.SimpleNamespace(
         candidates=[
             py_types.SimpleNamespace(
@@ -1155,6 +1259,7 @@ def test_verbose_gemini_candidates_handles_disabled_and_missing_parts(capsys) ->
 
 
 def test_direct_script_bootstrap_inserts_code_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prueft das Verhalten fuer direct script bootstrap inserts code dir."""
     original_path = list(sys.path)
     research_dir = CODE_DIR / "research"
     monkeypatch.setattr(
@@ -1178,6 +1283,7 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
         project: Path,
         capsys,
 ) -> None:
+    """Prueft das Verhalten fuer research main uses sys argv when no args are passed."""
     monkeypatch.setattr("sys.argv", ["research_leads.py", "--mode", "PhD", "--base-dir", str(project)])
     monkeypatch.setattr(
         research_leads,
@@ -1190,7 +1296,9 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
 
 
 def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """Prueft das Verhalten fuer retry handles parse errors."""
     def broken_parse(*_args, **_kwargs):
+        """Kapselt den Hilfsschritt broken_parse."""
         raise ValueError("bad csv")
 
     monkeypatch.setattr(research_leads, "parse_recipients", broken_parse)
@@ -1202,6 +1310,7 @@ def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> 
 
 
 def test_read_input_context_logs_empty_files(project: Path, capsys) -> None:
+    """Prueft das Verhalten fuer read input context logs empty files."""
     empty_file = project / "input/PhD/empty.csv"
     empty_file.write_text("   ", encoding="utf-8")
 
@@ -1210,6 +1319,7 @@ def test_read_input_context_logs_empty_files(project: Path, capsys) -> None:
 
 
 def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
+    """Prueft das Verhalten fuer parse recipients handles json and fence fallbacks."""
     json_text = """
 ```json
 {"leads": [{"company": "A", "emails": ["a@example.com"], "source_urls": ["https://a.example/contact"]}]}
@@ -1234,7 +1344,9 @@ def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
 
 
 def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """Prueft das Verhalten fuer headerless csv parser handles csv errors."""
     def broken_dialect(*_args, **_kwargs):
+        """Kapselt den Hilfsschritt broken_dialect."""
         raise csv.Error("bad dialect")
 
     monkeypatch.setattr(research_leads, "detect_dialect", broken_dialect)

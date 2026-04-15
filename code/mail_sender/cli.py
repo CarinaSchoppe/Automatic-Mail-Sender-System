@@ -35,10 +35,10 @@ def _info(message: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     """
     Hauptfunktion des Mail-Senders. Parst Argumente und startet den Versandprozess für die gewählten Modi.
-    
+
     Args:
         argv (list[str] | None): Liste der Kommandozeilenargumente.
-        
+
     Returns:
         int: Exit-Code (0 für Erfolg, 1 bei Fehlern).
     """
@@ -50,7 +50,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-write-sent-log", action="store_true", help="Do not write successfully sent emails to the CSV log.")
     parser.add_argument("--delete-input-after-success", action="store_true", help="Delete processed .csv/.txt input files after a successful real send run.")
     parser.add_argument("--resend-existing", action="store_true", help="Ignore addresses already present in the mode CSV log.")
-    parser.add_argument("--skip-invalid-check", action="store_true", help="Skip recipients already listed in invalid_mails.csv.")
+    parser.add_argument(
+        "--skip-invalid-check",
+        action="store_true",
+        default=True,
+        help="Skip recipients already listed in invalid_mails.csv.",
+    )
+    parser.add_argument(
+        "--no-skip-invalid-check",
+        action="store_false",
+        dest="skip_invalid_check",
+        help="Do not skip recipients already listed in invalid_mails.csv.",
+    )
     parser.add_argument("--allow-empty-attachments", action="store_true", help="Allow sending even if the mode attachment folder is empty.")
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
     parser.add_argument("--signature-logo", default="templates/signature-logo.png", help="Inline logo image used when the signature contains {IMAGE}.")
@@ -114,14 +125,14 @@ def _select_modes(mode_name: str, base_dir: Path):
 def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
     """
     Führt den Versandprozess für einen spezifischen Modus (z.B. PhD) aus.
-    
+
     Args:
         args: Die parsierten Kommandozeilenargumente.
         mode: Das MailMode-Objekt.
         base_dir (Path): Das Projekt-Basisverzeichnis.
         signature_path (Path): Pfad zur Signatur-Vorlage.
         signature_logo_path (Path): Pfad zum Logo für die Signatur.
-        
+
     Returns:
         int: Anzahl der aufgetretenen Fehler während der Verarbeitung der Empfänger.
     """
@@ -181,7 +192,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
 
 
 def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:
-    """Kapselt den Arbeitsschritt _log_mode_paths."""
+    """Schreibt die wichtigsten Pfade des aktuellen Versandmodus ins Verbose-Log."""
     _verbose(args.verbose, f"Base directory: {base_dir}")
     _verbose(args.verbose, f"Recipient input directory: {mode.recipients_dir}")
     _verbose(args.verbose, f"Mode template: {mode.template_path}")
@@ -272,18 +283,18 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
             print(f"[SKIP] {recipient.email} appears more than once in this CSV run; duplicate skipped.")
             continue
 
+        validation_kwargs = {"skip_dns_check": args.skip_email_dns_check}
         if args.verify_email_smtp:
-            validation = validate_email_address(
-                recipient.email,
+            validation_kwargs.update(
                 verify_mailbox=True,
                 smtp_timeout=args.verify_email_smtp_timeout,
-                skip_dns_check=args.skip_email_dns_check,
             )
-        else:
-            validation = validate_email_address(
-                recipient.email,
-                skip_dns_check=args.skip_email_dns_check,
-            )
+        try:
+            validation = validate_email_address(recipient.email, **validation_kwargs)
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc):
+                raise
+            validation = validate_email_address(recipient.email)
         _verbose(args.verbose, f"Validation result for {recipient.email}: {validation.is_valid} {validation.reason}")
         if not validation.is_valid:
             skipped_before_send += 1

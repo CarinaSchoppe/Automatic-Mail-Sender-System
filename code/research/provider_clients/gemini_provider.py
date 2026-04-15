@@ -30,7 +30,7 @@ def generate_with_gemini(
 ) -> str | None | Any:
     """
     Führt eine Anfrage an Google Gemini durch, lädt Anhänge hoch und verarbeitet die Antwort.
-    
+
     Args:
         model (str): Das zu verwendende Gemini-Modell.
         prompt (str): Der Text-Prompt.
@@ -38,7 +38,7 @@ def generate_with_gemini(
         reasoning_effort (str): Stufe der Denk-Leistung (ThinkingLevel).
         verbose (bool): Detailliertes Logging.
         load_env (Callable): Funktion zum Laden der Umgebungsvariablen.
-        
+
     Returns:
         Das Ergebnis als String (meist CSV).
     """
@@ -49,9 +49,24 @@ def generate_with_gemini(
 
     try:
         from google import genai
-        from google.genai import errors, types
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Install google-genai first: pip install -r requirements.txt") from exc
+    errors = getattr(genai, "errors", None)
+    types = getattr(genai, "types", None)
+    if types is None:
+        try:
+            from google.genai import types as imported_types
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("Install google-genai first: pip install -r requirements.txt") from exc
+        types = imported_types
+    api_error_classes = tuple(
+        error_type
+        for error_type in (
+            getattr(errors, "APIError", None),
+            getattr(errors, "ClientError", None),
+        )
+        if isinstance(error_type, type)
+    ) or (Exception,)
 
     client = genai.Client(api_key=api_key)
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to Gemini.")
@@ -95,7 +110,7 @@ def generate_with_gemini(
                 ),
             )
             break
-        except (errors.APIError, errors.ClientError) as e:
+        except api_error_classes as e:
             msg = str(e).lower()
             # If it's a rate limit error (429) or temporary server error (500, 503)
             is_retryable = "429" in msg or "quota" in msg or "exhausted" in msg or "500" in msg or "503" in msg

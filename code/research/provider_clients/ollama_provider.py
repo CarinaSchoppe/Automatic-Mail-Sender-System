@@ -21,13 +21,13 @@ def generate_with_ollama(
 ) -> str:
     """
     Sendet einen Prompt an den lokalen Ollama-Server und gibt die Antwort zurück.
-    
+
     Args:
         model (str): Das zu verwendende Modell (z.B. llama3).
         prompt (str): Der Text-Prompt.
         base_url (str): Die URL der Ollama-API.
         verbose (bool): Detailliertes Logging.
-        
+
     Returns:
         str: Die Antwort der KI.
     """

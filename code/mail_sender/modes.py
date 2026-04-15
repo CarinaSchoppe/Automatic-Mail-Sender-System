@@ -1,4 +1,7 @@
-"""Beschreibt die verfuegbaren Versandmodi und ihre Projektpfade."""
+"""
+Definition der verschiedenen Versand-Modi (PhD, Freelance German, Freelance English).
+Verwaltet die Zuordnung von Verzeichnissen und Vorlagen zu den jeweiligen Modi.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +13,9 @@ MODE_NAMES = ["PhD", "Freelance_German", "Freelance_English"]
 
 @dataclass(frozen=True)
 class MailMode:
-    """Beschreibt Pfade und Anzeigenamen eines Versandmodus."""
+    """
+    Hält die Pfade zu Vorlagen, Anhängen und Logs für einen spezifischen Modus.
+    """
     key: str
     label: str
     recipients_dir: Path
@@ -20,7 +25,16 @@ class MailMode:
 
 
 def get_mode(mode: str, base_dir: Path) -> MailMode:
-    """Ermittelt Modus."""
+    """
+    Gibt ein MailMode-Objekt für den angegebenen Modus-Namen zurück.
+
+    Args:
+        mode (str): Name des Modus (case-insensitive).
+        base_dir (Path): Basisverzeichnis des Projekts.
+
+    Returns:
+        MailMode: Die konfigurierten Pfade für diesen Modus.
+    """
     normalized = mode.strip().lower().replace("-", "_").replace(" ", "_")
     if normalized == "phd":
         return MailMode(
@@ -52,7 +66,7 @@ def get_mode(mode: str, base_dir: Path) -> MailMode:
 
 
 def _freelance_mode(base_dir: Path, template_name: str, attachments_dir_name: str, label: str) -> MailMode:
-    """Kapselt den Arbeitsschritt _freelance_mode."""
+    """Erstellt einen der beiden Freelance-Modi mit passenden Pfaden."""
     return MailMode(
         key="freelance",
         label=label,

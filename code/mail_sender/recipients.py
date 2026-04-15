@@ -1,4 +1,7 @@
-"""Liest und normalisiert Empfaengerlisten aus CSV- und Textdateien."""
+"""
+Modul zum Laden, Normalisieren und Verwalten von Empfängerlisten.
+Unterstützt das Lesen von CSV- und Textdateien aus Verzeichnissen.
+"""
 
 from __future__ import annotations
 
@@ -13,22 +16,25 @@ RECIPIENT_FILE_SUFFIXES = {".csv", ".txt"}
 
 @dataclass(frozen=True)
 class Recipient:
-    """Beschreibt einen einzelnen Mail-Empfaenger und seine Vorlagendaten."""
+    """
+    Repräsentiert einen einzelnen E-Mail-Empfänger mit seinen Metadaten.
+    Stellt Methoden zur Verfügung, um Kontext für E-Mail-Vorlagen zu generieren.
+    """
     email: str
     company: str = ""
 
     @property
     def greeting(self) -> str:
-        """Kapselt den Arbeitsschritt greeting."""
+        """Gibt die aktuell verwendete Standardbegrüßung zurück."""
         return "Hello"
 
     @property
     def company_or_email(self) -> str:
-        """Kapselt den Arbeitsschritt company_or_email."""
+        """Nutzt den Firmennamen als Anzeigeziel und fällt sonst auf die E-Mail zurück."""
         return self.company or self.email
 
     def template_context(self) -> dict[str, str]:
-        """Kapselt den Arbeitsschritt template_context."""
+        """Erstellt die Platzhalterwerte für Mailvorlagen."""
         context = {
             "email": self.email,
             "mail": self.email,
@@ -40,7 +46,15 @@ class Recipient:
 
 
 def read_recipients(path: Path) -> list[Recipient]:
-    """Liest Empfaenger."""
+    """
+    Liest Empfänger aus einer einzelnen Datei (CSV oder TXT).
+
+    Args:
+        path (Path): Pfad zur Datei.
+
+    Returns:
+        list[Recipient]: Liste der extrahierten Empfänger.
+    """
     if not path.exists():
         raise FileNotFoundError(f"Recipient file not found: {path}")
 
@@ -58,7 +72,9 @@ def read_recipients(path: Path) -> list[Recipient]:
 
 
 def read_recipients_from_dir(directory: Path) -> list[Recipient]:
-    """Liest Empfaenger from dir."""
+    """
+    Liest alle Empfänger aus allen unterstützten Dateien in einem Verzeichnis.
+    """
     if not directory.exists():
         raise FileNotFoundError(f"Recipient input directory not found: {directory}")
     if not directory.is_dir():
@@ -79,7 +95,9 @@ def read_recipients_from_dir(directory: Path) -> list[Recipient]:
 
 
 def list_recipient_files(directory: Path) -> list[Path]:
-    """Listet Empfaenger Dateien."""
+    """
+    Gibt eine Liste aller Empfänger-Dateien in einem Verzeichnis zurück.
+    """
     if not directory.exists() or not directory.is_dir():
         return []
 
@@ -101,7 +119,9 @@ class DefaultCsvDialect(csv.Dialect):
 
 
 def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
-    """Erkennt CSV-Dialekt."""
+    """
+    Erkennt den CSV-Dialekt der Daten.
+    """
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
@@ -137,7 +157,7 @@ def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
 
 
 def _first_value(values: dict[str, str], keys: set[str]) -> str:
-    """Kapselt den Arbeitsschritt _first_value."""
+    """Liefert den ersten nicht-leeren Wert aus einer Menge möglicher Spaltennamen."""
     for key in keys:
         value = values.get(key, "").strip()
         if value:
@@ -146,12 +166,16 @@ def _first_value(values: dict[str, str], keys: set[str]) -> str:
 
 
 def normalize_key(value: str) -> str:
-    """Normalisiert Schluessel."""
+    """
+    Normalisiert einen Spaltennamen für einen robusten Vergleich.
+    """
     return value.strip().lower().replace("_", "-").replace(" ", "")
 
 
 def normalize_email(value: str) -> str:
-    """Normalisiert E-Mail."""
+    """
+    Bereinigt eine E-Mail-Adresse (entfernt Leerzeichen und mailto: Präfixe).
+    """
     email = value.strip()
     if email.lower().startswith("mailto:"):
         email = email[7:].strip()

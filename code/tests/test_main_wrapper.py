@@ -1,3 +1,5 @@
+"""Tests und Hilfen fuer tests/test_main_wrapper.py."""
+
 from __future__ import annotations
 
 import io
@@ -9,13 +11,16 @@ import main as app_main
 
 
 def test_main_wrapper_can_run_research(monkeypatch) -> None:
+    """Prueft das Verhalten fuer main wrapper can run research."""
     calls = []
 
     def fake_research_main(args):
+        """Kapselt den Hilfsschritt fake_research_main."""
         calls.append(("research", args))
         return 0
 
     def fake_mail_main(args=None):
+        """Kapselt den Hilfsschritt fake_mail_main."""
         calls.append(("mail", args))
         return 0
 
@@ -56,13 +61,16 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
 
 
 def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
+    """Prueft das Verhalten fuer main wrapper defaults to research."""
     calls = []
 
     def fake_research_main(args):
+        """Kapselt den Hilfsschritt fake_research_main."""
         calls.append(("research", args))
         return 0
 
     def fake_mail_main(args=None):
+        """Kapselt den Hilfsschritt fake_mail_main."""
         calls.append(("mail", args))
         return 0
 
@@ -84,6 +92,7 @@ def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
 
 def test_main_summary_output(monkeypatch, capsys) -> None:
     # Mock sys.argv to avoid CLI argument detection
+    """Prueft das Verhalten fuer main summary output."""
     monkeypatch.setattr("sys.argv", ["code/main.py"])
 
     # Mock read_logged_rows to simulate state changes
@@ -92,6 +101,7 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
     state = {"calls": 0}
 
     def fake_read_logged_rows():
+        """Kapselt den Hilfsschritt fake_read_logged_rows."""
         state["calls"] += 1
         if state["calls"] <= 1:
             return []
@@ -112,6 +122,7 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
 
 def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     # Mock sys.argv to avoid CLI argument detection
+    """Prueft das Verhalten fuer target loop summary output."""
     monkeypatch.setattr("sys.argv", ["code/main.py"])
 
     # Mock read_known_output_emails to control the loop
@@ -120,6 +131,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     count_state = {"val": 0}
 
     def fake_read_emails():
+        """Kapselt den Hilfsschritt fake_read_emails."""
         count = count_state["val"]
         count_state["val"] = 1
         return ["e" * i for i in range(count)]
@@ -128,6 +140,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     row_state = {"calls": 0}
 
     def fake_read_rows():
+        """Kapselt den Hilfsschritt fake_read_rows."""
         row_state["calls"] += 1
         if row_state["calls"] <= 1:
             return []
@@ -152,9 +165,11 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
 
 
 def test_main_wrapper_forwards_explicit_cli_args_to_mail(monkeypatch) -> None:
+    """Prueft das Verhalten fuer main wrapper forwards explicit cli args to mail."""
     calls = []
 
     def fake_mail_main(args=None):
+        """Kapselt den Hilfsschritt fake_mail_main."""
         calls.append(args)
         return 0
 
@@ -169,6 +184,7 @@ def test_main_wrapper_forwards_explicit_cli_args_to_mail(monkeypatch) -> None:
 
 
 def test_main_helpers_cover_settings_and_log_branches(monkeypatch, tmp_path) -> None:
+    """Prueft das Verhalten fuer main helpers cover settings and log branches."""
     monkeypatch.setattr(app_main, "SETTINGS_PATH", tmp_path / "missing.toml")
     assert app_main._load_settings() == {}
 
@@ -183,6 +199,7 @@ def test_main_helpers_cover_settings_and_log_branches(monkeypatch, tmp_path) -> 
 
 
 def test_main_run_stops_when_research_fails(monkeypatch) -> None:
+    """Prueft das Verhalten fuer main run stops when research fails."""
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "MODE", "PhD")
     monkeypatch.setattr(app_main, "RESEARCH_AI_PROVIDER", "gemini")
@@ -198,6 +215,7 @@ def test_main_run_stops_when_research_fails(monkeypatch) -> None:
 
 
 def test_main_run_can_skip_research_and_mail_directly(monkeypatch) -> None:
+    """Prueft das Verhalten fuer main run can skip research and mail directly."""
     calls = []
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", False)
     monkeypatch.setattr(app_main, "MODE", "PhD")
@@ -212,6 +230,7 @@ def test_main_run_can_skip_research_and_mail_directly(monkeypatch) -> None:
 
 
 def test_target_send_loop_repeats_until_logged_target_is_reached(monkeypatch) -> None:
+    """Prueft das Verhalten fuer target send loop repeats until logged target is reached."""
     research_calls = []
     mail_calls = []
     email_sets = iter([
@@ -249,6 +268,7 @@ def test_target_send_loop_repeats_until_logged_target_is_reached(monkeypatch) ->
 
 
 def test_count_logged_sent_emails_uses_project_output(monkeypatch) -> None:
+    """Prueft das Verhalten fuer count logged sent emails uses project output."""
     calls = []
     monkeypatch.setattr(
         app_main,
@@ -261,6 +281,7 @@ def test_count_logged_sent_emails_uses_project_output(monkeypatch) -> None:
 
 
 def test_target_send_loop_requires_real_research_and_logging(monkeypatch, capsys) -> None:
+    """Prueft das Verhalten fuer target send loop requires real research and logging."""
     monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 0)
     assert app_main._validate_target_send_settings() is True
 
@@ -278,6 +299,7 @@ def test_target_send_loop_requires_real_research_and_logging(monkeypatch, capsys
 
 
 def test_target_send_loop_reports_all_invalid_setting_combinations(monkeypatch, capsys) -> None:
+    """Prueft das Verhalten fuer target send loop reports all invalid setting combinations."""
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", False)
     monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", False)
@@ -296,6 +318,7 @@ def test_target_send_loop_reports_all_invalid_setting_combinations(monkeypatch, 
 
 
 def test_target_send_loop_stops_when_no_new_sent_log_entries_are_created(monkeypatch, capsys) -> None:
+    """Prueft das Verhalten fuer target send loop stops when no new sent log entries are created."""
     rows = [{"company": f"Old {i}", "mail": f"old{i}@example.com"} for i in range(5)]
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
@@ -316,6 +339,7 @@ def test_target_send_loop_stops_when_no_new_sent_log_entries_are_created(monkeyp
 
 
 def test_target_send_loop_stops_when_research_fails(monkeypatch) -> None:
+    """Prueft das Verhalten fuer target send loop stops when research fails."""
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
     monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
@@ -331,6 +355,7 @@ def test_target_send_loop_stops_when_research_fails(monkeypatch) -> None:
 
 
 def test_target_send_loop_stops_at_max_rounds(monkeypatch, capsys) -> None:
+    """Prueft das Verhalten fuer target send loop stops at max rounds."""
     row_sets = iter([[], [{"company": "One", "mail": "one@example.com"}]])
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
@@ -350,6 +375,7 @@ def test_target_send_loop_stops_at_max_rounds(monkeypatch, capsys) -> None:
 
 
 def test_target_send_loop_stops_when_mail_sender_errors(monkeypatch, capsys) -> None:
+    """Prueft das Verhalten fuer target send loop stops when mail sender errors."""
     row_sets = iter([[], [{"company": "One", "mail": "one@example.com"}]])
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
@@ -369,11 +395,13 @@ def test_target_send_loop_stops_when_mail_sender_errors(monkeypatch, capsys) -> 
 
 
 def test_run_with_optional_log_can_skip_log_and_closes_on_error(monkeypatch, tmp_path) -> None:
+    """Prueft das Verhalten fuer run with optional log can skip log and closes on error."""
     monkeypatch.setattr(app_main, "SAVE_VERBOSE_LOG", False)
     monkeypatch.setattr(app_main, "_run", lambda: 12)
     assert app_main._run_with_optional_log() == 12
 
     def fail_run() -> int:
+        """Kapselt den Hilfsschritt fail_run."""
         raise RuntimeError("boom")
 
     monkeypatch.setattr(app_main, "SAVE_VERBOSE_LOG", True)
@@ -389,6 +417,7 @@ def test_run_with_optional_log_can_skip_log_and_closes_on_error(monkeypatch, tmp
 
 def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
     # Mock settings
+    """Prueft das Verhalten fuer target loop max rounds safety gate."""
     monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 100)
     monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 1)
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
@@ -425,6 +454,7 @@ def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
 
 def test_target_loop_unlimited_warning(monkeypatch, capsys) -> None:
     # Mock settings for unlimited with high target
+    """Prueft das Verhalten fuer target loop unlimited warning."""
     monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 100)
     monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)

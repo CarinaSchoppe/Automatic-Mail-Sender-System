@@ -1,4 +1,7 @@
-"""Rendert Mailvorlagen, Signaturen und Inline-Bilder."""
+"""
+Modul zum Rendern von E-Mail-Vorlagen.
+Unterstützt Platzhalter (z.B. {company}), HTML-Umwandlung und das Einbetten von Signatur-Logos.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +17,9 @@ from mail_sender.recipients import Recipient
 
 @dataclass(frozen=True)
 class InlineImage:
-    """Beschreibt ein Inline-Bild fuer HTML-Mails."""
+    """
+    Repräsentiert ein Bild, das direkt in den HTML-Body einer E-Mail eingebettet wird (via CID).
+    """
     path: Path
     cid: str
     width: int
@@ -22,7 +27,9 @@ class InlineImage:
 
 @dataclass(frozen=True)
 class RenderedMail:
-    """Enthaelt alle gerenderten Inhalte einer versandfertigen Mail."""
+    """
+    Hält das Ergebnis des Rendering-Prozesses bereit zum Versand.
+    """
     subject: str
     text_body: str
     html_body: str
@@ -37,7 +44,21 @@ def render_mail(
         signature_image_path: Path | None = None,
         signature_image_width: int = 180,
 ) -> RenderedMail:
-    """Rendert Mail."""
+    """
+    Erstellt den Betreff, den Text-Body und den HTML-Body für eine E-Mail.
+    Ersetzt Platzhalter durch Empfänger-Daten und fügt die Signatur hinzu.
+
+    Args:
+        template_path (Path): Pfad zur .txt Vorlage des Modus.
+        signature_path (Path): Pfad zur Signatur-Datei.
+        recipient (Recipient): Daten des aktuellen Empfängers.
+        subject_override (str | None): Optionaler Betreff, der die Vorlage überschreibt.
+        signature_image_path (Path | None): Pfad zum Logo-Bild.
+        signature_image_width (int): Breite des Logos im HTML.
+
+    Returns:
+        RenderedMail: Das fertige E-Mail-Objekt.
+    """
     if not template_path.exists():
         raise FileNotFoundError(f"Mail template not found: {template_path}")
     if not signature_path.exists():
@@ -80,7 +101,9 @@ def render_mail(
 
 
 def _split_subject(text: str) -> tuple[str, str]:
-    """Kapselt den Arbeitsschritt _split_subject."""
+    """
+    Trennt den Betreff vom restlichen Body einer Vorlage, falls vorhanden (Subject: ...).
+    """
     lines = text.splitlines()
     if lines and lines[0].lower().startswith("subject:"):
         subject = lines[0].split(":", 1)[1].strip()
@@ -98,7 +121,7 @@ def _render_text_signature(signature: str) -> str:
 
 
 def _text_to_html(text: str) -> str:
-    """Kapselt den Arbeitsschritt _text_to_html."""
+    """Escaped Klartext und erhält Zeilenumbrüche als HTML-Breaks."""
     escaped = html.escape(text).replace("\n", "<br>\n")
     return f"<html><body>{escaped}</body></html>"
 

@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover
 
 
     def _dotenv_load_stub():
-        """Kapselt den Arbeitsschritt _dotenv_load_stub."""
+        """Ersetzt python-dotenv, wenn das Paket in einer Minimalumgebung fehlt."""
         return False
 
 
@@ -67,11 +67,11 @@ def _load_settings() -> dict:
 def load_smtp_config(require_password: bool) -> SmtpConfig:
     """
     Lädt die vollständige SMTP-Konfiguration und prüft auf Vollständigkeit.
-    
+
     Args:
-        require_password (bool): Ob das Passwort zwingend vorhanden sein muss 
+        require_password (bool): Ob das Passwort zwingend vorhanden sein muss
                                  (wird bei Dry-Runs oft nicht benötigt).
-                                 
+
     Returns:
         SmtpConfig: Die validierte Konfiguration.
     """

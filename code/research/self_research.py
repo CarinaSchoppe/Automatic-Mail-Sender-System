@@ -17,10 +17,10 @@ from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MailMode
 from mail_sender.recipients import Recipient, normalize_email
 from research import mode_instructions
+from research import providers
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
 from research.parsing import normalize_company, parse_recipients
-from research.providers import generate_with_ollama
 from research.types import RecipientSink, ResearchConfig
 
 EMAIL_EXTRACT_PATTERN = re.compile(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", re.IGNORECASE)
@@ -43,13 +43,13 @@ def run_self_research(
     """
     Führt eine lokale Recherche durch: Sucht bei Google nach Keywords, crawlt die Ergebnisse
     und extrahiert E-Mail-Adressen direkt aus dem HTML.
-    
+
     Args:
         config (ResearchConfig): Die Recherche-Konfiguration.
         mode (MailMode): Der aktuelle Modus (z.B. PhD).
         existing_emails (set[str]): Bereits bekannte E-Mails.
         existing_companies (set[str]): Bereits bekannte Firmen.
-        
+
     Returns:
         list[Recipient]: Liste der gefundenen neuen Leads.
     """
@@ -129,7 +129,12 @@ def run_ollama_web_research(
     """
     candidates = run_self_research(config, mode, existing_emails, existing_companies)
     prompt = build_ollama_web_research_prompt(config, mode, _recipients_to_csv_text(candidates))
-    raw_response = generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
+    raw_response = providers.generate_with_ollama(
+        config.model,
+        prompt,
+        config.ollama_base_url,
+        verbose=config.verbose,
+    )
     recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
     target_count = config.send_target_count or config.max_companies
     if recipients:

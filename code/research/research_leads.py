@@ -1,4 +1,8 @@
-"""AI lead research pipeline with provider calls, context uploads, and local filters."""
+"""
+Haupt-Pipeline für die KI-gestützte Lead-Recherche.
+Verwaltet den Ablauf von der Prompt-Erstellung über den KI-Aufruf bis hin zum Parsen und Speichern der Ergebnisse.
+Unterstützt Multi-Threading für parallele Anfragen.
+"""
 
 # Local imports intentionally come after the direct-script path bootstrap below.
 # ruff: noqa: E402
@@ -62,11 +66,11 @@ COMPANY_KEYS = {"company", "firma", "organisation", "organization", "name"}
 def generate_with_provider(*args, **kwargs):
     """
     Delegiert den Aufruf zur Generierung von Leads an den entsprechenden Provider-Client.
-    
+
     Args:
         *args: Variable Positionsargumente.
         **kwargs: Variable Schlüsselwortargumente.
-        
+
     Returns:
         Das Ergebnis der Lead-Generierung (meist ein CSV-String).
     """
@@ -115,7 +119,7 @@ class ThreadSafeRecipientSink:
     def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig):
         """
         Initialisiert den Sink mit Zielvorgaben und bereits bekannten Daten.
-        
+
         Args:
             target_count (int): Anzahl der insgesamt gewünschten E-Mail-Adressen.
             seen_emails (set[str]): Menge der bereits kontaktierten E-Mails (Deduplizierung).
@@ -132,10 +136,10 @@ class ThreadSafeRecipientSink:
     def add_recipient(self, recipient: Recipient) -> bool:
         """
         Versucht einen neuen Empfänger hinzuzufügen. Prüft auf Duplikate und Zielerreichung.
-        
+
         Args:
             recipient (Recipient): Der gefundene Lead.
-            
+
         Returns:
             bool: True, wenn das Gesamtziel (target_count) erreicht wurde, andernfalls False.
         """
@@ -185,12 +189,16 @@ class ThreadSafeRecipientSink:
             return True
 
     def is_full(self) -> bool:
-        """Prueft Kapazitaet."""
+        """
+        Prüft, ob das Sammlungsziel erreicht wurde.
+        """
         with self.lock:
             return len(self.recipients) >= self.target_count
 
     def is_seen(self, email: str, company: str | None = None) -> bool:
-        """Prueft Duplikate."""
+        """
+        Prüft, ob eine E-Mail oder Firma bereits in den bekannten Listen oder im aktuellen Durchlauf existiert.
+        """
         email_key = email.lower()
         company_key = _normalize_company(company) if company else None
         with self.lock:
@@ -202,7 +210,9 @@ class ThreadSafeRecipientSink:
 
 
 def _load_settings() -> dict:
-    """Laedt Einstellungen."""
+    """
+    Lädt die allgemeinen Einstellungen aus der settings.toml im Projekt-Wurzelverzeichnis.
+    """
     settings_path = CODE_DIR.parent / "settings.toml"
     if not settings_path.exists():
         return {}
@@ -216,7 +226,9 @@ def _load_settings() -> dict:
 
 
 def default_config() -> ResearchConfig:
-    """Erzeugt Standardwerte fuer Konfiguration."""
+    """
+    Erstellt eine Standard-Konfiguration basierend auf Umgebungsvariablen und der settings.toml Datei.
+    """
     load_dotenv()
     settings = _load_settings()
 
@@ -257,7 +269,7 @@ def default_config() -> ResearchConfig:
         min_companies=cast(int, _get("RESEARCH_MIN_COMPANIES", 15)),
         max_companies=cast(int, _get("RESEARCH_MAX_COMPANIES", 25)),
         person_emails_per_company=cast(int, _get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3)),
-        base_dir=CODE_DIR.parent,
+        base_dir=Path(cast(str, _get("RESEARCH_BASE_DIR", str(CODE_DIR.parent)))).resolve(),
         write_output=cast(bool, _get("RESEARCH_WRITE_OUTPUT", True)),
         verbose=cast(bool, _get("RESEARCH_VERBOSE", False)),
         upload_attachments=cast(bool, _get("RESEARCH_UPLOAD_ATTACHMENTS", True)),
@@ -276,7 +288,10 @@ def default_config() -> ResearchConfig:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Startet Daten."""
+    """
+    Haupteinstiegspunkt für das Recherche-Skript.
+    Parst Argumente, führt die Recherche aus und gibt eine Zusammenfassung aus.
+    """
     args_list = argv if argv is not None else sys.argv[1:]
     config = parse_args(args_list)
     try:
@@ -293,7 +308,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def parse_args(argv: list[str]) -> ResearchConfig:
-    """Parst Argumente."""
+    """
+    Parst die Kommandozeilenargumente und erstellt ein ResearchConfig-Objekt.
+    Kombiniert Standardwerte, Umgebungsvariablen und explizite CLI-Flags.
+    """
     env_config = default_config()
     parser = argparse.ArgumentParser(description="research new lead CSV files with AI providers or self-hosted web scraping.")
     parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai", "ollama", "self"], help="Research provider.")
@@ -352,7 +370,17 @@ def parse_args(argv: list[str]) -> ResearchConfig:
 
 
 def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
-    """Run one AI research pass and return the optional CSV path plus usable recipients."""
+    """
+    Führt einen kompletten Recherche-Durchlauf aus.
+    Wählt zwischen KI-Providern (Gemini, OpenAI) und lokaler Recherche (self, Ollama).
+    Verwaltet das Sammeln und Speichern der Ergebnisse.
+    
+    Args:
+        config (ResearchConfig): Die Konfiguration für diesen Lauf.
+        
+    Returns:
+        tuple[Path | None, list[Recipient]]: Pfad zur erstellten Datei und Liste der neuen Leads.
+    """
     if config.min_companies < 1 or config.max_companies < config.min_companies:
         raise ValueError("Company limits must satisfy 1 <= min_companies <= max_companies.")
     if config.parallel_threads < 1:
@@ -540,7 +568,10 @@ def _generate_and_process_response(
         input_context: str,
         stop_event: threading.Event | None = None,
 ) -> int:
-    """Generate AI response and process/validate recipients within the same thread."""
+    """
+    Interne Worker-Methode: Generiert eine KI-Antwort und verarbeitet die darin 
+    enthaltenen Leads sofort parallel im selben Thread.
+    """
     if stop_event and stop_event.is_set():
         return 0
     if sink.is_full():
@@ -580,7 +611,9 @@ def _generate_research_response(
         input_context: str,
         stop_event: threading.Event | None = None,
 ) -> str | None | Any:
-    """Generiert Recherche Antwort."""
+    """
+    Kümmert sich um den eigentlichen KI-Aufruf inklusive Fehlerbehandlung und Retries.
+    """
     if stop_event and stop_event.is_set():
         return ""
 
@@ -665,12 +698,10 @@ def normalize_company(company: str) -> str:
     """Normalisiert Unternehmen."""
     return _parsing.normalize_company(company)
 
-
-_normalize_company = normalize_company
-
-
 def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path]:
-    """Listet resume Anhaenge."""
+    """
+    Listet alle Dateien in einem Verzeichnis auf, die nach Lebensläufen aussehen (CV, Resume).
+    """
     all_attachments = list_attachments(directory)
     _verbose(verbose, f"Attachment files found before CV/resume filter: {len(all_attachments)}")
     resume_attachments = [
@@ -684,7 +715,9 @@ def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path
 
 
 def list_research_context_files(mode: MailMode, verbose: bool = False) -> list[Path]:
-    """Return the files safe to upload as research context for the selected mode."""
+    """
+    Sammelt Dateien, die der KI als Kontext mitgegeben werden sollen (CVs, Sent-Logs).
+    """
     context_files = list_resume_attachments(mode.attachments_dir, verbose)
     if mode.log_path.exists():
         context_files.append(mode.log_path)
@@ -695,7 +728,9 @@ def list_research_context_files(mode: MailMode, verbose: bool = False) -> list[P
 
 
 def _needs_retry(raw_response: str, existing_emails: set[str], verbose: bool = False) -> bool:
-    """Prueft retry."""
+    """
+    Prüft, ob die KI-Antwort unzureichend war und ein erneuter Versuch (Retry) sinnvoll ist.
+    """
     if _is_model_error(raw_response, verbose):
         return True
     _verbose(verbose, "No Model error")
@@ -726,7 +761,10 @@ def _is_model_error(raw_response: str, verbose: bool = False) -> bool:
 
 
 def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
-    """Sammelt bestehende Eintraege E-Mails."""
+    """
+    Sammelt alle bereits bekannten E-Mail-Adressen aus dem Output-Verzeichnis 
+    und allen Input-Dateien aller Modi.
+    """
     emails: set[str] = set()
     output_dir = base_dir / "output"
 
@@ -753,7 +791,9 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
 
 
 def collect_mode_existing_companies(mode: MailMode, verbose: bool = False) -> set[str]:
-    """Collect normalized company names already present in this mode's logs and inputs."""
+    """
+    Sammelt alle bereits kontaktierten Firmennamen für einen spezifischen Modus.
+    """
     companies = {
         _normalize_company(row["company"])
         for row in read_logged_rows(mode.log_path)
@@ -774,7 +814,10 @@ def _is_verbose_log_enabled(verbose: bool) -> bool:
 
 
 def read_input_context(directory: Path, max_chars: int = 6000, verbose: bool = False) -> str:
-    """Liest Eingabe context."""
+    """
+    Liest vorhandene Lead-Dateien aus dem Input-Ordner ein, um sie der KI als Kontext zu geben.
+    Kürzt den Text, falls er zu lang wird.
+    """
     parts: list[str] = []
     files = list_recipient_files(directory)
     _verbose(verbose, f"Input context files found: {len(files)}.")
@@ -806,7 +849,10 @@ def build_prompt(
         existing_companies: set[str] | None = None,
         input_context: str = "",
 ) -> str:
-    """Build the provider prompt using the Overseer template."""
+    """
+    Erstellt den finalen KI-Prompt durch Kombination des Overseer-Templates 
+    mit den modusspezifischen Anweisungen und dem aktuellen Kontext.
+    """
     if isinstance(existing_companies, str) and not input_context:
         input_context = existing_companies
         existing_companies = None
@@ -841,7 +887,9 @@ def build_prompt(
 
 
 def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Recipient]) -> Path:
-    """Schreibt Empfaenger CSV-Daten."""
+    """
+    Speichert die gefundenen Leads in einer neuen CSV-Datei im Input-Verzeichnis des Modus.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_mode = mode_label.lower().replace(" ", "_")
@@ -856,7 +904,9 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
 
 
 def _model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:
-    """Fuehrt die Logik fuer _model_for_provider aus."""
+    """
+    Hilfsfunktion zur Auswahl des Modellnamens basierend auf dem gewählten Provider.
+    """
     normalized = provider.strip().lower()
     if normalized == "self":
         return "self"
