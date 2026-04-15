@@ -10,9 +10,6 @@ from research.provider_clients.common import (
 from research.provider_clients.common import (
     extract_openai_response_text as _extract_openai_response_text,
 )
-from research.provider_clients.common import fake_txt_extensions as fake_txt_extensions
-from research.provider_clients.common import verbose_gemini_candidates as verbose_gemini_candidates
-from research.provider_clients.common import verbose_openai_output as verbose_openai_output
 from research.provider_clients.gemini_provider import generate_with_gemini as _gemini_generate
 from research.provider_clients.ollama_provider import generate_with_ollama
 from research.provider_clients.openai_provider import generate_with_openai as _openai_generate

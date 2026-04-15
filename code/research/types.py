@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+
 from mail_sender.recipients import Recipient
+
 
 @dataclass(frozen=True)
 class ResearchConfig:
@@ -31,6 +34,7 @@ class ResearchConfig:
     self_crawl_depth: int = 2
     self_request_timeout: float = 10.0
     self_verify_email_smtp: bool = False
+
 
 @runtime_checkable
 class RecipientSink(Protocol):

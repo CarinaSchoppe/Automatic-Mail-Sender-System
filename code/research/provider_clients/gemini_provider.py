@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Any
 
 from dotenv import load_dotenv
 
@@ -22,7 +22,8 @@ def generate_with_gemini(
         reasoning_effort: str = "middle",
         verbose: bool = False,
         load_env: Callable[[], object] = load_dotenv,
-) -> str:
+) -> str | None | Any:
+    global response
     load_env()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:

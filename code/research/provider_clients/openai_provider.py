@@ -4,7 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Any
 
 from dotenv import load_dotenv
 
@@ -23,7 +23,8 @@ def generate_with_openai(
         reasoning_effort: str = "middle",
         verbose: bool = False,
         load_env: Callable[[], object] = load_dotenv,
-) -> str:
+) -> str | None | Any:
+    global response
     load_env()
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:

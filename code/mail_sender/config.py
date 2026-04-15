@@ -13,7 +13,8 @@ try:
     load_dotenv = _dotenv_load
 except ImportError:  # pragma: no cover - optional until requirements are installed
     _dotenv_load = None
-    load_dotenv = None
+    def _dotenv_load_stub(*args, **kwargs): return False
+    load_dotenv = _dotenv_load_stub
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = PROJECT_ROOT / "settings.toml"

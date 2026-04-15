@@ -34,7 +34,6 @@ from research.providers import (
     generate_with_gemini as _gemini_generate,
     generate_with_ollama as _ollama_generate,
     generate_with_openai as _openai_generate,
-    generate_with_provider,
 )
 from research import providers as _providers
 from research import self_research as _self_research
@@ -60,6 +59,10 @@ RESUME_ATTACHMENT_PATTERN = re.compile(
 
 EMAIL_KEYS = {"mail", "email", "recipient", "recipients", "target", "empfänger", "empfaenger"}
 COMPANY_KEYS = {"company", "firma", "organisation", "organization", "name"}
+
+
+def generate_with_provider(*args, **kwargs):
+    return _providers.generate_with_provider(*args, **kwargs)
 
 
 def generate_with_gemini(*args, **kwargs):
@@ -216,7 +219,7 @@ def default_config() -> ResearchConfig:
         send_target_count=cast(int, _get("SEND_TARGET_COUNT", 0)),
         max_iterations=cast(int, _get("SEND_TARGET_MAX_ROUNDS", 5)),
         parallel_threads=cast(int, _get("PARALLEL_THREADS", 3)),
-        self_search_keywords=cast(tuple[str, ...], tuple(cast(list[str], _get("SELF_SEARCH_KEYWORDS", list(_default_self_keywords(mode_name)))))),
+        self_search_keywords=tuple(cast(list[str], _get("SELF_SEARCH_KEYWORDS", list(_default_self_keywords(mode_name))))),
         self_search_pages=cast(int, _get("SELF_SEARCH_PAGES", 1)),
         self_results_per_page=cast(int, _get("SELF_RESULTS_PER_PAGE", 10)),
         self_crawl_max_pages_per_site=cast(int, _get("SELF_CRAWL_MAX_PAGES_PER_SITE", 8)),
