@@ -434,7 +434,7 @@ def test_run_research_parallel_batch_deduplicates_responses(monkeypatch: pytest.
     counter = {"value": 0}
     lock = threading.Lock()
 
-    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+    def fake_generate():
         with lock:
             counter["value"] += 1
             index = counter["value"]
@@ -566,7 +566,7 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
         lambda *args, **kwargs: py_types.SimpleNamespace(is_valid=True, reason=""),
     )
 
-    def fake_ollama(model, prompt, base_url, verbose=False):
+    def fake_ollama(model, prompt, base_url):
         calls.append(("ollama", model, base_url, "lead@example.com" in prompt))
         return "company,mail,source_url\nLead Co,lead@example.com,self-crawl\n"
 
@@ -611,7 +611,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
-    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+    def fake_generate(attachments, verbose=False):
         assert attachments == []
         assert verbose is True
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
@@ -635,7 +635,7 @@ def test_run_research_retries_without_attachments_after_empty_response(
     cv.write_text("cv", encoding="utf-8")
     calls = []
 
-    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+    def fake_generate(attachments):
         calls.append(attachments)
         if attachments and len(calls) == 1:
             return ""
@@ -658,7 +658,7 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
 ) -> None:
     calls = []
 
-    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+    def fake_generate(prompt):
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
@@ -713,7 +713,7 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
     assert result == 0
     assert "New recipients: 1" in capsys.readouterr().out
 
-    def broken_run(cfg):
+    def broken_run():
         raise RuntimeError("boom")
 
     monkeypatch.setattr(research_leads, "run_research", broken_run)
@@ -803,13 +803,13 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
 
     class FakeResponses:
         @staticmethod
-        def create(*args, **kwargs):
+        def create():
             content = [py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")]
             output = [py_types.SimpleNamespace(type="message", status="completed", content=content)]
             return py_types.SimpleNamespace(output_text="", output=output)
 
     class FakeOpenAI:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -906,7 +906,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
     class FakeModels:
         @staticmethod
-        def generate_content(*args, **kwargs):
+        def generate_content():
             part = py_types.SimpleNamespace(text=None)
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -917,7 +917,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             return py_types.SimpleNamespace(text="", candidates=[candidate], prompt_feedback="ok")
 
     class FakeClient:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -994,11 +994,11 @@ def test_generate_with_gemini_fakes_csv_extension(
 
     class FakeModels:
         @staticmethod
-        def generate_content(*args, **kwargs):
+        def generate_content():
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -1042,19 +1042,21 @@ def test_generate_with_openai_fakes_csv_extension(
 
     captured_paths = []
 
+    def create(file, purpose):
+        # 'file' is a binary file handle because of 'with path.open("rb")'
+        captured_paths.append(Path(file.name))
+        return py_types.SimpleNamespace(id="file-123")
+
     class FakeFiles:
-        def create(self, file, purpose):
-            # 'file' is a binary file handle because of 'with path.open("rb")'
-            captured_paths.append(Path(file.name))
-            return py_types.SimpleNamespace(id="file-123")
+        pass
 
     class FakeResponses:
         @staticmethod
-        def create(*args, **kwargs):
+        def create():
             return py_types.SimpleNamespace(output_text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -1083,7 +1085,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
 
     class FakeModels:
         @staticmethod
-        def generate_content(*args, **kwargs):
+        def generate_content():
             part = py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -1094,7 +1096,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             return py_types.SimpleNamespace(text="", candidates=[candidate])
 
     class FakeClient:
-        def __init__(self, api_key: str) -> None:
+        def __init__(self) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -1181,7 +1183,7 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
 
 
 def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    def broken_parse(raw_response, existing_emails, verbose=False):
+    def broken_parse():
         raise ValueError("bad csv")
 
     monkeypatch.setattr(research_leads, "parse_recipients", broken_parse)
@@ -1225,7 +1227,7 @@ def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
 
 
 def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    def broken_dialect(text: str):
+    def broken_dialect():
         raise csv.Error("bad dialect")
 
     monkeypatch.setattr(research_leads, "_detect_dialect", broken_dialect)

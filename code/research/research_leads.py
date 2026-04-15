@@ -102,6 +102,7 @@ _detect_dialect = _parsing._detect_dialect
 _find_field = _parsing._find_field
 _strip_csv_fence = _parsing._strip_csv_fence
 _strip_json_fence = _parsing._strip_json_fence
+DefaultCsvDialect = _parsing.DefaultCsvDialect
 
 
 @dataclass(frozen=True)
@@ -459,7 +460,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     iteration = 0
 
     while len(all_recipients) < target_count:
-        if max_iterations > 0 and iteration >= max_iterations:
+        if 0 < max_iterations <= iteration:
             _info(f"Stopping research because max_iterations={max_iterations} was reached.")
             break
 
@@ -594,18 +595,19 @@ def _generate_research_response(
     if stop_event and stop_event.is_set():
         return ""
 
-    raw_response = _providers.generate_with_provider(
+    raw_response = generate_with_provider(
         config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose, config.ollama_base_url
     )
     if stop_event and stop_event.is_set():
         return raw_response
 
     if _needs_retry(raw_response, existing_emails, config.verbose) and attachments:
-        _info("AI response was not usable yet; retrying once without CV/resume uploads.")
+        _info("AI response was not usable yet; retrying once without attachment uploads.")
+        _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
         if stop_event and stop_event.is_set():
             return raw_response
 
-        raw_response = _providers.generate_with_provider(
+        raw_response = generate_with_provider(
             config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
     if stop_event and stop_event.is_set():
@@ -613,11 +615,13 @@ def _generate_research_response(
 
     if _needs_retry(raw_response, existing_emails, config.verbose):
         retry_prompt = build_prompt(config, mode, set(), set(), input_context)
-        _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
+        _info("AI response still was not usable; retrying once with a smaller prompt.")
+        _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
+        _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
         if stop_event and stop_event.is_set():
             return raw_response
 
-        raw_response = _providers.generate_with_provider(
+        raw_response = generate_with_provider(
             config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
     return raw_response
@@ -698,7 +702,7 @@ def run_ollama_web_research(
 
     _info(f"Ollama web research: filtering {len(candidates)} candidates via AI model {config.model}.")
     prompt = _self_research.build_ollama_web_research_prompt(config, mode, _self_research._recipients_to_csv_text(candidates))
-    raw_response = _providers.generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
+    raw_response = generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
     recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
 
     final_recipients = recipients if recipients else candidates

@@ -91,7 +91,7 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
     # Round 1: one entry
     state = {"calls": 0}
 
-    def fake_read_logged_rows(path):
+    def fake_read_logged_rows():
         state["calls"] += 1
         if state["calls"] <= 1:
             return []
@@ -99,7 +99,7 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
-    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: fake_read_logged_rows(None))
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: fake_read_logged_rows())
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
     monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 0)
@@ -119,7 +119,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     # Round 1 end: 1
     count_state = {"val": 0}
 
-    def fake_read_emails(path):
+    def fake_read_emails():
         count = count_state["val"]
         count_state["val"] = 1
         return ["e" * i for i in range(count)]
@@ -127,7 +127,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     # Mock read_logged_rows for summary
     row_state = {"calls": 0}
 
-    def fake_read_rows(path):
+    def fake_read_rows():
         row_state["calls"] += 1
         if row_state["calls"] <= 1:
             return []
@@ -135,8 +135,8 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
-    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: fake_read_rows(None))
-    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: fake_read_emails(None))
+    monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: fake_read_rows())
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: fake_read_emails())
     monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
     monkeypatch.setattr(app_main, "SEND", True)
     monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 1)

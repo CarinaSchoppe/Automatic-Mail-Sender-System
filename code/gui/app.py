@@ -38,6 +38,26 @@ HOVER_TEXTS = {
 }
 
 
+def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
+    value = source.get(spec.key, spec.default)
+    if spec.kind == "bool":
+        return tk.BooleanVar(value=bool(value))
+    if spec.kind == "int":
+        return tk.IntVar(value=int(value))
+    if spec.kind == "float":
+        return tk.DoubleVar(value=float(value))
+    return tk.StringVar(value=str(value))
+
+
+def _make_tree(parent: ttk.Frame, columns: tuple[str, ...]) -> ttk.Treeview:
+    tree = ttk.Treeview(parent, columns=columns, show="headings")
+    for column in columns:
+        tree.heading(column, text=column)
+        tree.column(column, width=180 if column != "source_url" else 320, anchor="w")
+    tree.pack(fill="both", expand=True)
+    return tree
+
+
 class MailSenderWorkbench:
     """Tkinter workbench for settings, run logs, and output inspection."""
 
@@ -276,7 +296,7 @@ class MailSenderWorkbench:
 
     def _add_setting_row(self, parent: ttk.Frame, row: int, spec: SettingSpec, *, env: bool = False) -> None:
         ttk.Label(parent, text=spec.label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
-        var = self._create_variable(spec, self.env_values if env else self.values)
+        var = _create_variable(spec, self.env_values if env else self.values)
         variables = self.env_variables if env else self.variables
         variables[spec.key] = var
         var.trace_add("write", lambda *_args, target="env" if env else "settings": self._schedule_autosave(target))
@@ -352,16 +372,6 @@ class MailSenderWorkbench:
         help_label.grid(row=row, column=2, sticky="w", padx=(12, 0))
         self._attach_hover(help_label, f"{spec.key}: {spec.help_text}")
         parent.columnconfigure(1, weight=1)
-
-    def _create_variable(self, spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
-        value = source.get(spec.key, spec.default)
-        if spec.kind == "bool":
-            return tk.BooleanVar(value=bool(value))
-        if spec.kind == "int":
-            return tk.IntVar(value=int(value))
-        if spec.kind == "float":
-            return tk.DoubleVar(value=float(value))
-        return tk.StringVar(value=str(value))
 
     def _build_prompts_tab(self) -> None:
         top = ttk.Frame(self.prompts_tab)
@@ -439,7 +449,7 @@ class MailSenderWorkbench:
         right = ttk.Frame(pane)
         pane.add(left, weight=1)
         pane.add(right, weight=2)
-        self.input_tree = self._make_tree(left, ("file", "mode", "size"))
+        self.input_tree = _make_tree(left, ("file", "mode", "size"))
         self.input_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.input_tree, "input"))
         self.input_tree.bind("<Double-1>", lambda _event: self._show_selected_file(self.input_tree, "input"))
         self.file_view_title = tk.StringVar(value="Select a file to edit or preview.")
@@ -453,7 +463,7 @@ class MailSenderWorkbench:
         toolbar = ttk.Frame(self.found_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
-        self.found_tree = self._make_tree(self.found_tab, ("file", "mode", "company", "mail", "source_url"))
+        self.found_tree = _make_tree(self.found_tab, ("file", "mode", "company", "mail", "source_url"))
         self.found_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.found_tree, "found"))
 
     def _build_sent_tab(self) -> None:
@@ -466,7 +476,7 @@ class MailSenderWorkbench:
         for mode_name in ("PhD", "Freelance_German", "Freelance_English"):
             frame = ttk.Frame(self.sent_notebook, padding=4)
             self.sent_notebook.add(frame, text=mode_name)
-            tree = self._make_tree(frame, ("file", "company", "mail", "source_url"))
+            tree = _make_tree(frame, ("file", "company", "mail", "source_url"))
             tree.bind("<<TreeviewSelect>>", lambda _event, selected_tree=tree: self._show_selected_file(selected_tree, "sent"))
             self.sent_trees[mode_name] = tree
         self.sent_tree = self.sent_trees["PhD"]
@@ -475,7 +485,7 @@ class MailSenderWorkbench:
         toolbar = ttk.Frame(self.logs_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
-        self.log_tree = self._make_tree(self.logs_tab, ("file", "modified", "size"))
+        self.log_tree = _make_tree(self.logs_tab, ("file", "modified", "size"))
         self.log_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.log_tree, "log"))
         self.log_tree.bind("<Double-1>", lambda _event: self.open_selected_log_tab())
 
@@ -488,14 +498,6 @@ class MailSenderWorkbench:
         self.console = scrolledtext.ScrolledText(self.console_tab, height=28, wrap="word")
         self._style_text_widget(self.console)
         self.console.pack(fill="both", expand=True)
-
-    def _make_tree(self, parent: ttk.Frame, columns: tuple[str, ...]) -> ttk.Treeview:
-        tree = ttk.Treeview(parent, columns=columns, show="headings")
-        for column in columns:
-            tree.heading(column, text=column)
-            tree.column(column, width=180 if column != "source_url" else 320, anchor="w")
-        tree.pack(fill="both", expand=True)
-        return tree
 
     def _load_form_values(self) -> None:
         for spec in SETTINGS_SCHEMA:

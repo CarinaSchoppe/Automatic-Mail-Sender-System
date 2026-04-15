@@ -301,7 +301,6 @@ def _run_target_send_loop() -> int:
     start_count = len(start_emails)
     target_total = start_count + target_count
 
-    current_emails = start_emails
     current_count = start_count
     round_number = 0
 

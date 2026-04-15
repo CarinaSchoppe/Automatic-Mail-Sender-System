@@ -23,6 +23,7 @@ def generate_with_gemini(
         verbose: bool = False,
         load_env: Callable[[], object] = load_dotenv,
 ) -> str:
+    global response
     load_env()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
