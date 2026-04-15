@@ -9,6 +9,7 @@ __pycache__/
 logs/
 *.log
 *.csv
+.coveragerc
 # Personal recipient data and generated send logs
 recipients.csv
 input/PhD/*
