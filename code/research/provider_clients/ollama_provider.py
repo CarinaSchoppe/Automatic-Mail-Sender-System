@@ -1,4 +1,7 @@
-"""Implementiert Ollama-Aufrufe fuer die lokale Recherchepipeline."""
+"""
+Client-Implementierung für die Kommunikation mit einer lokalen Ollama-Instanz.
+Ermöglicht die Nutzung von Open-Source-Modellen für die Recherche-Pipeline.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +19,18 @@ def generate_with_ollama(
         base_url: str = "http://localhost:11434",
         verbose: bool = False,
 ) -> str:
-    """Generiert Ausgaben ueber Ollama."""
+    """
+    Sendet einen Prompt an den lokalen Ollama-Server und gibt die Antwort zurück.
+    
+    Args:
+        model (str): Das zu verwendende Modell (z.B. llama3).
+        prompt (str): Der Text-Prompt.
+        base_url (str): Die URL der Ollama-API.
+        verbose (bool): Detailliertes Logging.
+        
+    Returns:
+        str: Die Antwort der KI.
+    """
     payload = {
         "model": model,
         "prompt": prompt,

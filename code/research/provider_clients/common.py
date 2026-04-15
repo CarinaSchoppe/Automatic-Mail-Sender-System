@@ -1,4 +1,7 @@
-"""Enthaelt gemeinsame Parser und Verbose-Helfer fuer Provider-Antworten."""
+"""
+Gemeinsame Hilfsfunktionen für alle KI-Provider-Clients.
+Beinhaltet das Handling von Datei-Endungen für Uploads und das Extrahieren von Text aus API-Antworten.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +16,11 @@ from research.logging_utils import verbose as _verbose
 
 @contextlib.contextmanager
 def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
-    """Yield upload paths, temporarily copying CSVs to .txt names for provider upload APIs."""
+    """
+    Ein Context-Manager, der CSV-Dateien temporär mit einer .txt Endung kopiert.
+    Dies ist nötig, da einige KI-APIs (z.B. OpenAI) CSV-Dateien beim Upload 
+    besser verarbeiten, wenn sie als .txt getarnt sind.
+    """
     temp_files: list[Path] = []
     temp_dirs: list[tempfile.TemporaryDirectory] = []
     new_paths: list[Path] = []
@@ -41,7 +48,10 @@ def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
 
 
 def extract_gemini_response_text(response) -> str | None | Any:
-    """Extrahiert Gemini-Ausgabe Antwort Text."""
+    """
+    Extrahiert den generierten Text aus einer Gemini-Antwort.
+    Berücksichtigt verschiedene Antwort-Strukturen (direkter Text vs. Candidates/Parts).
+    """
     direct_text = getattr(response, "text", None)
     if direct_text:
         return direct_text
@@ -57,7 +67,10 @@ def extract_gemini_response_text(response) -> str | None | Any:
 
 
 def extract_openai_response_text(response) -> str | None | Any:
-    """Extrahiert OpenAI-Ausgabe Antwort Text."""
+    """
+    Extrahiert den generierten Text aus einer OpenAI-Antwort (Responses API).
+    Berücksichtigt verschiedene Antwort-Strukturen.
+    """
     output_text = getattr(response, "output_text", None)
     if output_text:
         return output_text
@@ -72,7 +85,9 @@ def extract_openai_response_text(response) -> str | None | Any:
 
 
 def verbose_openai_output(verbose: bool, response) -> None:
-    """Kapselt den Arbeitsschritt verbose_openai_output."""
+    """
+    Protokolliert detaillierte Informationen über die OpenAI-Antwort-Objekte.
+    """
     if not verbose:
         return
     output_items = getattr(response, "output", None) or []
@@ -87,7 +102,9 @@ def verbose_openai_output(verbose: bool, response) -> None:
 
 
 def verbose_gemini_candidates(verbose: bool, response) -> None:
-    """Kapselt den Arbeitsschritt verbose_gemini_candidates."""
+    """
+    Protokolliert detaillierte Informationen über die Gemini-Antwort-Kandidaten.
+    """
     if not verbose:
         return
 

@@ -1,4 +1,7 @@
-"""Laedt die SMTP-Konfiguration aus Umgebung und Settings-Datei."""
+"""
+Verwaltet das Laden und Validieren der SMTP-Konfiguration.
+Kombiniert Werte aus Umgebungsvariablen (.env) und der settings.toml Datei.
+"""
 
 from __future__ import annotations
 
@@ -27,12 +30,16 @@ SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
 
 
 class ConfigError(RuntimeError):
-    """Raised when required SMTP configuration is missing."""
+    """
+    Wird ausgelöst, wenn erforderliche SMTP-Einstellungen fehlen oder ungültig sind.
+    """
 
 
 @dataclass(frozen=True)
 class SmtpConfig:
-    """Buendelt alle Werte, die fuer die SMTP-Verbindung benoetigt werden."""
+    """
+    Datentransferobjekt für SMTP-Verbindungsdaten.
+    """
     host: str
     port: int
     username: str
@@ -43,7 +50,9 @@ class SmtpConfig:
 
 
 def _load_settings() -> dict:
-    """Laedt Einstellungen."""
+    """
+    Lädt die Einstellungen aus der settings.toml.
+    """
     if not SETTINGS_PATH.exists():
         return {}
     try:
@@ -56,7 +65,16 @@ def _load_settings() -> dict:
 
 
 def load_smtp_config(require_password: bool) -> SmtpConfig:
-    """Laedt smtp Konfiguration."""
+    """
+    Lädt die vollständige SMTP-Konfiguration und prüft auf Vollständigkeit.
+    
+    Args:
+        require_password (bool): Ob das Passwort zwingend vorhanden sein muss 
+                                 (wird bei Dry-Runs oft nicht benötigt).
+                                 
+    Returns:
+        SmtpConfig: Die validierte Konfiguration.
+    """
     if load_dotenv is not None:
         load_dotenv()
 
