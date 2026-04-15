@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -12,6 +13,19 @@ from typing import Any
 
 from gui.settings_store import ENV_SCHEMA, PROJECT_ROOT, SETTINGS_SCHEMA, SettingSpec
 from gui.settings_store import coerce_value, load_env, load_settings, write_env, write_settings
+
+
+HOVER_TEXTS = {
+    "Reload": "Reload settings.toml and .env from disk.",
+    "Load Config": "Load another settings TOML file into the Settings tab.",
+    "Save Config As": "Write the current Settings tab to a new TOML file.",
+    "Save All": "Write both settings.toml and .env now.",
+    "Run Pipeline": "Run research and mail sending through code/main.py using the current settings.",
+    "Research Only": "Run only the AI/self/Ollama research step.",
+    "Stop": "Terminate the currently running subprocess.",
+    "Refresh": "Refresh file lists, mail tables, and log lists from disk.",
+    "Import CSV/TXT": "Copy a CSV or TXT lead file into the selected input mode folder.",
+}
 
 
 class MailSenderWorkbench:
@@ -28,6 +42,7 @@ class MailSenderWorkbench:
         "accent_active": "#4656e6",
         "danger": "#ef4444",
         "success": "#12b76a",
+        "warning": "#f79009",
     }
 
     def __init__(self, root: tk.Tk | None = None, *, project_root: Path = PROJECT_ROOT) -> None:
@@ -46,8 +61,10 @@ class MailSenderWorkbench:
         self.autosave = tk.BooleanVar(value=True)
         self.process: subprocess.Popen[str] | None = None
         self.message_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+        self.current_view_path: Path | None = None
         self._loading = True
         self._autosave_after_id: str | None = None
+        self.auto_refresh = tk.BooleanVar(value=True)
 
         self.root.title("MailSenderSystem Workbench")
         self.root.geometry("1220x780")
@@ -58,6 +75,7 @@ class MailSenderWorkbench:
         self._load_env_values()
         self._loading = False
         self.refresh_tables()
+        self.root.after(5000, self._auto_refresh_tick)
         self.root.after(100, self._drain_queue)
 
     def run(self) -> None:
@@ -77,6 +95,7 @@ class MailSenderWorkbench:
         style.configure("Accent.TButton", background=self.PALETTE["accent"], foreground="#ffffff")
         style.map("Accent.TButton", background=[("active", self.PALETTE["accent_active"])])
         style.configure("Treeview", rowheight=26)
+        style.configure("Status.TLabel", background=self.PALETTE["surface_alt"], foreground=self.PALETTE["muted"])
 
     def _build_shell(self) -> None:
         header = ttk.Frame(self.root, padding=(18, 14, 18, 8))
@@ -86,39 +105,55 @@ class MailSenderWorkbench:
 
         actions = ttk.Frame(header)
         actions.pack(side="right")
-        ttk.Button(actions, text="Reload", command=self.reload_settings).pack(side="left", padx=4)
-        ttk.Button(actions, text="Load Config", command=self.load_config_file).pack(side="left", padx=4)
-        ttk.Button(actions, text="Save Config As", command=self.save_config_file).pack(side="left", padx=4)
-        ttk.Button(actions, text="Save All", style="Accent.TButton", command=self.save_all).pack(side="left", padx=4)
-        ttk.Button(actions, text="Run Pipeline", command=lambda: self.start_process(["code/main.py"])).pack(side="left", padx=4)
-        ttk.Button(actions, text="Research Only", command=lambda: self.start_process(["code/research/research_leads.py"])).pack(side="left", padx=4)
+        self._toolbar_button(actions, "Reload", self.reload_settings)
+        self._toolbar_button(actions, "Load Config", self.load_config_file)
+        self._toolbar_button(actions, "Save Config As", self.save_config_file)
+        self._toolbar_button(actions, "Save All", self.save_all, style="Accent.TButton")
+        self._toolbar_button(actions, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
+        self._toolbar_button(actions, "Research Only", lambda: self.start_process(["code/research/research_leads.py"]))
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         self.settings_tab = ttk.Frame(self.notebook, padding=12)
         self.env_tab = ttk.Frame(self.notebook, padding=12)
+        self.inputs_tab = ttk.Frame(self.notebook, padding=12)
         self.found_tab = ttk.Frame(self.notebook, padding=12)
         self.sent_tab = ttk.Frame(self.notebook, padding=12)
         self.logs_tab = ttk.Frame(self.notebook, padding=12)
         self.console_tab = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(self.settings_tab, text="Settings")
         self.notebook.add(self.env_tab, text=".env")
+        self.notebook.add(self.inputs_tab, text="AI Inputs")
         self.notebook.add(self.found_tab, text="Found Mails")
         self.notebook.add(self.sent_tab, text="Sent Mails")
         self.notebook.add(self.logs_tab, text="Saved Logs")
         self.notebook.add(self.console_tab, text="Run Console")
         self._build_settings_tab()
         self._build_env_tab()
+        self._build_inputs_tab()
         self._build_found_tab()
         self._build_sent_tab()
         self._build_logs_tab()
         self._build_console_tab()
+        self.status_var = tk.StringVar(value="Ready.")
+        ttk.Label(self.root, textvariable=self.status_var, style="Status.TLabel", padding=(16, 5)).pack(fill="x", side="bottom")
+
+    def _toolbar_button(self, parent: ttk.Frame, text: str, command, *, style: str = "TButton") -> ttk.Button:
+        button = ttk.Button(parent, text=text, command=command, style=style)
+        button.pack(side="left", padx=4)
+        self._attach_hover(button, HOVER_TEXTS.get(text, text))
+        return button
+
+    def _attach_hover(self, widget: tk.Widget, text: str) -> None:
+        widget.bind("<Enter>", lambda _event: self.status_var.set(text) if hasattr(self, "status_var") else None)
+        widget.bind("<Leave>", lambda _event: self.status_var.set("Ready.") if hasattr(self, "status_var") else None)
 
     def _build_settings_tab(self) -> None:
         top = ttk.Frame(self.settings_tab)
         top.pack(fill="x", pady=(0, 10))
         ttk.Checkbutton(top, text="Compact save: remove settings that match defaults", variable=self.compact_save).pack(side="left")
         ttk.Checkbutton(top, text="Auto-save changes directly", variable=self.autosave).pack(side="left", padx=(18, 0))
+        ttk.Checkbutton(top, text="Auto-refresh tables", variable=self.auto_refresh).pack(side="left", padx=(18, 0))
 
         body = self._scrollable_body(self.settings_tab)
 
@@ -186,7 +221,10 @@ class MailSenderWorkbench:
             show = "*" if any(secret in spec.key.lower() for secret in ("password", "api_key", "token", "secret")) else ""
             widget = ttk.Entry(parent, textvariable=var, width=32, show=show)
         widget.grid(row=row, column=1, sticky="ew", pady=5)
-        ttk.Label(parent, text=spec.help_text, style="Muted.TLabel", wraplength=360).grid(row=row, column=2, sticky="w", padx=(12, 0))
+        self._attach_hover(widget, f"{spec.key}: {spec.help_text}")
+        help_label = ttk.Label(parent, text=spec.help_text, style="Muted.TLabel", wraplength=360)
+        help_label.grid(row=row, column=2, sticky="w", padx=(12, 0))
+        self._attach_hover(help_label, f"{spec.key}: {spec.help_text}")
         parent.columnconfigure(1, weight=1)
 
     def _create_variable(self, spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
@@ -199,29 +237,63 @@ class MailSenderWorkbench:
             return tk.DoubleVar(value=float(value))
         return tk.StringVar(value=str(value))
 
+    def _build_inputs_tab(self) -> None:
+        toolbar = ttk.Frame(self.inputs_tab)
+        toolbar.pack(fill="x", pady=(0, 8))
+        ttk.Label(toolbar, text="Mode").pack(side="left", padx=(0, 6))
+        self.input_mode_var = tk.StringVar(value="PhD")
+        mode_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.input_mode_var,
+            values=("PhD", "Freelance_German", "Freelance_English"),
+            state="readonly",
+            width=22,
+        )
+        mode_combo.pack(side="left", padx=(0, 8))
+        mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh_tables())
+        self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
+        self._toolbar_button(toolbar, "Import CSV/TXT", self.import_input_file)
+
+        pane = ttk.PanedWindow(self.inputs_tab, orient="horizontal")
+        pane.pack(fill="both", expand=True)
+        left = ttk.Frame(pane)
+        right = ttk.Frame(pane)
+        pane.add(left, weight=1)
+        pane.add(right, weight=2)
+        self.input_tree = self._make_tree(left, ("file", "mode", "size"))
+        self.input_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.input_tree, "input"))
+        self.input_tree.bind("<Double-1>", lambda _event: self._show_selected_file(self.input_tree, "input"))
+        self.file_view_title = tk.StringVar(value="Select a file to preview it.")
+        ttk.Label(right, textvariable=self.file_view_title, font=("Segoe UI", 11, "bold")).pack(fill="x")
+        self.file_viewer = scrolledtext.ScrolledText(right, height=22, wrap="none")
+        self.file_viewer.pack(fill="both", expand=True, pady=(8, 0))
+
     def _build_found_tab(self) -> None:
         toolbar = ttk.Frame(self.found_tab)
         toolbar.pack(fill="x", pady=(0, 8))
-        ttk.Button(toolbar, text="Refresh", command=self.refresh_tables).pack(side="left")
+        self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
         self.found_tree = self._make_tree(self.found_tab, ("file", "mode", "company", "mail", "source_url"))
+        self.found_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.found_tree, "found"))
 
     def _build_sent_tab(self) -> None:
         toolbar = ttk.Frame(self.sent_tab)
         toolbar.pack(fill="x", pady=(0, 8))
-        ttk.Button(toolbar, text="Refresh", command=self.refresh_tables).pack(side="left")
+        self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
         self.sent_tree = self._make_tree(self.sent_tab, ("file", "company", "mail", "source_url"))
+        self.sent_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.sent_tree, "sent"))
 
     def _build_logs_tab(self) -> None:
         toolbar = ttk.Frame(self.logs_tab)
         toolbar.pack(fill="x", pady=(0, 8))
-        ttk.Button(toolbar, text="Refresh", command=self.refresh_tables).pack(side="left")
+        self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
         self.log_tree = self._make_tree(self.logs_tab, ("file", "modified", "size"))
+        self.log_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.log_tree, "log"))
 
     def _build_console_tab(self) -> None:
         toolbar = ttk.Frame(self.console_tab)
         toolbar.pack(fill="x", pady=(0, 8))
-        ttk.Button(toolbar, text="Run Pipeline", command=lambda: self.start_process(["code/main.py"])).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Stop", command=self.stop_process).pack(side="left", padx=4)
+        self._toolbar_button(toolbar, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
+        self._toolbar_button(toolbar, "Stop", self.stop_process)
         ttk.Button(toolbar, text="Clear", command=lambda: self.console.delete("1.0", "end")).pack(side="left", padx=4)
         self.console = scrolledtext.ScrolledText(self.console_tab, height=28, wrap="word")
         self.console.pack(fill="both", expand=True)
@@ -331,6 +403,8 @@ class MailSenderWorkbench:
             self._refresh_found_mails()
         if hasattr(self, "sent_tree"):
             self._refresh_sent_mails()
+        if hasattr(self, "input_tree"):
+            self._refresh_input_files()
         if hasattr(self, "log_tree"):
             self._refresh_logs()
 
@@ -366,6 +440,67 @@ class MailSenderWorkbench:
                         ))
             except OSError:
                 continue
+
+    def _refresh_input_files(self) -> None:
+        self.input_tree.delete(*self.input_tree.get_children())
+        input_dir = self.project_root / "input"
+        selected_mode = self.input_mode_var.get()
+        modes = [selected_mode] if selected_mode else ["PhD", "Freelance_German", "Freelance_English"]
+        for mode in modes:
+            mode_dir = input_dir / mode
+            for path in sorted(mode_dir.glob("*")) if mode_dir.exists() else []:
+                if path.is_file() and path.suffix.lower() in {".csv", ".txt"}:
+                    self.input_tree.insert("", "end", values=(path.name, mode, path.stat().st_size), tags=(str(path),))
+
+    def import_input_file(self) -> None:
+        selected = filedialog.askopenfilename(
+            title="Import lead CSV/TXT",
+            initialdir=str(self.project_root),
+            filetypes=[("Lead files", "*.csv *.txt"), ("All files", "*.*")],
+        )
+        if not selected:
+            return
+        source = Path(selected)
+        target_dir = self.project_root / "input" / self.input_mode_var.get()
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / source.name
+        shutil.copy2(source, target)
+        self._append_console(f"[INFO] Imported {source} -> {target}\n")
+        self.refresh_tables()
+
+    def _show_selected_file(self, tree: ttk.Treeview, kind: str) -> None:
+        selection = tree.selection()
+        if not selection:
+            return
+        item = tree.item(selection[0])
+        values = item.get("values", [])
+        path = self._path_for_tree_row(kind, values)
+        if path is None or not path.exists() or not hasattr(self, "file_viewer"):
+            return
+        self.current_view_path = path
+        self.file_view_title.set(str(path))
+        try:
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError as exc:
+            text = f"Could not read file: {exc}"
+        self.file_viewer.delete("1.0", "end")
+        self.file_viewer.insert("1.0", text)
+
+    def _path_for_tree_row(self, kind: str, values: list[Any]) -> Path | None:
+        if not values:
+            return None
+        filename = str(values[0])
+        if kind in {"input", "found"} and len(values) >= 2:
+            return self.project_root / "input" / str(values[1]) / filename
+        if kind == "sent":
+            return self.project_root / "output" / filename
+        if kind == "log":
+            log_dir_value = self.collect_form_values().get("VERBOSE_LOG_DIR", "logs")
+            log_dir = Path(str(log_dir_value))
+            if not log_dir.is_absolute():
+                log_dir = self.project_root / log_dir
+            return log_dir / filename
+        return None
 
     def _refresh_logs(self) -> None:
         self.log_tree.delete(*self.log_tree.get_children())
@@ -435,6 +570,11 @@ class MailSenderWorkbench:
     def _autosave_now(self) -> None:
         self._autosave_after_id = None
         self.save_all()
+
+    def _auto_refresh_tick(self) -> None:
+        if self.auto_refresh.get():
+            self.refresh_tables()
+        self.root.after(5000, self._auto_refresh_tick)
 
 
 def _format_mtime(timestamp: float) -> str:

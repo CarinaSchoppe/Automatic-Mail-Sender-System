@@ -62,8 +62,52 @@ def test_mail_sender_workbench_refreshes_output_and_log_tables(tmp_path: Path) -
         app = MailSenderWorkbench(root, project_root=tmp_path)
         app.refresh_tables()
 
+        assert len(app.input_tree.get_children()) == 1
         assert len(app.found_tree.get_children()) == 1
         assert len(app.sent_tree.get_children()) == 1
         assert len(app.log_tree.get_children()) == 1
+
+        app.input_tree.selection_set(app.input_tree.get_children()[0])
+        app._show_selected_file(app.input_tree, "input")
+        assert "Lead,l@example.com" in app.file_viewer.get("1.0", "end")
+    finally:
+        root.destroy()
+
+
+def test_mail_sender_workbench_imports_input_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        source = tmp_path / "leads.csv"
+        source.write_text("company,mail\nImported,i@example.com\n", encoding="utf-8")
+        monkeypatch.setattr("gui.app.filedialog.askopenfilename", lambda **_kwargs: str(source))
+
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        app.input_mode_var.set("Freelance_German")
+        app.import_input_file()
+
+        target = tmp_path / "input" / "Freelance_German" / "leads.csv"
+        assert target.exists()
+        assert len(app.input_tree.get_children()) == 1
+    finally:
+        root.destroy()
+
+
+def test_mail_sender_workbench_exposes_required_tabs(tmp_path: Path) -> None:
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        tabs = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
+
+        assert tabs == ["Settings", ".env", "AI Inputs", "Found Mails", "Sent Mails", "Saved Logs", "Run Console"]
+        assert app.autosave.get() is True
+        assert app.auto_refresh.get() is True
     finally:
         root.destroy()

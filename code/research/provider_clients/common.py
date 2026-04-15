@@ -12,11 +12,14 @@ from research.logging_utils import verbose as _verbose
 def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
     """Yield upload paths, temporarily copying CSVs to .txt names for provider upload APIs."""
     temp_files: list[Path] = []
+    temp_dirs: list[tempfile.TemporaryDirectory] = []
     new_paths: list[Path] = []
     try:
         for path in attachment_paths:
             if path.suffix.lower() == ".csv":
-                fake_path = Path(tempfile.gettempdir()) / (path.name + ".txt")
+                temp_dir = tempfile.TemporaryDirectory(prefix="mailsender_upload_")
+                temp_dirs.append(temp_dir)
+                fake_path = Path(temp_dir.name) / (path.name + ".txt")
                 _verbose(verbose, f"Faking extension for AI upload: {path.name} -> {fake_path.name}")
                 shutil.copy2(path, fake_path)
                 temp_files.append(fake_path)
@@ -30,6 +33,8 @@ def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
                 temp_file.unlink(missing_ok=True)
             except Exception:  # pragma: no cover
                 pass
+        for temp_dir in temp_dirs:
+            temp_dir.cleanup()
 
 
 def extract_gemini_response_text(response) -> str:
@@ -95,4 +100,3 @@ def verbose_gemini_candidates(verbose: bool, response) -> None:
                 _verbose(verbose, f"Gemini candidate {index} part {part_index} text: {getattr(part, 'text', None)!r}")
         else:
             _verbose(verbose, f"Gemini candidate {index} content parts: none")
-
