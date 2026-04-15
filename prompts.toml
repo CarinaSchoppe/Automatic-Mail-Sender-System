@@ -2,7 +2,7 @@
 
 [prompts]
 "PhD" = """
-        Find companies that are realistic Industry PhD collaboration prospects for applied AI governance research in Australia.
+Find companies that are realistic Industry PhD collaboration prospects for applied AI governance research in Australia.
 
 Priority order:
 1. Brisbane and South East Queensland
@@ -39,8 +39,7 @@ Rules:
 - if you cannot verify enough results, return fewer results
 - no markdown
 - no commentary
-- no extra text
-        """
+- no extra text"""
 "Freelance German" = """
 Finde deutschsprachige Organisationen, die mit einer remote arbeitenden freiberuflichen Dozentin oder Trainerin zusammenarbeiten könnten.
 

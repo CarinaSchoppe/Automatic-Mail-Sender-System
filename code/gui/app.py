@@ -122,6 +122,8 @@ class MailSenderWorkbench:
         )
         style.configure("Accent.TButton", background=self.PALETTE["accent"], foreground="#ffffff")
         style.map("Accent.TButton", background=[("active", self.PALETTE["accent_active"])])
+        style.configure("Danger.TButton", background=self.PALETTE["danger"], foreground="#ffffff")
+        style.map("Danger.TButton", background=[("active", "#d42f2f")])
         style.configure(
             "TNotebook",
             background=self.PALETTE["window_bg"],
@@ -189,6 +191,7 @@ class MailSenderWorkbench:
         self._toolbar_button(actions, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
         self._toolbar_button(actions, "Research Only", lambda: self.start_process(["code/research/research_leads.py"]))
         self._toolbar_button(actions, "Mail Only", self.start_mail_only)
+        self._toolbar_button(actions, "Stop", self.stop_process, style="Danger.TButton")
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -429,6 +432,7 @@ class MailSenderWorkbench:
         mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh_tables())
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
         self._toolbar_button(toolbar, "Import CSV/TXT", self.import_input_file)
+        self._toolbar_button(toolbar, "Delete Selected", self._delete_selected_input, style="Danger.TButton")
 
         pane = ttk.PanedWindow(self.inputs_tab, orient="horizontal")
         pane.pack(fill="both", expand=True)
@@ -439,11 +443,12 @@ class MailSenderWorkbench:
         self.input_tree = self._make_tree(left, ("file", "mode", "size"))
         self.input_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.input_tree, "input"))
         self.input_tree.bind("<Double-1>", lambda _event: self._show_selected_file(self.input_tree, "input"))
-        self.file_view_title = tk.StringVar(value="Select a file to preview it.")
+        self.file_view_title = tk.StringVar(value="Select a file to edit or preview.")
         ttk.Label(right, textvariable=self.file_view_title, font=("Segoe UI", 11, "bold")).pack(fill="x")
         self.file_viewer = scrolledtext.ScrolledText(right, height=22, wrap="none")
         self._style_text_widget(self.file_viewer)
         self.file_viewer.pack(fill="both", expand=True, pady=(8, 0))
+        self.file_viewer.bind("<KeyRelease>", self._on_input_edit)
 
     def _build_found_tab(self) -> None:
         toolbar = ttk.Frame(self.found_tab)
@@ -695,13 +700,73 @@ class MailSenderWorkbench:
         if path is None or not path.exists() or not hasattr(self, "file_viewer"):
             return
         self.current_view_path = path
+        self.current_view_kind = kind
         self.file_view_title.set(str(path))
         try:
             text = path.read_text(encoding="utf-8-sig", errors="replace")
         except OSError as exc:
             text = f"Could not read file: {exc}"
+        
+        self.file_viewer.config(state=tk.NORMAL)
         self.file_viewer.delete("1.0", "end")
         self.file_viewer.insert("1.0", text)
+        
+        if kind != "input":
+            self.file_viewer.config(state=tk.DISABLED)
+        else:
+            self.file_viewer.config(state=tk.NORMAL)
+
+    def _on_input_edit(self, _event=None) -> None:
+        if hasattr(self, "_save_after_id") and self._save_after_id:
+            self.root.after_cancel(self._save_after_id)
+        self._save_after_id = self.root.after(500, self._perform_input_save)
+
+    def _perform_input_save(self) -> None:
+        self._save_after_id = None
+        if not hasattr(self, "current_view_path") or not hasattr(self, "current_view_kind"):
+            return
+        if self.current_view_kind != "input" or not self.current_view_path:
+            return
+        
+        try:
+            content = self.file_viewer.get("1.0", tk.END)
+            # Remove last newline added by Tkinter Text widget
+            if content.endswith("\n"):
+                content = content[:-1]
+            self.current_view_path.write_text(content, encoding="utf-8-sig")
+        except Exception as exc:
+            self._append_console(f"[ERROR] Auto-save failed for {self.current_view_path.name}: {exc}\n")
+
+    def _delete_selected_input(self) -> None:
+        selection = self.input_tree.selection()
+        if not selection:
+            messagebox.showinfo("No Selection", "Please select an input file to delete.")
+            return
+        
+        item = self.input_tree.item(selection[0])
+        values = item.get("values", [])
+        path = self._path_for_tree_row("input", values)
+        
+        if not path or not path.exists():
+            messagebox.showerror("Error", "File not found.")
+            return
+        
+        if path.name == ".gitkeep":
+             messagebox.showwarning("Warning", "Cannot delete .gitkeep file.")
+             return
+
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{path.name}'?"):
+            try:
+                path.unlink()
+                self._append_console(f"[INFO] Deleted {path}\n")
+                if hasattr(self, "current_view_path") and self.current_view_path == path:
+                    self.file_viewer.config(state=tk.NORMAL)
+                    self.file_viewer.delete("1.0", tk.END)
+                    self.file_view_title.set("Select a file to edit or preview.")
+                    self.current_view_path = None
+                self.refresh_tables()
+            except Exception as exc:
+                messagebox.showerror("Error", f"Could not delete file: {exc}")
 
     def _path_for_tree_row(self, kind: str, values: list[Any]) -> Path | None:
         if not values:
@@ -817,8 +882,8 @@ class MailSenderWorkbench:
 
     def stop_process(self) -> None:
         if self.process and self.process.poll() is None:
-            self.process.terminate()
-            self._append_console("[INFO] Stop requested.\n")
+            self.process.kill()
+            self._append_console("[INFO] Instant stop signal sent (SIGKILL).\n")
 
     def _read_process_output(self) -> None:
         assert self.process is not None
