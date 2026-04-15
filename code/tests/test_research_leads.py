@@ -47,6 +47,7 @@ def setup_fake_genai(monkeypatch: pytest.MonkeyPatch, fake_client_class: type) -
     monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
     monkeypatch.setenv("GEMINI_API_KEY", "key")
 
+
 CODE_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -335,9 +336,9 @@ D,d@example.com,
     recipients = research_leads.parse_recipients(raw, {"existing@example.com"})
 
     assert recipients == [
-        Recipient(email="a@example.com", company="A"),
-        Recipient(email="other@example.com", company="A"),
-        Recipient(email="c@example.com", company="C"),
+        Recipient(email="a@example.com", company="A", source_url="https://a.example/contact"),
+        Recipient(email="other@example.com", company="A", source_url="https://a.example/team"),
+        Recipient(email="c@example.com", company="C", source_url="https://c.example/contact"),
     ]
 
 
@@ -352,8 +353,8 @@ New Company,two@example.com,https://new.example/team
     recipients = research_leads.parse_recipients(raw, set(), {"oldcompany"})
 
     assert recipients == [
-        Recipient(email="one@example.com", company="New Company"),
-        Recipient(email="two@example.com", company="New Company"),
+        Recipient(email="one@example.com", company="New Company", source_url="https://new.example/contact"),
+        Recipient(email="two@example.com", company="New Company", source_url="https://new.example/team"),
     ]
 
 
@@ -401,8 +402,8 @@ The University of Queensland,enquire@uq.edu.au,https://uq.edu.au/contact
     recipients = research_leads.parse_recipients(raw, set())
 
     assert recipients == [
-        Recipient(email="industry.phd@csiro.au", company="CSIRO"),
-        Recipient(email="enquire@uq.edu.au", company="The University of Queensland"),
+        Recipient(email="industry.phd@csiro.au", company="CSIRO", source_url="https://csiro.au/contact"),
+        Recipient(email="enquire@uq.edu.au", company="The University of Queensland", source_url="https://uq.edu.au/contact"),
     ]
 
 

@@ -12,6 +12,7 @@ import main as app_main
 
 def setup_mock_mains(monkeypatch, calls: list) -> None:
     """Konfiguriert Fake-Hauptfunktionen fuer research und mail."""
+
     def fake_research_main(args):
         """Kapselt den Hilfsschritt fake_research_main."""
         calls.append(("research", args))
