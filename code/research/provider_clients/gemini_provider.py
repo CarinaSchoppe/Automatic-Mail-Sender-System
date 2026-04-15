@@ -82,11 +82,7 @@ def generate_with_gemini(
             uploaded_files.append(client.files.upload(file=path))
     _verbose(verbose, f"Gemini uploaded file handles: {len(uploaded_files)}.")
 
-    thinking_level = types.ThinkingLevel.MEDIUM
-    if reasoning_effort == "low":
-        thinking_level = types.ThinkingLevel.BRIEF
-    elif reasoning_effort == "high":
-        thinking_level = types.ThinkingLevel.FULL
+    thinking_level = _thinking_level_for_effort(types, reasoning_effort)
 
     _verbose(verbose, "Calling Gemini with Google Search grounding enabled.")
     _verbose(
@@ -137,3 +133,15 @@ def generate_with_gemini(
         _verbose(verbose, f"Gemini prompt_feedback: {prompt_feedback!r}")
     verbose_gemini_candidates(verbose, response)
     return response_text
+
+
+def _thinking_level_for_effort(types_module: Any, reasoning_effort: str) -> Any:
+    """Liest Gemini-ThinkingLevel-Werte dynamisch, damit SDK-Stubs nicht brechen."""
+    thinking_levels = getattr(types_module, "ThinkingLevel")
+    default_level = getattr(thinking_levels, "MEDIUM")
+    level_name = {
+        "low": "BRIEF",
+        "middle": "MEDIUM",
+        "high": "FULL",
+    }.get(reasoning_effort, "MEDIUM")
+    return getattr(thinking_levels, level_name, default_level)

@@ -325,14 +325,7 @@ class MailSenderWorkbench:
 
         body = self._scrollable_body(self.settings_tab)
 
-        sections: dict[str, list[SettingSpec]] = {}
-        for spec in SETTINGS_SCHEMA:
-            sections.setdefault(spec.section, []).append(spec)
-        for column, (section, specs) in enumerate(sections.items()):
-            frame = ttk.LabelFrame(body, text=section, padding=12)
-            frame.grid(row=column // 2, column=column % 2, sticky="nsew", padx=8, pady=8)
-            for row, spec in enumerate(specs):
-                self._add_setting_row(frame, row, spec)
+        self._build_settings_sections(body, SETTINGS_SCHEMA)
 
     def _build_env_tab(self) -> None:
         """
@@ -342,14 +335,36 @@ class MailSenderWorkbench:
         top.pack(fill="x", pady=(0, 10))
         ttk.Label(top, text=f".env: {self.env_path}", style="Muted.TLabel").pack(side="left")
         body = self._scrollable_body(self.env_tab)
+        self._build_settings_sections(body, ENV_SCHEMA, env=True)
+
+    def _build_settings_sections(
+            self,
+            body: ttk.Frame,
+            schema: Sequence[SettingSpec],
+            *,
+            env: bool = False,
+            column_count: int = 2,
+    ) -> None:
+        """Ordnet Einstellungsgruppen in ausgeglichenen Spalten an."""
         sections: dict[str, list[SettingSpec]] = {}
-        for spec in ENV_SCHEMA:
+        for spec in schema:
             sections.setdefault(spec.section, []).append(spec)
-        for column, (section, specs) in enumerate(sections.items()):
-            frame = ttk.LabelFrame(body, text=section, padding=12)
-            frame.grid(row=column // 2, column=column % 2, sticky="nsew", padx=8, pady=8)
+
+        columns = []
+        weights = [0] * column_count
+        for index in range(column_count):
+            column = ttk.Frame(body)
+            column.grid(row=0, column=index, sticky="nsew", padx=8)
+            body.columnconfigure(index, weight=1, uniform="settings")
+            columns.append(column)
+
+        for section, specs in sections.items():
+            target_column = weights.index(min(weights))
+            frame = ttk.LabelFrame(columns[target_column], text=section, padding=12)
+            frame.pack(fill="x", expand=False, pady=8)
             for row, spec in enumerate(specs):
-                self._add_setting_row(frame, row, spec, env=True)
+                self._add_setting_row(frame, row, spec, env=env)
+            weights[target_column] += _settings_section_weight(specs)
 
     def _scrollable_body(self, parent: ttk.Frame) -> ttk.Frame:
         """
@@ -1160,6 +1175,11 @@ def _sent_row_detail(mode_name: str, row: dict[str, str]) -> str:
     if mode_name == "Invalid":
         return row.get("invalid_reason", row.get("reason", ""))
     return row.get("source_url", row.get("source", ""))
+
+
+def _settings_section_weight(specs: Sequence[SettingSpec]) -> int:
+    """Schaetzt die sichtbare Hoehe einer Einstellungsgruppe fuer das Spaltenlayout."""
+    return sum(4 if spec.kind == "list" else 1 for spec in specs)
 
 
 def main() -> int:

@@ -126,8 +126,10 @@ def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
             """Kapselt den Hilfsschritt mail."""
             pass
 
-        def rcpt(self, email):
-            """Simuliert eine endgültige SMTP-Mailbox-Ablehnung."""
+        @staticmethod
+        def rcpt(email):
+            """Simuliert eine endgueltige SMTP-Mailbox-Ablehnung."""
+            assert email == "missing@example.com"
             return 550, "user unknown"
 
     monkeypatch.setattr(email_validation.smtplib, "SMTP", FakeSmtp)

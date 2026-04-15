@@ -9,6 +9,7 @@ import sys
 import threading
 import types as py_types
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -941,7 +942,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
         """Dokumentiert die Test- oder Hilfsklasse FakeFiles."""
 
         @staticmethod
-        def upload(*args, **kwargs):
+        def upload(**kwargs):
             """Kapselt den Hilfsschritt upload."""
             assert kwargs["file"] == attachment
             return uploaded
@@ -956,7 +957,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             """Kapselt den Hilfsschritt generate_content."""
             contents = kwargs.get("contents", args[1] if len(args) > 1 else [])
             assert contents == ["prompt", uploaded]
-            config_val = kwargs.get("config")
+            config_val = cast(Any, kwargs["config"])
             assert config_val.temperature == 0.3
             assert config_val.thinking_config.thinking_level.name == "FULL"
             assert config_val.tool_config.function_calling_config.mode == "AUTO"
@@ -1018,7 +1019,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
         """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
 
         @staticmethod
-        def generate_content(*args, **kwargs):
+        def generate_content(**kwargs):
             """Kapselt den Hilfsschritt generate_content."""
             assert kwargs["model"] == "gemini-2.5-flash-lite"
             part = py_types.SimpleNamespace(text=None)
@@ -1121,7 +1122,7 @@ def test_generate_with_gemini_fakes_csv_extension(
         """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
 
         @staticmethod
-        def generate_content(*args, **kwargs):
+        def generate_content(**kwargs):
             """Kapselt den Hilfsschritt generate_content."""
             assert kwargs["model"] == "model"
             return py_types.SimpleNamespace(text='{"leads": []}')
@@ -1232,7 +1233,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
         """Dokumentiert die Test- oder Hilfsklasse FakeModels."""
 
         @staticmethod
-        def generate_content(*args, **kwargs):
+        def generate_content(**kwargs):
             """Kapselt den Hilfsschritt generate_content."""
             assert kwargs["model"] == "gemini-2.5-flash-lite"
             part = py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")

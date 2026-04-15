@@ -13,9 +13,8 @@ from typing import Any, Callable
 
 load_dotenv: Callable[..., Any]
 try:
-    from dotenv import load_dotenv as _dotenv_load
+    from dotenv import load_dotenv
 
-    load_dotenv = _dotenv_load
 except ImportError:  # pragma: no cover
     def _dotenv_load_stub():
         """Ersetzt python-dotenv, wenn das Paket in einer Minimalumgebung fehlt."""

@@ -54,7 +54,7 @@ def generate_with_openai(
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Install openai first: pip install -r requirements.txt") from exc
 
-    RateLimitError = getattr(openai, "RateLimitError", Exception)
+    rate_limit_error = getattr(openai, "RateLimitError", Exception)
     try:
         client = OpenAI(api_key=api_key)
     except TypeError as exc:
@@ -108,7 +108,7 @@ def generate_with_openai(
                 request_payload["input_data"] = request_payload.pop("input")
                 response = client_any.responses.create(**request_payload)
             break
-        except RateLimitError as e:
+        except rate_limit_error as e:
             if attempt == max_retries - 1:
                 _verbose(verbose, f"OpenAI Rate limit reached. Max retries ({max_retries}) exceeded.")
                 raise
