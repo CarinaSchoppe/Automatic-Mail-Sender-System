@@ -693,13 +693,17 @@ def build_prompt(
         existing_companies: set[str] | None = None,
         input_context: str = "",
 ) -> str:
-    """Build the provider prompt while preserving compatibility with older call sites."""
+    """Build the provider prompt using the Overseer template."""
+    from research import mode_instructions
+
     if isinstance(existing_companies, str) and not input_context:
         input_context = existing_companies
         existing_companies = None
+    
     excluded = "\n".join(sorted(existing_emails)) or "(none)"
     excluded_companies = "\n".join(sorted(existing_companies or set())) or "(none)"
     input_reference = input_context.strip() or "(no mode-specific input files found)"
+    
     contact_requirement = (
         f"- For PhD, include the general company contact email plus up to {config.person_emails_per_company} "
         "decision-maker work emails per company when public sources support them."
@@ -707,50 +711,22 @@ def build_prompt(
         else "- For Freelance, one general or relevant contact email per company is enough. But 2 would be better!"
     )
 
-    return f"""
-    You are a careful B2B lead researcher.
+    overseer_template = mode_instructions.instructions.get("Overseer", "")
+    if not overseer_template:
+        # Fallback to hardcoded if for some reason missing
+        from mail_sender.prompts import DEFAULT_PROMPTS
+        overseer_template = DEFAULT_PROMPTS["Overseer"]
 
-    Use medium-to-high reasoning for the research. Use web search, the mode-specific input context,
-    any uploaded attachment context if provided, and any available tools you need. Use tools automatically
-    whenever they help verify public source URLs or email addresses.
-
-    Mode: {mode.label}
-
-    Task:
-    {mode_instructions.instructions[mode.label]}
-
-    Requirements:
-    - Find leads from {config.min_companies} to {config.max_companies} relevant companies.
-    - Do not include any email address already listed in the exclusion list.
-    - Do not search for or return a company if the company name or email address already appears in the mode-specific sent CSV list, uploaded sent-log file, or exclusions.
-    - Use the mode-specific input CSV/TXT context only as background for fit and targeting.
-    - Prefer official company websites and publicly visible work email addresses.
-    - Only include an email address if it is explicitly shown on a public webpage.
-    - Do not invent, infer, guess, or pattern-generate email addresses.
-    - Do not include contact forms without an email address.
-    - Do not include placeholder or assumed addresses unless that exact address is publicly shown.
-    {contact_requirement}
-    - Include the exact public source URL where the email was found.
-    - If you cannot verify enough emails, return fewer rows instead of guessing.
-
-    Output format:
-    - Return valid CSV only.
-    - CSV header must be exactly:
-      company,mail,source_url
-    - Use one row per email address.
-    - If multiple emails are found for one company, repeat the company name on separate rows.
-    - If no results are found, return only the header.
-    - Do not return markdown, explanations, JSON, or Python lists.
-
-    Existing email exclusion list:
-    {excluded}
-
-    Existing company exclusion list for this mode:
-    {excluded_companies}
-
-    Mode-specific input CSV/TXT context:
-    {input_reference}
-    """.strip()
+    return overseer_template.format(
+        MODE_LABEL=mode.label,
+        TASK_INSTRUCTIONS=mode_instructions.instructions.get(mode.label, ""),
+        MIN_COMPANIES=config.min_companies,
+        MAX_COMPANIES=config.max_companies,
+        CONTACT_REQUIREMENT=contact_requirement,
+        EXCLUDED_EMAILS=excluded,
+        EXCLUDED_COMPANIES=excluded_companies,
+        INPUT_CONTEXT=input_reference
+    )
 
 
 def generate_with_provider(

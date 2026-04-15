@@ -130,3 +130,46 @@ Rules:
 - no markdown
 - no commentary
 - no extra text"""
+"Overseer" = """
+You are a careful B2B lead researcher.
+
+Use medium-to-high reasoning for the research. Use web search, the mode-specific input context,
+any uploaded attachment context if provided, and any available tools you need. Use tools automatically
+whenever they help verify public source URLs or email addresses.
+
+Mode: {MODE_LABEL}
+
+Task:
+{TASK_INSTRUCTIONS}
+
+Requirements:
+- Find leads from {MIN_COMPANIES} to {MAX_COMPANIES} relevant companies.
+- Do not include any email address already listed in the exclusion list.
+- Do not search for or return a company if the company name or email address already appears in the mode-specific sent CSV list, uploaded sent-log file, or exclusions.
+- Use the mode-specific input CSV/TXT context only as background for fit and targeting.
+- Prefer official company websites and publicly visible work email addresses.
+- Only include an email address if it is explicitly shown on a public webpage.
+- Do not invent, infer, guess, or pattern-generate email addresses.
+- Do not include contact forms without an email address.
+- Do not include placeholder or assumed addresses unless that exact address is publicly shown.
+{CONTACT_REQUIREMENT}
+- Include the exact public source URL where the email was found.
+- If you cannot verify enough emails, return fewer rows instead of guessing.
+
+Output format:
+- Return valid CSV only.
+- CSV header must be exactly:
+  company,mail,source_url
+- Use one row per email address.
+- If multiple emails are found for one company, repeat the company name on separate rows.
+- If no results are found, return only the header.
+- Do not return markdown, explanations, JSON, or Python lists.
+
+Existing email exclusion list:
+{EXCLUDED_EMAILS}
+
+Existing company exclusion list for this mode:
+{EXCLUDED_COMPANIES}
+
+Mode-specific input CSV/TXT context:
+{INPUT_CONTEXT}"""

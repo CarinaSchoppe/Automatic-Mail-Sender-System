@@ -375,6 +375,9 @@ class MailSenderWorkbench:
         self.prompt_mode_combo.pack(side="left")
         self.prompt_mode_combo.bind("<<ComboboxSelected>>", self._on_prompt_mode_change)
 
+        self.prompt_info_var = tk.StringVar()
+        ttk.Label(top, textvariable=self.prompt_info_var, style="Muted.TLabel").pack(side="left", padx=(20, 0))
+
         if modes:
             self.prompt_mode_var.set(modes[0])
 
@@ -397,6 +400,14 @@ class MailSenderWorkbench:
         mode = self.prompt_mode_var.get()
         if not mode:
             return
+
+        if mode == "Overseer":
+            self.prompt_info_var.set(
+                "Placeholders: {MODE_LABEL}, {TASK_INSTRUCTIONS}, {MIN_COMPANIES}, {MAX_COMPANIES}, "
+                "{CONTACT_REQUIREMENT}, {EXCLUDED_EMAILS}, {EXCLUDED_COMPANIES}, {INPUT_CONTEXT}"
+            )
+        else:
+            self.prompt_info_var.set("")
 
         self._last_prompt_mode = mode
         self.prompt_text.delete("1.0", tk.END)
