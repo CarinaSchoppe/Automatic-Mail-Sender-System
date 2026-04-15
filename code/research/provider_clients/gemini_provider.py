@@ -88,7 +88,7 @@ def generate_with_gemini(
     _verbose(
         verbose,
         f"Gemini config: google_search enabled, tool auto mode enabled, "
-        f"thinking_level={thinking_level.name}, temperature=0.3.",
+        f"thinking_level={_thinking_level_name(thinking_level)}, temperature=0.3.",
     )
 
     max_retries = 5
@@ -145,3 +145,8 @@ def _thinking_level_for_effort(types_module: Any, reasoning_effort: str) -> Any:
         "high": "FULL",
     }.get(reasoning_effort, "MEDIUM")
     return getattr(thinking_levels, level_name, default_level)
+
+
+def _thinking_level_name(thinking_level: Any) -> str:
+    """Ermittelt den Lognamen eines dynamischen Gemini-ThinkingLevel-Werts."""
+    return str(getattr(thinking_level, "name", thinking_level))

@@ -193,6 +193,11 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
+        @staticmethod
+        def send(recipient, subject, _text_body, _html_body, attachments, inline_images) -> None:
+            """Merkt den simulierten Versand mit Betreff und Anlagenanzahl."""
+            sent.append((recipient.email, subject, len(attachments), len(inline_images)))
+
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
 
@@ -229,6 +234,11 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
             """Initialisiert oder verwaltet das Testobjekt."""
             return None
 
+        @staticmethod
+        def send(recipient, *_args, **_kwargs) -> None:
+            """Merkt die Empfaengeradresse des simulierten Versands."""
+            sent.append(recipient.email)
+
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
 
@@ -264,6 +274,11 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
         def __exit__(self, exc_type, exc, traceback) -> None:
             """Initialisiert oder verwaltet das Testobjekt."""
             return None
+
+        @staticmethod
+        def send(recipient, *_args, **_kwargs) -> None:
+            """Merkt die Empfaengeradresse des simulierten parallelen Versands."""
+            sent.append(recipient.email)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)

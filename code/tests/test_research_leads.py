@@ -9,7 +9,7 @@ import sys
 import threading
 import types as py_types
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -957,11 +957,15 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             """Kapselt den Hilfsschritt generate_content."""
             contents = kwargs.get("contents", args[1] if len(args) > 1 else [])
             assert contents == ["prompt", uploaded]
-            config_val = cast(Any, kwargs["config"])
-            assert config_val.temperature == 0.3
-            assert config_val.thinking_config.thinking_level.name == "FULL"
-            assert config_val.tool_config.function_calling_config.mode == "AUTO"
-            assert config_val.tool_config.include_server_side_tool_invocations is True
+            config_val: Any = kwargs["config"]
+            thinking_config = getattr(config_val, "thinking_config")
+            thinking_level = getattr(thinking_config, "thinking_level")
+            tool_config = getattr(config_val, "tool_config")
+            function_config = getattr(tool_config, "function_calling_config")
+            assert getattr(config_val, "temperature") == 0.3
+            assert getattr(thinking_level, "name") == "FULL"
+            assert getattr(function_config, "mode") == "AUTO"
+            assert getattr(tool_config, "include_server_side_tool_invocations") is True
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:

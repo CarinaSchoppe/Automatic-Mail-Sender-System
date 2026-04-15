@@ -54,13 +54,13 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-invalid-check",
         action="store_true",
         default=True,
-        help="Skip recipients already listed in invalid_mails.csv.",
+        help="Do not read invalid_mails.csv before sending; recipients listed there can be sent again.",
     )
     parser.add_argument(
         "--no-skip-invalid-check",
         action="store_false",
         dest="skip_invalid_check",
-        help="Do not skip recipients already listed in invalid_mails.csv.",
+        help="Read invalid_mails.csv and skip recipients already listed there.",
     )
     parser.add_argument("--allow-empty-attachments", action="store_true", help="Allow sending even if the mode attachment folder is empty.")
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
@@ -248,14 +248,17 @@ def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[
     """
     _info("Loading sent and invalid email logs.")
     logged_emails = set() if args.resend_existing else read_known_output_emails(base_dir / "output")
-    invalid_emails = read_invalid_emails(invalid_log_path)
+    invalid_emails = set() if args.skip_invalid_check else read_invalid_emails(invalid_log_path)
     if args.resend_existing:
         _verbose(args.verbose, "Existing CSV log addresses will be ignored because --resend-existing is set.")
     elif logged_emails:
         _verbose(args.verbose, f"Loaded {len(logged_emails)} existing email address(es) from output CSV files.")
     else:
         _verbose(args.verbose, "No existing sent addresses were loaded from output CSV files.")
-    _verbose(args.verbose, f"Loaded {len(invalid_emails)} invalid email address(es) from {invalid_log_path}.")
+    if args.skip_invalid_check:
+        _verbose(args.verbose, "Invalid CSV log addresses will be ignored because --skip-invalid-check is set.")
+    else:
+        _verbose(args.verbose, f"Loaded {len(invalid_emails)} invalid email address(es) from {invalid_log_path}.")
     return logged_emails, invalid_emails
 
 
@@ -274,7 +277,7 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
             skipped_before_send += 1
             print(f"[SKIP] {recipient.email} is already present in an output CSV log; no mail will be created or sent.")
             continue
-        if args.skip_invalid_check and email_key in invalid_emails:
+        if not args.skip_invalid_check and email_key in invalid_emails:
             skipped_before_send += 1
             print(f"[SKIP_INVALID] {recipient.email} is already listed in invalid_mails.csv; no mail will be created or sent.")
             continue
@@ -334,7 +337,7 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
     print(f"Log file: {mode.log_path}")
     print(f"Invalid email log file: {invalid_log_path}")
     print("Existing CSV check: disabled (--resend-existing)" if args.resend_existing else "Existing CSV check: enabled")
-    print("Invalid CSV check: enabled (--skip-invalid-check)" if args.skip_invalid_check else "Invalid CSV check: disabled")
+    print("Invalid CSV check: disabled (--skip-invalid-check)" if args.skip_invalid_check else "Invalid CSV check: enabled")
     print("Sending: yes" if args.send else "Sending: no (dry-run)")
     print("Dry-run CSV logging: yes" if args.log_dry_run else "Dry-run CSV logging: no")
     print("Sent CSV logging: no" if args.no_write_sent_log else "Sent CSV logging: yes")

@@ -75,7 +75,7 @@ SELF_REQUEST_TIMEOUT = 10.0
 SELF_VERIFY_EMAIL_SMTP = false
 
 
-# Mail
+# Run
 
 # Real email sending: Off means dry-run. On sends through SMTP.
 SEND = true
@@ -89,6 +89,9 @@ SEND_TARGET_MAX_ROUNDS = 0
 # Parallel threads: Maximum parallel research requests and mail sender workers.
 PARALLEL_THREADS = 25
 
+
+# Mail
+
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
 VERIFY_EMAIL_SMTP = false
 
@@ -99,7 +102,7 @@ SKIP_EMAIL_DNS_CHECK = true
 VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
 
 # Resend existing: Allows sending to addresses already present in output logs.
-RESEND_EXISTING = false
+RESEND_EXISTING = true
 
 # Skip invalid check: If checked, skips recipients already listed in invalid_mails.csv.
 SKIP_INVALID_CHECK = true
