@@ -23,7 +23,7 @@ def test_validate_email_address_rejects_bad_domain_syntax() -> None:
 
 
 def test_validate_email_address_accepts_domain_with_dns(monkeypatch) -> None:
-    monkeypatch.setattr(email_validation, "_domain_accepts_mail", lambda domain: domain == "example.com")
+    monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: ["mx.example.com"] if domain == "example.com" else [])
 
     result = email_validation.validate_email_address("Person@Example.com")
 
@@ -32,7 +32,8 @@ def test_validate_email_address_accepts_domain_with_dns(monkeypatch) -> None:
 
 
 def test_validate_email_address_rejects_domain_without_dns(monkeypatch) -> None:
-    monkeypatch.setattr(email_validation, "_domain_accepts_mail", lambda domain: False)
+    monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: [])
+    monkeypatch.setattr(email_validation, "_domain_has_a_record", lambda domain: False)
 
     result = email_validation.validate_email_address("person@example.invalid")
 
@@ -63,6 +64,53 @@ def test_domain_accepts_mail_falls_back_when_dns_package_is_missing(monkeypatch)
     monkeypatch.setattr(email_validation, "_domain_has_a_record", lambda domain: domain == "example.com")
 
     assert email_validation._domain_accepts_mail("example.com") is True
+
+
+def test_validate_email_address_can_probe_mailbox_rejects(monkeypatch) -> None:
+    monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: ["mx.example.com"])
+    monkeypatch.setattr(
+        email_validation,
+        "_probe_mailbox_exists",
+        lambda email, hosts, from_email, timeout: email_validation.EmailValidationResult(False, "user unknown"),
+    )
+
+    result = email_validation.validate_email_address("missing@example.com", verify_mailbox=True)
+
+    assert result.is_valid is False
+    assert result.reason == "user unknown"
+
+
+def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
+    class FakeSmtp:
+        def __init__(self, host, port, timeout):
+            assert (host, port, timeout) == ("mx.example.com", 25, 3)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+        def ehlo_or_helo_if_needed(self):
+            return None
+
+        def mail(self, from_email):
+            assert from_email == "sender@example.com"
+
+        def rcpt(self, email):
+            assert email == "missing@example.com"
+            return 550, b"user unknown"
+
+    monkeypatch.setattr(email_validation.smtplib, "SMTP", FakeSmtp)
+
+    result = email_validation._probe_mailbox_exists(
+        "missing@example.com",
+        ["mx.example.com"],
+        "sender@example.com",
+        3,
+    )
+
+    assert result == email_validation.EmailValidationResult(False, "user unknown")
 
 
 def test_domain_accepts_mail_uses_mx_and_falls_back_on_resolver_error(monkeypatch) -> None:

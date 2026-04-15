@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import threading
 from pathlib import Path
 
 from mail_sender import cli
@@ -219,6 +220,41 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
     assert "Limiting this run to 2 recipient(s)." in capsys.readouterr().out
     with (project / "output/send_phd.csv").open("r", encoding="utf-8-sig", newline="") as f:
         assert len(list(csv.reader(f))) == 3
+
+
+def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) -> None:
+    (project / "input/PhD/phd.csv").write_text(
+        "company,mail\nA,a@example.com\nB,b@example.com\nC,c@example.com\n",
+        encoding="utf-8",
+    )
+    (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
+    sent = []
+    lock = threading.Lock()
+
+    class FakeMailer:
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        def send(self, recipient, subject, text_body, html_body, attachments, inline_images) -> None:
+            with lock:
+                sent.append(recipient.email)
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send", "--parallel-threads", "2"])
+
+    assert result == 0
+    assert sorted(sent) == ["a@example.com", "b@example.com", "c@example.com"]
+    with (project / "output/send_phd.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert sorted(row[1] for row in rows[1:]) == ["a@example.com", "b@example.com", "c@example.com"]
 
 
 def test_cli_rejects_invalid_max_send_count(project: Path, capsys) -> None:

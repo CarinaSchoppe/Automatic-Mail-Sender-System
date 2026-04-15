@@ -4,6 +4,7 @@ import csv
 import runpy
 import sys
 import types as py_types
+import threading
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,8 @@ def config(
         reasoning_effort: str = "middle",
         send_target_count: int = 0,
         max_iterations: int = 5,
+        parallel_threads: int = 1,
+        self_search_keywords: tuple[str, ...] = ("query",),
 ) -> ResearchConfig:
     return ResearchConfig(
         provider=provider,
@@ -48,6 +51,8 @@ def config(
         reasoning_effort=reasoning_effort,
         send_target_count=send_target_count,
         max_iterations=max_iterations,
+        parallel_threads=parallel_threads,
+        self_search_keywords=self_search_keywords,
     )
 
 
@@ -66,6 +71,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "RESEARCH_UPLOAD_ATTACHMENTS",
         "RESEARCH_VERBOSE",
         "RESEARCH_BASE_DIR",
+        "SELF_SEARCH_KEYWORDS",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -111,6 +117,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.reasoning_effort == "high"
     assert parsed.send_target_count == 100
     assert parsed.max_iterations == 10
+    assert parsed.parallel_threads == 5
 
 
 def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
@@ -415,6 +422,75 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
     assert output_path.exists()
     assert recipients == [Recipient(email="a@example.com", company="A")]
     assert "[VERBOSE] AI prompt characters:" in capsys.readouterr().out
+
+
+def test_run_research_parallel_batch_deduplicates_responses(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    counter = {"value": 0}
+    lock = threading.Lock()
+
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+        with lock:
+            counter["value"] += 1
+            index = counter["value"]
+        return (
+            "company,mail,source_url\n"
+            "Same Co,same@example.com,https://same.example/contact\n"
+            f"Unique {index},unique{index}@example.com,https://unique{index}.example/contact\n"
+        )
+
+    monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
+
+    _, recipients = research_leads.run_research(
+        config(project, max_companies=3, max_iterations=3, parallel_threads=3)
+    )
+
+    emails = [recipient.email for recipient in recipients]
+    assert len(emails) == 3
+    assert emails.count("same@example.com") == 1
+    assert len(set(emails)) == 3
+
+
+def test_run_research_self_provider_crawls_and_deduplicates(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Co"))
+
+    monkeypatch.setattr(
+        research_leads,
+        "collect_self_search_result_urls",
+        lambda cfg, queries: ["https://a.example", "https://b.example"],
+    )
+    monkeypatch.setattr(
+        research_leads,
+        "crawl_self_result_url",
+        lambda cfg, url: [
+            Recipient(email="same@example.com", company="Same Co"),
+            Recipient(email="old@example.com", company="Old Co"),
+            Recipient(email=f"{url.split('//')[1][0]}@example.com", company=f"{url} Co"),
+        ],
+    )
+    monkeypatch.setattr(
+        research_leads,
+        "validate_email_address",
+        lambda *args, **kwargs: py_types.SimpleNamespace(is_valid=True, reason=""),
+    )
+
+    _, recipients = research_leads.run_research(
+        config(project, provider="self", model="self", max_companies=3, parallel_threads=2)
+    )
+
+    emails = [recipient.email for recipient in recipients]
+    assert emails == ["same@example.com", "a@example.com", "b@example.com"]
+
+
+def test_self_google_result_parser_decodes_result_links() -> None:
+    html_text = '''
+    <a href="/url?q=https%3A%2F%2Fexample.com%2Fcontact&sa=U">result</a>
+    <a href="https://direct.example/about">direct</a>
+    '''
+
+    assert research_leads._extract_google_result_urls(html_text) == [
+        "https://example.com/contact",
+        "https://direct.example/about",
+    ]
 
 
 def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:

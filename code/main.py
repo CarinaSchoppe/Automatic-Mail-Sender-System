@@ -39,9 +39,18 @@ RESEARCH_UPLOAD_ATTACHMENTS = _setting("RESEARCH_UPLOAD_ATTACHMENTS", True)
 GEMINI_MODEL = _setting("GEMINI_MODEL", "gemini-3-flash-preview")
 OPENAI_MODEL = _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
 RESEARCH_REASONING_EFFORT = _setting("RESEARCH_REASONING_EFFORT", "middle")
+SELF_SEARCH_KEYWORDS = _setting("SELF_SEARCH_KEYWORDS", [])
+SELF_SEARCH_PAGES = _setting("SELF_SEARCH_PAGES", 1)
+SELF_RESULTS_PER_PAGE = _setting("SELF_RESULTS_PER_PAGE", 10)
+SELF_CRAWL_MAX_PAGES_PER_SITE = _setting("SELF_CRAWL_MAX_PAGES_PER_SITE", 8)
+SELF_REQUEST_TIMEOUT = _setting("SELF_REQUEST_TIMEOUT", 10)
+SELF_VERIFY_EMAIL_SMTP = _setting("SELF_VERIFY_EMAIL_SMTP", False)
 SEND = _setting("SEND", False)
 SEND_TARGET_COUNT = _setting("SEND_TARGET_COUNT", 0)
 SEND_TARGET_MAX_ROUNDS = _setting("SEND_TARGET_MAX_ROUNDS", 0)
+PARALLEL_THREADS = _setting("PARALLEL_THREADS", 5)
+VERIFY_EMAIL_SMTP = _setting("VERIFY_EMAIL_SMTP", False)
+VERIFY_EMAIL_SMTP_TIMEOUT = _setting("VERIFY_EMAIL_SMTP_TIMEOUT", 8)
 VERBOSE = _setting("VERBOSE", False)
 SAVE_VERBOSE_LOG = _setting("SAVE_VERBOSE_LOG", True)
 VERBOSE_LOG_DIR = _setting("VERBOSE_LOG_DIR", "logs")
@@ -112,9 +121,12 @@ def _print_effective_settings() -> None:
     _info(f"Mode: {MODE}. AI research: {'on' if RUN_AI_RESEARCH else 'off'}. Provider: {RESEARCH_AI_PROVIDER}. Reasoning: {RESEARCH_REASONING_EFFORT}.")
     _info(f"Mail sending: {'real send enabled' if SEND else 'dry-run / no mail send unless research is disabled'}.")
     _info(f"Send target: {SEND_TARGET_COUNT if SEND_TARGET_COUNT else 'disabled'}.")
+    _info(f"Parallel threads: {PARALLEL_THREADS}.")
+    _info(f"SMTP mailbox verification: {'enabled' if VERIFY_EMAIL_SMTP else 'disabled'}.")
     _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
+    _verbose(VERBOSE, f"Self research settings: pages={SELF_SEARCH_PAGES}, results_per_page={SELF_RESULTS_PER_PAGE}, crawl_max_pages_per_site={SELF_CRAWL_MAX_PAGES_PER_SITE}, keywords={SELF_SEARCH_KEYWORDS}.")
     _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
     _verbose(VERBOSE, f"Target loop max rounds (safety gate): {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited (0)'}.")
     _verbose(VERBOSE, f"Signature logo: {SIGNATURE_LOGO}, width={SIGNATURE_LOGO_WIDTH}.")
@@ -140,16 +152,24 @@ def _build_research_args() -> list[str]:
         ("--min-companies", RESEARCH_MIN_COMPANIES),
         ("--max-companies", RESEARCH_MAX_COMPANIES),
         ("--person-emails-per-company", RESEARCH_PERSON_EMAILS_PER_COMPANY),
+        ("--self-search-pages", SELF_SEARCH_PAGES),
+        ("--self-results-per-page", SELF_RESULTS_PER_PAGE),
+        ("--self-crawl-max-pages-per-site", SELF_CRAWL_MAX_PAGES_PER_SITE),
+        ("--self-request-timeout", SELF_REQUEST_TIMEOUT),
     ]:
         _add_value(args, flag, value)
+    for keyword in SELF_SEARCH_KEYWORDS:
+        _add_value(args, "--self-search-keyword", keyword)
     for flag, enabled in [
         ("--no-write-output", not RESEARCH_WRITE_OUTPUT),
         ("--no-upload-attachments", not RESEARCH_UPLOAD_ATTACHMENTS),
+        ("--self-verify-email-smtp", SELF_VERIFY_EMAIL_SMTP),
         ("--verbose", VERBOSE),
     ]:
         _add_flag(args, enabled, flag)
     _add_value(args, "--send-target-count", SEND_TARGET_COUNT)
     _add_value(args, "--max-iterations", SEND_TARGET_MAX_ROUNDS)
+    _add_value(args, "--parallel-threads", PARALLEL_THREADS)
     return args
 
 
@@ -172,9 +192,12 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
         ("--log-dry-run", LOG_DRY_RUN),
         ("--no-write-sent-log", not WRITE_SENT_LOG),
         ("--delete-input-after-success", DELETE_INPUT_AFTER_SUCCESS),
+        ("--verify-email-smtp", VERIFY_EMAIL_SMTP),
     ]:
         _add_flag(args, enabled, flag)
     _add_value(args, "--max-send-count", max_send_count)
+    _add_value(args, "--parallel-threads", PARALLEL_THREADS)
+    _add_value(args, "--verify-email-smtp-timeout", VERIFY_EMAIL_SMTP_TIMEOUT)
     return args
 
 
@@ -203,7 +226,7 @@ def _print_run_summary(sent_details: list[dict[str, str]]) -> None:
     # Sort by company
     sorted_details = sorted(sent_details, key=lambda x: (x.get("company") or "").lower())
     for detail in sorted_details:
-        company = detail.get("company") or "(No Company)"
+        company = detail.get("company") or detail.get("mail").split("@")[1].split(".")[0] or "(No Company)"
         email = detail.get("mail")
         print(f"- {company}: {email}")
     print("=" * 60 + "\n")

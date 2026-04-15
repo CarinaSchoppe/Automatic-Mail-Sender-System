@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import csv
+import html
 import importlib
 import json
 import os
@@ -16,6 +17,10 @@ import shutil
 import sys
 import tempfile
 import tomllib
+import urllib.error
+import urllib.parse
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +40,7 @@ from mail_sender.recipients import list_recipient_files
 from mail_sender.recipients import normalize_email
 from mail_sender.recipients import normalize_key
 from mail_sender.recipients import read_recipients
+from mail_sender.email_validation import validate_email_address
 from mail_sender.sent_log import read_logged_emails
 from mail_sender.sent_log import read_logged_rows
 
@@ -44,7 +50,16 @@ mode_instructions = importlib.import_module(
 
 SOURCE_KEYS = {"source", "source-url", "sourceurl", "url", "website"}
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_EXTRACT_PATTERN = re.compile(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 COMPANY_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
+HTML_TITLE_PATTERN = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+HTML_LINK_PATTERN = re.compile(r"""href=["']([^"']+)["']""", re.IGNORECASE)
+BAD_EMAIL_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf")
+CONTACT_LINK_HINTS = ("contact", "about", "team", "people", "staff", "career", "impressum")
+HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; MailSenderSystemResearch/1.0; +https://example.local)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 RESUME_ATTACHMENT_PATTERN = re.compile(
     r"(?:^|[\s._-])(cv|resume|lebenslauf|curriculum(?:[\s._-]+vitae)?)(?:$|[\s._-])",
     re.IGNORECASE,
@@ -68,6 +83,13 @@ class ResearchConfig:
     reasoning_effort: str = "middle"
     send_target_count: int = 0
     max_iterations: int = 5
+    parallel_threads: int = 1
+    self_search_keywords: tuple[str, ...] = ()
+    self_search_pages: int = 1
+    self_results_per_page: int = 10
+    self_crawl_max_pages_per_site: int = 8
+    self_request_timeout: float = 10.0
+    self_verify_email_smtp: bool = False
 
 
 def _load_settings() -> dict:
@@ -92,6 +114,10 @@ def default_config() -> ResearchConfig:
                 return str(val).lower() in ("true", "1", "yes")
             if isinstance(default, int):
                 return int(val)
+            if isinstance(default, float):
+                return float(val)
+            if isinstance(default, tuple):
+                return tuple(part.strip() for part in val.split("|") if part.strip())
             return val
         return settings.get(key, default)
 
@@ -120,6 +146,13 @@ def default_config() -> ResearchConfig:
         reasoning_effort=_get("RESEARCH_REASONING_EFFORT", "middle"),
         send_target_count=_get("SEND_TARGET_COUNT", 0),
         max_iterations=_get("SEND_TARGET_MAX_ROUNDS", 5),
+        parallel_threads=_get("PARALLEL_THREADS", 5),
+        self_search_keywords=tuple(_get("SELF_SEARCH_KEYWORDS", _default_self_keywords(mode_name))),
+        self_search_pages=_get("SELF_SEARCH_PAGES", 1),
+        self_results_per_page=_get("SELF_RESULTS_PER_PAGE", 10),
+        self_crawl_max_pages_per_site=_get("SELF_CRAWL_MAX_PAGES_PER_SITE", 8),
+        self_request_timeout=float(_get("SELF_REQUEST_TIMEOUT", 10.0)),
+        self_verify_email_smtp=_get("SELF_VERIFY_EMAIL_SMTP", False),
     )
 
 
@@ -141,8 +174,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def parse_args(argv: list[str]) -> ResearchConfig:
     env_config = default_config()
-    parser = argparse.ArgumentParser(description="research new lead CSV files with Gemini and Google Search grounding.")
-    parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai"], help="AI research provider.")
+    parser = argparse.ArgumentParser(description="research new lead CSV files with AI providers or self-hosted web scraping.")
+    parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai", "self"], help="Research provider.")
     parser.add_argument("--mode", default=env_config.mode_name, choices=MODE_NAMES, help="research mode.")
     parser.add_argument("--gemini-model", default=env_config.gemini_model)
     parser.add_argument("--openai-model", default=env_config.openai_model)
@@ -154,6 +187,13 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--no-upload-attachments", action="store_true", help="Do not upload CV/resume context files to the AI provider.")
     parser.add_argument("--send-target-count", type=int, default=env_config.send_target_count, help="Total target count for the send loop.")
     parser.add_argument("--max-iterations", type=int, default=env_config.max_iterations, help="Maximum number of research iterations (0 for unlimited).")
+    parser.add_argument("--parallel-threads", type=int, default=env_config.parallel_threads, help="Maximum number of AI research requests to run in parallel.")
+    parser.add_argument("--self-search-keyword", action="append", dest="self_search_keywords", help="Keyword/query for self web research. Can be used multiple times.")
+    parser.add_argument("--self-search-pages", type=int, default=env_config.self_search_pages, help="Number of Google result pages to scan in self research.")
+    parser.add_argument("--self-results-per-page", type=int, default=env_config.self_results_per_page, help="Expected search results per page in self research.")
+    parser.add_argument("--self-crawl-max-pages-per-site", type=int, default=env_config.self_crawl_max_pages_per_site, help="Maximum same-site pages to crawl per result in self research.")
+    parser.add_argument("--self-request-timeout", type=float, default=env_config.self_request_timeout, help="HTTP timeout in seconds for self research.")
+    parser.add_argument("--self-verify-email-smtp", action="store_true", default=env_config.self_verify_email_smtp, help="Use optional SMTP mailbox probes for self-researched emails.")
     parser.add_argument("--reasoning-effort", default=env_config.reasoning_effort, choices=["low", "middle", "high"], help="AI reasoning effort.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed AI research logging.")
     args = parser.parse_args(argv)
@@ -174,6 +214,13 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         reasoning_effort=args.reasoning_effort,
         send_target_count=args.send_target_count,
         max_iterations=args.max_iterations,
+        parallel_threads=args.parallel_threads,
+        self_search_keywords=tuple(args.self_search_keywords or env_config.self_search_keywords),
+        self_search_pages=args.self_search_pages,
+        self_results_per_page=args.self_results_per_page,
+        self_crawl_max_pages_per_site=args.self_crawl_max_pages_per_site,
+        self_request_timeout=args.self_request_timeout,
+        self_verify_email_smtp=args.self_verify_email_smtp,
     )
 
 
@@ -181,6 +228,14 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     """Run one AI research pass and return the optional CSV path plus usable recipients."""
     if config.min_companies < 1 or config.max_companies < config.min_companies:
         raise ValueError("Company limits must satisfy 1 <= min_companies <= max_companies.")
+    if config.parallel_threads < 1:
+        raise ValueError("parallel_threads must be at least 1.")
+    if config.self_search_pages < 1:
+        raise ValueError("self_search_pages must be at least 1.")
+    if config.self_results_per_page < 1:
+        raise ValueError("self_results_per_page must be at least 1.")
+    if config.self_crawl_max_pages_per_site < 1:
+        raise ValueError("self_crawl_max_pages_per_site must be at least 1.")
 
     _info(
         f"Starting AI research: mode={config.mode_name}, provider={config.provider}, "
@@ -195,6 +250,8 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Person emails per company target: {config.person_emails_per_company}")
     _verbose(config.verbose, f"Write output CSV: {config.write_output}")
     _verbose(config.verbose, f"Upload attachment context to AI provider: {config.upload_attachments}")
+    _verbose(config.verbose, f"Parallel research threads: {config.parallel_threads}")
+    _verbose(config.verbose, f"Self research keywords: {list(config.self_search_keywords)}")
 
     mode = get_mode(config.mode_name, config.base_dir)
     _info(f"Resolved mode: {mode.label}.")
@@ -226,6 +283,18 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     input_context = read_input_context(mode.recipients_dir, verbose=config.verbose)
     _verbose(config.verbose, f"Mode-specific input context characters: {len(input_context)}")
 
+    if config.provider.strip().lower() == "self":
+        recipients = run_self_research(config, mode, existing_emails, existing_companies)
+        output_path = None
+        if config.write_output:
+            output_path = write_recipients_csv(mode.recipients_dir, mode.label, recipients)
+            _info(f"Wrote self-research CSV: {output_path}.")
+            _verbose(config.verbose, f"Wrote self-research CSV: {output_path}")
+        else:
+            _info("Research CSV writing is disabled; no output file was written.")
+        _info("Self research finished successfully.")
+        return output_path, recipients
+
     all_recipients: list[Recipient] = []
     seen_emails_in_run: set[str] = {email.lower() for email in existing_emails}
     seen_companies_in_run: set[str] = {company for company in existing_companies or set() if company}
@@ -240,49 +309,41 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         if max_iterations > 0 and iteration >= max_iterations:
             _info(f"Stopping research because max_iterations={max_iterations} was reached.")
             break
-            
-        iteration += 1
-        if iteration > 1:
-            _info(f"Research iteration {iteration}: {len(all_recipients)}/{target_count} recipients found so far.")
 
-        _info("Building AI research prompt.")
+        remaining_iterations = max_iterations - iteration if max_iterations > 0 else config.parallel_threads
+        batch_size = max(1, min(config.parallel_threads, remaining_iterations))
+        batch_start = iteration + 1
+        iteration += batch_size
+        if batch_start > 1:
+            _info(f"Research batch starting at iteration {batch_start}: {len(all_recipients)}/{target_count} recipients found so far.")
+
+        _info(f"Building {batch_size} AI research prompt(s).")
         prompt = build_prompt(config, mode, seen_emails_in_run, seen_companies_in_run, input_context)
         _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
 
-        _info("Calling AI provider now; this can take a moment.")
-        raw_response = generate_with_provider(
-            config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose
-        )
-        if _needs_retry(raw_response, seen_emails_in_run, config.verbose) and attachments:
-            _info("AI response was not usable yet; retrying once without CV/resume uploads.")
-            _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
-            raw_response = generate_with_provider(
-                config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose
-            )
-        if _needs_retry(raw_response, seen_emails_in_run, config.verbose):
-            retry_prompt = build_prompt(config, mode, set(), set(), input_context)
-            _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
-            _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
-            _verbose(config.verbose, f"Lite AI prompt characters: {retry_prompt}")
-            raw_response = generate_with_provider(
-                config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose
-            )
-        _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
+        _info(f"Calling AI provider with {batch_size} parallel request(s); this can take a moment.")
+        raw_responses = _generate_research_batch(config, mode, prompt, attachments, seen_emails_in_run, input_context, batch_size)
 
-        _info("Parsing and filtering AI response.")
-        new_recipients = parse_recipients(raw_response, seen_emails_in_run, seen_companies_in_run, config.verbose)
-        _info(f"Usable new recipients found in this iteration: {len(new_recipients)}.")
-        
-        if not new_recipients:
-            _info("No more new recipients found in this iteration.")
-            if iteration == 1:
+        _info("Parsing and filtering AI response batch.")
+        batch_new_recipients = 0
+        for raw_response in raw_responses:
+            _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
+            new_recipients = parse_recipients(raw_response, seen_emails_in_run, seen_companies_in_run, config.verbose)
+            batch_new_recipients += len(new_recipients)
+            for r in new_recipients:
+                if len(all_recipients) >= target_count:
+                    break
+                all_recipients.append(r)
+                seen_emails_in_run.add(r.email.lower())
+                seen_companies_in_run.add(_normalize_company(r.company))
+
+        _info(f"Usable new recipients found in this batch: {batch_new_recipients}.")
+
+        if batch_new_recipients == 0:
+            _info("No more new recipients found in this batch.")
+            if batch_start == 1:
                 raise RuntimeError("Gemini returned no new usable email addresses on the first attempt.")
             break
-
-        for r in new_recipients:
-            all_recipients.append(r)
-            seen_emails_in_run.add(r.email.lower())
-            seen_companies_in_run.add(_normalize_company(r.company))
 
     recipients = all_recipients
     _info(f"Total usable new recipients found: {len(recipients)}.")
@@ -298,6 +359,300 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         _verbose(config.verbose, "research CSV was not written because output writing is disabled.")
     _info("AI research finished successfully.")
     return output_path, recipients
+
+
+def _generate_research_batch(
+        config: ResearchConfig,
+        mode: MailMode,
+        prompt: str,
+        attachments: list[Path],
+        existing_emails: set[str],
+        input_context: str,
+        batch_size: int,
+) -> list[str]:
+    if batch_size == 1:
+        return [_generate_research_response(config, mode, prompt, attachments, existing_emails, input_context)]
+
+    responses: list[str] = [""] * batch_size
+    with ThreadPoolExecutor(max_workers=batch_size) as executor:
+        futures = {
+            executor.submit(_generate_research_response, config, mode, prompt, attachments, set(existing_emails), input_context): index
+            for index in range(batch_size)
+        }
+        for future in as_completed(futures):
+            responses[futures[future]] = future.result()
+    return responses
+
+
+def _generate_research_response(
+        config: ResearchConfig,
+        mode: MailMode,
+        prompt: str,
+        attachments: list[Path],
+        existing_emails: set[str],
+        input_context: str,
+) -> str:
+    raw_response = generate_with_provider(
+        config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose
+    )
+    if _needs_retry(raw_response, existing_emails, config.verbose) and attachments:
+        _info("AI response was not usable yet; retrying once without CV/resume uploads.")
+        _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
+        raw_response = generate_with_provider(
+            config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose
+        )
+    if _needs_retry(raw_response, existing_emails, config.verbose):
+        retry_prompt = build_prompt(config, mode, set(), set(), input_context)
+        _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
+        _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
+        _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
+        raw_response = generate_with_provider(
+            config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose
+        )
+    return raw_response
+
+
+def run_self_research(
+        config: ResearchConfig,
+        mode: MailMode,
+        existing_emails: set[str],
+        existing_companies: set[str],
+) -> list[Recipient]:
+    """Run local web-search/crawl research and return centrally deduplicated recipients."""
+    target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
+    seen_emails = {email.lower() for email in existing_emails}
+    seen_companies = {company for company in existing_companies if company}
+    recipients: list[Recipient] = []
+
+    queries = _self_search_queries(config, mode)
+    _info(
+        f"Starting self research with {len(queries)} keyword(s), "
+        f"{config.self_search_pages} search page(s), {config.parallel_threads} worker(s)."
+    )
+    result_urls = collect_self_search_result_urls(config, queries)
+    _info(f"Self research search result URLs found: {len(result_urls)}.")
+
+    if not result_urls:
+        raise RuntimeError("Self research found no search result URLs.")
+
+    with ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls))) as executor:
+        futures = {
+            executor.submit(crawl_self_result_url, config, url): url
+            for url in result_urls
+        }
+        for future in as_completed(futures):
+            url = futures[future]
+            try:
+                candidates = future.result()
+            except Exception as exc:
+                _verbose(config.verbose, f"Self research crawl failed for {url}: {exc}")
+                continue
+
+            for candidate in candidates:
+                if len(recipients) >= target_count:
+                    break
+                email_key = candidate.email.lower()
+                company_key = _normalize_company(candidate.company)
+                if email_key in seen_emails:
+                    _verbose(config.verbose, f"Self candidate skipped because email already exists: {candidate.email}")
+                    continue
+                if company_key and company_key in seen_companies:
+                    _verbose(config.verbose, f"Self candidate skipped because company already exists: {candidate.company}")
+                    continue
+
+                validation = validate_email_address(
+                    candidate.email,
+                    verify_mailbox=config.self_verify_email_smtp,
+                    smtp_timeout=config.self_request_timeout,
+                )
+                if not validation.is_valid:
+                    _verbose(config.verbose, f"Self candidate skipped by validation: {candidate.email} | {validation.reason}")
+                    continue
+
+                recipients.append(candidate)
+                seen_emails.add(email_key)
+                if company_key:
+                    seen_companies.add(company_key)
+                _verbose(config.verbose, f"Self candidate accepted: {candidate.company} <{candidate.email}>")
+
+            if len(recipients) >= target_count:
+                break
+
+    if not recipients:
+        raise RuntimeError("Self research found no new usable email addresses.")
+
+    _info(f"Self research usable recipients found: {len(recipients)}.")
+    return recipients
+
+
+def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        for page in range(config.self_search_pages):
+            start = page * config.self_results_per_page
+            search_url = _google_search_url(query, start)
+            _verbose(config.verbose, f"Self research search page: {search_url}")
+            html_text = _fetch_text(search_url, config.self_request_timeout, config.verbose)
+            if not html_text:
+                continue
+            for result_url in _extract_google_result_urls(html_text):
+                normalized = _normalize_url_for_dedupe(result_url)
+                if normalized in seen or _is_blocked_result_url(result_url):
+                    continue
+                seen.add(normalized)
+                urls.append(result_url)
+    return urls
+
+
+def crawl_self_result_url(config: ResearchConfig, start_url: str) -> list[Recipient]:
+    to_visit = [start_url]
+    visited: set[str] = set()
+    same_site_limit = config.self_crawl_max_pages_per_site
+    candidates: list[Recipient] = []
+    base_netloc = urllib.parse.urlparse(start_url).netloc.lower().removeprefix("www.")
+
+    while to_visit and len(visited) < same_site_limit:
+        url = to_visit.pop(0)
+        normalized = _normalize_url_for_dedupe(url)
+        if normalized in visited:
+            continue
+        visited.add(normalized)
+
+        page_text = _fetch_text(url, config.self_request_timeout, config.verbose)
+        if not page_text:
+            continue
+
+        company = _company_from_page(url, page_text)
+        for email in _extract_emails_from_text(page_text):
+            candidates.append(Recipient(email=email, company=company))
+
+        for link in _extract_relevant_same_site_links(url, page_text, base_netloc):
+            if _normalize_url_for_dedupe(link) not in visited and link not in to_visit:
+                to_visit.append(link)
+
+    return candidates
+
+
+def _self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
+    keywords = [keyword.strip() for keyword in config.self_search_keywords if keyword.strip()]
+    if not keywords:
+        keywords = list(_default_self_keywords(mode.label))
+    return keywords
+
+
+def _default_self_keywords(mode_name: str) -> tuple[str, ...]:
+    normalized = mode_name.strip().lower()
+    if normalized == "phd":
+        return (
+            '"industry phd" "contact" email Australia',
+            '"research partnership" "contact" email Australia',
+            '"innovation" "university partnership" email Australia',
+        )
+    if normalized == "freelance_english":
+        return (
+            '"freelance lecturer" "contact" email',
+            '"online trainer" "contact" email',
+            '"AI trainer" "contact" email',
+        )
+    return (
+        '"AVGS" "Dozent" email',
+        '"Weiterbildung" "Dozent" email',
+        '"Bildungsträger" "Kontakt" email',
+    )
+
+
+def _google_search_url(query: str, start: int) -> str:
+    params = urllib.parse.urlencode({"q": query, "num": "10", "start": str(start), "hl": "en"})
+    return f"https://www.google.com/search?{params}"
+
+
+def _fetch_text(url: str, timeout: float, verbose: bool) -> str:
+    try:
+        request = urllib.request.Request(url, headers=HTTP_HEADERS)
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            content_type = response.headers.get("content-type", "")
+            if "text/html" not in content_type and "text/plain" not in content_type and content_type:
+                _verbose(verbose, f"Skipping non-text response from {url}: {content_type}")
+                return ""
+            raw = response.read(1_500_000)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        _verbose(verbose, f"Fetch failed for {url}: {exc}")
+        return ""
+
+    return raw.decode("utf-8", errors="replace")
+
+
+def _extract_google_result_urls(html_text: str) -> list[str]:
+    urls: list[str] = []
+    for href in HTML_LINK_PATTERN.findall(html_text):
+        decoded = html.unescape(href)
+        if decoded.startswith("/url?"):
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(decoded).query)
+            target = query.get("q", [""])[0]
+        elif decoded.startswith("http"):
+            target = decoded
+        else:
+            continue
+        if target.startswith("http"):
+            urls.append(target)
+    return urls
+
+
+def _extract_relevant_same_site_links(current_url: str, html_text: str, base_netloc: str) -> list[str]:
+    links: list[str] = []
+    for href in HTML_LINK_PATTERN.findall(html_text):
+        target = urllib.parse.urljoin(current_url, html.unescape(href))
+        parsed = urllib.parse.urlparse(target)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+        if parsed.netloc.lower().removeprefix("www.") != base_netloc:
+            continue
+        path = parsed.path.lower()
+        if any(hint in path for hint in CONTACT_LINK_HINTS):
+            links.append(target)
+    return links
+
+
+def _extract_emails_from_text(text: str) -> list[str]:
+    emails = []
+    seen = set()
+    cleaned_text = html.unescape(text).replace("[at]", "@").replace("(at)", "@").replace(" at ", "@")
+    for match in EMAIL_EXTRACT_PATTERN.findall(cleaned_text):
+        email = normalize_email(match).strip(".,;:()[]<>").lower()
+        if email.endswith(BAD_EMAIL_SUFFIXES) or email in seen:
+            continue
+        seen.add(email)
+        emails.append(email)
+    return emails
+
+
+def _company_from_page(url: str, page_text: str) -> str:
+    title_match = HTML_TITLE_PATTERN.search(page_text)
+    if title_match:
+        title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html.unescape(title_match.group(1)))).strip()
+        if title:
+            return title[:120]
+    parsed = urllib.parse.urlparse(url)
+    return parsed.netloc.lower().removeprefix("www.")
+
+
+def _normalize_url_for_dedupe(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    return urllib.parse.urlunparse((
+        parsed.scheme.lower(),
+        parsed.netloc.lower(),
+        parsed.path.rstrip("/"),
+        "",
+        parsed.query,
+        "",
+    ))
+
+
+def _is_blocked_result_url(url: str) -> bool:
+    netloc = urllib.parse.urlparse(url).netloc.lower()
+    blocked = ("google.", "youtube.", "facebook.", "instagram.", "linkedin.", "twitter.", "x.com")
+    return any(domain in netloc for domain in blocked)
 
 
 def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path]:
@@ -507,7 +862,7 @@ def generate_with_provider(
         return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
     if normalized == "openai":
         return generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
-    raise ValueError("Unknown research provider. Use gemini or openai.")
+    raise ValueError("Unknown research provider. Use gemini, openai, or self.")
 
 
 def generate_with_gemini(
@@ -986,6 +1341,8 @@ def _env_path(name: str, default: Path) -> Path:
 
 def _model_for_provider(provider: str, gemini_model: str, openai_model: str) -> str:
     normalized = provider.strip().lower()
+    if normalized == "self":
+        return "self"
     if normalized == "openai":
         return os.getenv("OPENAI_MODEL", openai_model)
     return os.getenv("GEMINI_MODEL", gemini_model)

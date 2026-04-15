@@ -18,6 +18,7 @@ MODE = "PhD"
 # What it does: Selects the AI provider used for lead research.
 # "gemini" uses GEMINI_MODEL from .env.
 # "openai" uses OPENAI_MODEL from .env.
+# "self" uses local web search + website crawling without an AI provider.
 # Default: "gemini"
 RESEARCH_AI_PROVIDER = "gemini"
 
@@ -37,6 +38,42 @@ OPENAI_MODEL = "gpt-5.4-mini-2026-03-17"
 # OpenAI: "low" (low), "middle" (medium), "high" (high).
 # Default: "middle"
 RESEARCH_REASONING_EFFORT = "middle"
+
+# SELF_SEARCH_KEYWORDS
+# What it does: Search queries for RESEARCH_AI_PROVIDER = "self".
+# The self provider searches these queries, opens result pages, crawls relevant same-site
+# contact/about/team pages, extracts public email addresses, and then applies local filters.
+# Default: mode-specific built-in keywords
+SELF_SEARCH_KEYWORDS = [
+  "\"industry phd\" \"contact\" email Australia",
+  "\"research partnership\" \"contact\" email Australia",
+  "\"innovation\" \"university partnership\" email Australia",
+]
+
+# SELF_SEARCH_PAGES
+# What it does: Number of Google result pages to scan per keyword in self research.
+# Default: 1
+SELF_SEARCH_PAGES = 1
+
+# SELF_RESULTS_PER_PAGE
+# What it does: Expected number of Google results per search page.
+# Default: 10
+SELF_RESULTS_PER_PAGE = 10
+
+# SELF_CRAWL_MAX_PAGES_PER_SITE
+# What it does: Maximum same-website pages to crawl per result URL.
+# Default: 8
+SELF_CRAWL_MAX_PAGES_PER_SITE = 8
+
+# SELF_REQUEST_TIMEOUT
+# What it does: HTTP timeout in seconds for self research fetches and optional SMTP probes.
+# Default: 10
+SELF_REQUEST_TIMEOUT = 10
+
+# SELF_VERIFY_EMAIL_SMTP
+# What it does: Applies the optional SMTP mailbox probe during self research before writing CSV rows.
+# Default: false
+SELF_VERIFY_EMAIL_SMTP = false
 
 # RESEARCH_MIN_COMPANIES
 # What it does: Minimum number of companies the AI should try to find.
@@ -81,7 +118,7 @@ SEND = true
 # WRITE_SENT_LOG = true, RESEND_EXISTING = false, and MODE is not "Auto".
 # 0 = disabled; run only one normal research/mail pass.
 # Default: 0
-SEND_TARGET_COUNT = 500
+SEND_TARGET_COUNT = 250
 
 # SEND_TARGET_MAX_ROUNDS
 # What it does: Safety gate for the repeated target-send loop.
@@ -89,6 +126,25 @@ SEND_TARGET_COUNT = 500
 # > 0 = Stop after this many rounds even if the target is not reached (safety gate).
 # Default: 0
 SEND_TARGET_MAX_ROUNDS = 0
+
+# PARALLEL_THREADS
+# What it does: Maximum number of parallel AI research requests and parallel mail send workers.
+# Each real mail worker opens its own SMTP connection; CSV log writes are synchronized.
+# Default: 5
+PARALLEL_THREADS = 5
+
+# VERIFY_EMAIL_SMTP
+# What it does: Optionally probes recipient MX servers before sending and skips addresses
+# only when the server gives a definitive permanent mailbox rejection.
+# This can reduce postmaster bounces, but cannot prove every mailbox exists because
+# many providers use catch-all, greylisting, or anti-harvesting.
+# Default: false
+VERIFY_EMAIL_SMTP = false
+
+# VERIFY_EMAIL_SMTP_TIMEOUT
+# What it does: Timeout in seconds for each optional SMTP mailbox probe.
+# Default: 8
+VERIFY_EMAIL_SMTP_TIMEOUT = 8
 
 # VERBOSE
 # What it does: Enables very detailed debug-style output for files, parsing, filters,

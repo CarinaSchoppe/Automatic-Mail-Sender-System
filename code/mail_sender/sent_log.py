@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -25,6 +26,8 @@ INVALID_HEADERS = [
     "invalid_reason",
     "detected_at",
 ]
+
+_CSV_WRITE_LOCK = threading.Lock()
 
 
 def append_log(
@@ -106,13 +109,14 @@ def read_known_output_emails(output_dir: Path) -> set[str]:
 
 def _append_csv_row(path: Path, headers: list[str], row: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = path.exists()
-    
-    with path.open("a", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        if not file_exists or os.path.getsize(path) == 0:
-            writer.writerow(headers)
-        writer.writerow(row)
+    with _CSV_WRITE_LOCK:
+        file_exists = path.exists()
+
+        with path.open("a", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists or os.path.getsize(path) == 0:
+                writer.writerow(headers)
+            writer.writerow(row)
 
 
 def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:

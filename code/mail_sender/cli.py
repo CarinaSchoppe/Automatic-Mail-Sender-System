@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from mail_sender.attachments import list_attachments
@@ -40,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--signature-logo", default="templates/signature-logo.png", help="Inline logo image used when the signature contains {IMAGE}.")
     parser.add_argument("--signature-logo-width", type=int, default=180, help="Width of the inline signature logo in pixels.")
     parser.add_argument("--max-send-count", type=int, help="Maximum number of filtered recipients to process in this run.")
+    parser.add_argument("--parallel-threads", type=int, default=1, help="Maximum number of recipients to render/send in parallel.")
+    parser.add_argument("--verify-email-smtp", action="store_true", help="Probe recipient MX servers for definitive mailbox rejects before sending.")
+    parser.add_argument("--verify-email-smtp-timeout", type=float, default=8.0, help="Timeout in seconds for optional SMTP mailbox probes.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed pipeline logging.")
     args = parser.parse_args(argv)
 
@@ -50,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.max_send_count is not None and args.max_send_count < 1:
             raise ValueError("--max-send-count must be at least 1.")
+        if args.parallel_threads < 1:
+            raise ValueError("--parallel-threads must be at least 1.")
+        if args.verify_email_smtp_timeout <= 0:
+            raise ValueError("--verify-email-smtp-timeout must be greater than 0.")
 
         _info(f"Starting mail pipeline in mode {args.mode}.")
         _verbose(args.verbose, f"Parsed CLI args: {args}")
@@ -219,7 +227,14 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
             print(f"[SKIP] {recipient.email} appears more than once in this CSV run; duplicate skipped.")
             continue
 
-        validation = validate_email_address(recipient.email)
+        if args.verify_email_smtp:
+            validation = validate_email_address(
+                recipient.email,
+                verify_mailbox=True,
+                smtp_timeout=args.verify_email_smtp_timeout,
+            )
+        else:
+            validation = validate_email_address(recipient.email)
         _verbose(args.verbose, f"Validation result for {recipient.email}: {validation.is_valid} {validation.reason}")
         if not validation.is_valid:
             skipped_before_send += 1
@@ -259,6 +274,8 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
     print("Dry-run CSV logging: yes" if args.log_dry_run else "Dry-run CSV logging: no")
     print("Sent CSV logging: no" if args.no_write_sent_log else "Sent CSV logging: yes")
     print("Delete input after success: yes" if args.delete_input_after_success else "Delete input after success: no")
+    print(f"Parallel threads: {args.parallel_threads}")
+    print("SMTP mailbox verification: yes" if args.verify_email_smtp else "SMTP mailbox verification: no")
 
 
 def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config) -> int:
@@ -278,27 +295,28 @@ def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path
             log_dry_run=args.log_dry_run,
             write_sent_log=not args.no_write_sent_log,
             verbose=args.verbose,
+            smtp_config=None,
+            parallel_threads=args.parallel_threads,
         )
 
     _info("Opening SMTP connection and sending real emails.")
-    _verbose(args.verbose, "Opening SMTPS connection.")
-    with SmtpMailer(smtp_config) as mailer:
-        _verbose(args.verbose, "SMTPS connection opened and login completed.")
-        return _process_recipients(
-            mailer=mailer,
-            template_path=mode.template_path,
-            signature_path=signature_path,
-            log_path=mode.log_path,
-            recipients=recipients_to_process,
-            attachments=attachments,
-            subject_override=args.subject,
-            signature_image_path=signature_logo_path,
-            signature_image_width=args.signature_logo_width,
-            dry_run=False,
-            log_dry_run=args.log_dry_run,
-            write_sent_log=not args.no_write_sent_log,
-            verbose=args.verbose,
-        )
+    return _process_recipients(
+        mailer=None,
+        template_path=mode.template_path,
+        signature_path=signature_path,
+        log_path=mode.log_path,
+        recipients=recipients_to_process,
+        attachments=attachments,
+        subject_override=args.subject,
+        signature_image_path=signature_logo_path,
+        signature_image_width=args.signature_logo_width,
+        dry_run=False,
+        log_dry_run=args.log_dry_run,
+        write_sent_log=not args.no_write_sent_log,
+        verbose=args.verbose,
+        smtp_config=smtp_config,
+        parallel_threads=args.parallel_threads,
+    )
 
 
 def _delete_input_files(files: list[Path], verbose: bool) -> None:
@@ -322,59 +340,141 @@ def _process_recipients(
         log_dry_run: bool,
         write_sent_log: bool,
         verbose: bool,
+        smtp_config=None,
+        parallel_threads: int = 1,
 ) -> int:
     """Render and either dry-run or send each recipient while keeping the batch moving."""
-    errors = 0
     _info(f"Processing {len(recipients)} recipient(s).")
-    for recipient in recipients:
-        try:
-            _info(f"Preparing mail for {recipient.email}.")
-            _verbose(verbose, f"Rendering mail for {recipient.email}.")
-            rendered = render_mail(
-                template_path,
-                signature_path,
-                recipient,
+    worker_count = max(1, min(parallel_threads, len(recipients) or 1))
+    _info(f"Parallel recipient workers: {worker_count}.")
+
+    if worker_count == 1:
+        errors = 0
+        for recipient in recipients:
+            try:
+                _process_one_recipient(
+                    mailer=mailer,
+                    smtp_config=smtp_config,
+                    template_path=template_path,
+                    signature_path=signature_path,
+                    log_path=log_path,
+                    recipient=recipient,
+                    attachments=attachments,
+                    subject_override=subject_override,
+                    signature_image_path=signature_image_path,
+                    signature_image_width=signature_image_width,
+                    dry_run=dry_run,
+                    log_dry_run=log_dry_run,
+                    write_sent_log=write_sent_log,
+                    verbose=verbose,
+                )
+            except Exception as exc:  # Keep the batch moving and log the failed recipient.
+                errors += 1
+                print(f"[ERROR] {recipient.email} | {exc}")
+        _info(f"Recipient processing finished with {errors} error(s).")
+        return errors
+
+    errors = 0
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(
+                _process_one_recipient,
+                mailer=None,
+                smtp_config=smtp_config,
+                template_path=template_path,
+                signature_path=signature_path,
+                log_path=log_path,
+                recipient=recipient,
+                attachments=attachments,
                 subject_override=subject_override,
                 signature_image_path=signature_image_path,
                 signature_image_width=signature_image_width,
-            )
-            _verbose(verbose, f"Subject for {recipient.email}: {rendered.subject}")
-            _verbose(verbose, f"Text body length for {recipient.email}: {len(rendered.text_body)} characters.")
-            _verbose(verbose, f"HTML body length for {recipient.email}: {len(rendered.html_body)} characters.")
-            _verbose(verbose, f"Attachment count for {recipient.email}: {len(attachments)}")
-            _verbose(verbose, f"Inline image count for {recipient.email}: {len(rendered.inline_images)}")
-
-            if dry_run:
-                print(f"[DRY_RUN] {recipient.email} | {rendered.subject}")
-                if log_dry_run:
-                    append_log(log_path, recipient)
-                    _verbose(verbose, f"Dry-run logged to {log_path}.")
-                else:
-                    _verbose(verbose, "Dry-run was not written to CSV because --log-dry-run is not set.")
-                continue
-
-            if mailer is None:
-                raise RuntimeError("Mailer is required when dry_run is False.")
-
-            _verbose(verbose, f"Sending mail to '{recipient.email}'.")
-            _info(f"Sending mail to {recipient.email}.")
-            mailer.send(
-                recipient,
-                rendered.subject,
-                rendered.text_body,
-                rendered.html_body,
-                attachments,
-                rendered.inline_images,
-            )
-            print(f"[SENT] {recipient.email} | {rendered.subject}")
-            if write_sent_log:
-                append_log(log_path, recipient)
-                _verbose(verbose, f"Sent mail logged to {log_path}.")
-            else:
-                _verbose(verbose, "Sent mail was not written to CSV because --no-write-sent-log is set.")
-        except Exception as exc:  # Keep the batch moving and log the failed recipient.
-            errors += 1
-            print(f"[ERROR] {recipient.email} | {exc}")
+                dry_run=dry_run,
+                log_dry_run=log_dry_run,
+                write_sent_log=write_sent_log,
+                verbose=verbose,
+            ): recipient
+            for recipient in recipients
+        }
+        for future in as_completed(futures):
+            recipient = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                errors += 1
+                print(f"[ERROR] {recipient.email} | {exc}")
     _info(f"Recipient processing finished with {errors} error(s).")
 
     return errors
+
+
+def _process_one_recipient(
+        mailer: SmtpMailer | None,
+        smtp_config,
+        template_path: Path,
+        signature_path: Path,
+        log_path: Path,
+        recipient,
+        attachments: list[Path],
+        subject_override: str | None,
+        signature_image_path: Path,
+        signature_image_width: int,
+        dry_run: bool,
+        log_dry_run: bool,
+        write_sent_log: bool,
+        verbose: bool,
+) -> None:
+    _info(f"Preparing mail for {recipient.email}.")
+    _verbose(verbose, f"Rendering mail for {recipient.email}.")
+    rendered = render_mail(
+        template_path,
+        signature_path,
+        recipient,
+        subject_override=subject_override,
+        signature_image_path=signature_image_path,
+        signature_image_width=signature_image_width,
+    )
+    _verbose(verbose, f"Subject for {recipient.email}: {rendered.subject}")
+    _verbose(verbose, f"Text body length for {recipient.email}: {len(rendered.text_body)} characters.")
+    _verbose(verbose, f"HTML body length for {recipient.email}: {len(rendered.html_body)} characters.")
+    _verbose(verbose, f"Attachment count for {recipient.email}: {len(attachments)}")
+    _verbose(verbose, f"Inline image count for {recipient.email}: {len(rendered.inline_images)}")
+
+    if dry_run:
+        print(f"[DRY_RUN] {recipient.email} | {rendered.subject}")
+        if log_dry_run:
+            append_log(log_path, recipient)
+            _verbose(verbose, f"Dry-run logged to {log_path}.")
+        else:
+            _verbose(verbose, "Dry-run was not written to CSV because --log-dry-run is not set.")
+        return
+
+    if mailer is not None:
+        _send_with_mailer(mailer, recipient, rendered, attachments, log_path, write_sent_log, verbose)
+        return
+
+    if smtp_config is None:
+        raise RuntimeError("SMTP config is required when dry_run is False.")
+
+    _verbose(verbose, "Opening SMTPS connection for recipient worker.")
+    with SmtpMailer(smtp_config) as worker_mailer:
+        _send_with_mailer(worker_mailer, recipient, rendered, attachments, log_path, write_sent_log, verbose)
+
+
+def _send_with_mailer(mailer: SmtpMailer, recipient, rendered, attachments: list[Path], log_path: Path, write_sent_log: bool, verbose: bool) -> None:
+    _verbose(verbose, f"Sending mail to '{recipient.email}'.")
+    _info(f"Sending mail to {recipient.email}.")
+    mailer.send(
+        recipient,
+        rendered.subject,
+        rendered.text_body,
+        rendered.html_body,
+        attachments,
+        rendered.inline_images,
+    )
+    print(f"[SENT] {recipient.email} | {rendered.subject}")
+    if write_sent_log:
+        append_log(log_path, recipient)
+        _verbose(verbose, f"Sent mail logged to {log_path}.")
+    else:
+        _verbose(verbose, "Sent mail was not written to CSV because --no-write-sent-log is set.")
