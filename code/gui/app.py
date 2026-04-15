@@ -269,8 +269,40 @@ class MailSenderWorkbench:
             widget = ttk.Checkbutton(parent, variable=var)
         elif spec.kind == "choice":
             widget = ttk.Combobox(parent, textvariable=var, values=spec.choices, state="readonly", width=28)
-        elif spec.kind in {"int", "float"} and spec.min_value is not None and spec.max_value is not None:
+        elif spec.kind in {"int", "float"} and spec.slider and spec.min_value is not None and spec.max_value is not None:
             wrapper = ttk.Frame(parent)
+            entry_var = tk.StringVar(value=str(var.get()))
+            updating = {"active": False}
+
+            def sync_entry(*_args, source_var=var, target_var=entry_var, integer=spec.kind == "int") -> None:
+                if updating["active"]:
+                    return
+                updating["active"] = True
+                value = source_var.get()
+                target_var.set(str(int(value)) if integer else str(round(float(value), 2)))
+                updating["active"] = False
+
+            def sync_slider(*_args, source_var=entry_var, target_var=var, setting=spec) -> None:
+                if updating["active"]:
+                    return
+                raw = source_var.get().strip()
+                if raw in {"", "-", "."}:
+                    return
+                try:
+                    parsed = float(raw)
+                except ValueError:
+                    return
+                if setting.min_value is not None:
+                    parsed = max(float(setting.min_value), parsed)
+                if setting.max_value is not None:
+                    parsed = min(float(setting.max_value), parsed)
+                updating["active"] = True
+                target_var.set(int(parsed) if setting.kind == "int" else parsed)
+                updating["active"] = False
+                self._schedule_autosave("env" if env else "settings")
+
+            var.trace_add("write", sync_entry)
+            entry_var.trace_add("write", sync_slider)
             if spec.kind == "int":
                 scale = ttk.Scale(
                     wrapper,
@@ -282,9 +314,9 @@ class MailSenderWorkbench:
                 )
             else:
                 scale = ttk.Scale(wrapper, from_=spec.min_value, to=spec.max_value, orient="horizontal", variable=var)
-            value_label = ttk.Label(wrapper, textvariable=var, width=8)
             scale.pack(side="left", fill="x", expand=True)
-            value_label.pack(side="right", padx=(8, 0))
+            value_entry = ttk.Entry(wrapper, textvariable=entry_var, width=8, justify="right")
+            value_entry.pack(side="right", padx=(8, 0))
             widget = wrapper
         elif spec.kind == "list":
             text = tk.Text(parent, height=5, width=46, wrap="word")

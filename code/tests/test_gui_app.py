@@ -134,6 +134,7 @@ def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: P
         assert "7" in command
         assert isinstance(app.variables["RESEARCH_MIN_COMPANIES"].get(), int)
         assert isinstance(app.variables["RESEARCH_MAX_COMPANIES"].get(), int)
+        assert "SMTP_PORT" in app.variables
     finally:
         root.destroy()
 

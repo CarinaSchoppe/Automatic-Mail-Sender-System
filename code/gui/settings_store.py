@@ -19,6 +19,7 @@ class SettingSpec:
     choices: tuple[str, ...] = ()
     min_value: float | None = None
     max_value: float | None = None
+    slider: bool = True
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -67,7 +68,7 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SAVE_VERBOSE_LOG", "Save run logs", "bool", True, "Logging", "Writes run output into timestamped files."),
     SettingSpec("VERBOSE_LOG_DIR", "Log directory", "str", "logs", "Logging", "Folder for saved run logs."),
     SettingSpec("SMTP_HOST", "SMTP host", "str", "smtp.hostinger.com", "SMTP", "SMTPS hostname."),
-    SettingSpec("SMTP_PORT", "SMTP port", "int", 465, "SMTP", "SMTPS port.", min_value=1, max_value=65535),
+    SettingSpec("SMTP_PORT", "SMTP port", "int", 465, "SMTP", "SMTPS port.", min_value=1, max_value=65535, slider=False),
     SettingSpec("SMTP_ENCRYPTION", "SMTP encryption", "choice", "ssl", "SMTP", "Encryption mode.", ("ssl",)),
     SettingSpec("SMTP_FROM_NAME", "From name", "str", "Carina Sophie Schoppe", "SMTP", "Display name used as sender."),
     SettingSpec("SMTP_FROM_EMAIL", "From email", "str", "info@carinaschoppe.com", "SMTP", "Sender email address."),
