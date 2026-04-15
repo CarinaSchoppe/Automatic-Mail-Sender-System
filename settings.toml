@@ -5,7 +5,7 @@
 # Run
 
 # Run AI research first: Creates a fresh input CSV before the mail sender starts.
-RUN_AI_RESEARCH = true
+RUN_AI_RESEARCH = false
 
 # Mode: Selects which templates, input folder, attachments, and sent log are used.
 MODE = "PhD"
@@ -87,16 +87,22 @@ SEND_TARGET_COUNT = 500
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 25
+PARALLEL_THREADS = 15
 
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
-VERIFY_EMAIL_SMTP = true
+VERIFY_EMAIL_SMTP = false
+
+# Skip DNS verification: If checked, skips MX/A record checks but still validates syntax and deduplication.
+SKIP_EMAIL_DNS_CHECK = true
 
 # Verify timeout: Timeout for recipient SMTP probe.
 VERIFY_EMAIL_SMTP_TIMEOUT = 8.0
 
 # Resend existing: Allows sending to addresses already present in output logs.
 RESEND_EXISTING = false
+
+# Skip invalid check: If checked, skips recipients already listed in invalid_mails.csv.
+SKIP_INVALID_CHECK = true
 
 # Allow empty attachments: Allows running a mode even when the attachment folder is empty.
 ALLOW_EMPTY_ATTACHMENTS = false
@@ -114,7 +120,7 @@ DELETE_INPUT_AFTER_SUCCESS = false
 SIGNATURE_LOGO = "templates/signature-logo.png"
 
 # Logo width: Inline signature logo width in pixels.
-SIGNATURE_LOGO_WIDTH = 350
+SIGNATURE_LOGO_WIDTH = 250
 
 
 # Logging

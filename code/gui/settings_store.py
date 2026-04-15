@@ -58,6 +58,7 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SKIP_EMAIL_DNS_CHECK", "Skip DNS verification", "bool", False, "Mail", "If checked, skips MX/A record checks but still validates syntax and deduplication."),
     SettingSpec("VERIFY_EMAIL_SMTP_TIMEOUT", "Verify timeout", "float", 8.0, "Mail", "Timeout for recipient SMTP probe.", min_value=1, max_value=60),
     SettingSpec("RESEND_EXISTING", "Resend existing", "bool", False, "Mail", "Allows sending to addresses already present in output logs."),
+    SettingSpec("SKIP_INVALID_CHECK", "Skip invalid check", "bool", True, "Mail", "If checked, skips recipients already listed in invalid_mails.csv."),
     SettingSpec("ALLOW_EMPTY_ATTACHMENTS", "Allow empty attachments", "bool", False, "Mail", "Allows running a mode even when the attachment folder is empty."),
     SettingSpec("LOG_DRY_RUN", "Log dry-run", "bool", False, "Mail", "Writes dry-run recipients to sent logs."),
     SettingSpec("WRITE_SENT_LOG", "Write sent log", "bool", True, "Mail", "Writes successful real sends to output/send_*.csv."),

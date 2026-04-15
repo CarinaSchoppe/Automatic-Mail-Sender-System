@@ -38,7 +38,7 @@ def append_log(
         recipient.company,
         recipient.email,
         datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
-    ])
+    ], unique_index=1)
 
 
 def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> None:
@@ -47,7 +47,7 @@ def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> N
         recipient.email,
         reason,
         datetime.now(ZoneInfo("Australia/Brisbane")).isoformat(timespec="minutes"),
-    ])
+    ], unique_index=1)
 
 
 def read_logged_emails(log_path: Path) -> set[str]:
@@ -109,10 +109,25 @@ def read_known_output_emails(output_dir: Path) -> set[str]:
     return emails
 
 
-def _append_csv_row(path: Path, headers: list[str], row: list[str]) -> None:
+def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _CSV_WRITE_LOCK:
         file_exists = path.exists()
+        if file_exists and unique_index is not None and len(row) > unique_index:
+            val_to_check = row[unique_index].lower()
+            try:
+                # Efficiently check for existing value before opening for append
+                with path.open("r", encoding="utf-8-sig", newline="") as f:
+                    reader = csv.reader(f)
+                    try:
+                        next(reader) # skip header
+                        for existing_row in reader:
+                            if len(existing_row) > unique_index and existing_row[unique_index].lower() == val_to_check:
+                                return # Already exists
+                    except StopIteration:
+                        pass
+            except (OSError, csv.Error):
+                pass
 
         with path.open("a", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f)

@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-write-sent-log", action="store_true", help="Do not write successfully sent emails to the CSV log.")
     parser.add_argument("--delete-input-after-success", action="store_true", help="Delete processed .csv/.txt input files after a successful real send run.")
     parser.add_argument("--resend-existing", action="store_true", help="Ignore addresses already present in the mode CSV log.")
+    parser.add_argument("--skip-invalid-check", action="store_true", help="Skip recipients already listed in invalid_mails.csv.")
     parser.add_argument("--allow-empty-attachments", action="store_true", help="Allow sending even if the mode attachment folder is empty.")
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
     parser.add_argument("--signature-logo", default="templates/signature-logo.png", help="Inline logo image used when the signature contains {IMAGE}.")
@@ -219,7 +220,7 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
             skipped_before_send += 1
             print(f"[SKIP] {recipient.email} is already present in an output CSV log; no mail will be created or sent.")
             continue
-        if email_key in invalid_emails:
+        if args.skip_invalid_check and email_key in invalid_emails:
             skipped_before_send += 1
             print(f"[SKIP_INVALID] {recipient.email} is already listed in invalid_mails.csv; no mail will be created or sent.")
             continue
@@ -275,6 +276,7 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
     print(f"Log file: {mode.log_path}")
     print(f"Invalid email log file: {invalid_log_path}")
     print("Existing CSV check: disabled (--resend-existing)" if args.resend_existing else "Existing CSV check: enabled")
+    print("Invalid CSV check: enabled (--skip-invalid-check)" if args.skip_invalid_check else "Invalid CSV check: disabled")
     print("Sending: yes" if args.send else "Sending: no (dry-run)")
     print("Dry-run CSV logging: yes" if args.log_dry_run else "Dry-run CSV logging: no")
     print("Sent CSV logging: no" if args.no_write_sent_log else "Sent CSV logging: yes")

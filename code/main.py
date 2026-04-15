@@ -62,6 +62,7 @@ VERBOSE: bool = cast(bool, _setting("VERBOSE", False))
 SAVE_VERBOSE_LOG: bool = cast(bool, _setting("SAVE_VERBOSE_LOG", True))
 VERBOSE_LOG_DIR: str = cast(str, _setting("VERBOSE_LOG_DIR", "logs"))
 RESEND_EXISTING: bool = cast(bool, _setting("RESEND_EXISTING", False))
+SKIP_INVALID_CHECK: bool = cast(bool, _setting("SKIP_INVALID_CHECK", True))
 SIGNATURE_LOGO: str = cast(str, _setting("SIGNATURE_LOGO", "templates/signature-logo.png"))
 SIGNATURE_LOGO_WIDTH: int = cast(int, _setting("SIGNATURE_LOGO_WIDTH", 325))
 ALLOW_EMPTY_ATTACHMENTS: bool = cast(bool, _setting("ALLOW_EMPTY_ATTACHMENTS", False))
@@ -126,7 +127,7 @@ def _print_effective_settings() -> None:
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
     _verbose(VERBOSE, f"Ollama settings: model={OLLAMA_MODEL}, base_url={OLLAMA_BASE_URL}.")
     _verbose(VERBOSE, f"Self research settings: pages={SELF_SEARCH_PAGES}, results_per_page={SELF_RESULTS_PER_PAGE}, crawl_max_pages_per_site={SELF_CRAWL_MAX_PAGES_PER_SITE}, crawl_depth={SELF_CRAWL_DEPTH}, keywords={SELF_SEARCH_KEYWORDS}.")
-    _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
+    _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, skip_invalid_check={SKIP_INVALID_CHECK}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
     _verbose(VERBOSE, f"Target loop max rounds (safety gate): {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited (0)'}.")
     _verbose(VERBOSE, f"Signature logo: {SIGNATURE_LOGO}, width={SIGNATURE_LOGO_WIDTH}.")
     _verbose(VERBOSE, f"Verbose log directory: {_resolve_log_dir()}.")
@@ -192,6 +193,7 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
         ("--send", SEND),
         ("--verbose", VERBOSE),
         ("--resend-existing", RESEND_EXISTING),
+        ("--skip-invalid-check", SKIP_INVALID_CHECK),
         ("--allow-empty-attachments", ALLOW_EMPTY_ATTACHMENTS),
         ("--log-dry-run", LOG_DRY_RUN),
         ("--no-write-sent-log", not WRITE_SENT_LOG),
