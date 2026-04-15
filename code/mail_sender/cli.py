@@ -18,11 +18,13 @@ from mail_sender.templates import render_mail
 
 
 def _verbose(enabled: bool, message: str) -> None:
+    """Gibt eine Verbose-Meldung aus, wenn Verbose aktiv ist."""
     if enabled:
         print(f"[VERBOSE] {message}")
 
 
 def _info(message: str) -> None:
+    """Gibt eine normale Info-Meldung aus."""
     print(f"[INFO] {message}")
 
 
@@ -85,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _select_modes(mode_name: str, base_dir: Path):
+    """Waehlt Modi."""
     normalized = mode_name.strip().lower()
     if normalized != "auto":
         return [get_mode(mode_name, base_dir)]
@@ -151,6 +154,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
 
 
 def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:
+    """Kapselt den Arbeitsschritt _log_mode_paths."""
     _verbose(args.verbose, f"Base directory: {base_dir}")
     _verbose(args.verbose, f"Recipient input directory: {mode.recipients_dir}")
     _verbose(args.verbose, f"Mode template: {mode.template_path}")
@@ -163,6 +167,7 @@ def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_
 
 
 def _scan_recipient_files(args, mode) -> list[Path]:
+    """Durchsucht den Modusordner nach Empfaengerdateien."""
     _info("Scanning recipient input files.")
     recipient_files = list_recipient_files(mode.recipients_dir)
     if recipient_files:
@@ -176,6 +181,7 @@ def _scan_recipient_files(args, mode) -> list[Path]:
 
 
 def _load_attachments(args, mode) -> list[Path]:
+    """Laedt Anhaenge."""
     _info("Scanning attachment files for mail sending.")
     attachments = list_attachments(mode.attachments_dir)
     if attachments:
@@ -195,6 +201,7 @@ def _load_attachments(args, mode) -> list[Path]:
 
 
 def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[set[str], set[str]]:
+    """Laedt Logs fuer bereits gesendete und ungueltige Adressen."""
     _info("Loading sent and invalid email logs.")
     logged_emails = set() if args.resend_existing else read_known_output_emails(base_dir / "output")
     invalid_emails = read_invalid_emails(invalid_log_path)
@@ -209,6 +216,7 @@ def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[
 
 
 def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails: set[str], invalid_log_path: Path):
+    """Filtert Empfaenger."""
     _info("Validating and filtering recipients.")
     recipients_to_process = []
     skipped_before_send = 0
@@ -257,6 +265,7 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
 
 
 def _apply_max_send_count(args, recipients_to_process):
+    """Begrenzt die Empfaengerliste auf die maximale Versandanzahl."""
     if args.max_send_count is None or len(recipients_to_process) <= args.max_send_count:
         return recipients_to_process
 
@@ -268,6 +277,7 @@ def _apply_max_send_count(args, recipients_to_process):
 
 
 def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send: int, attachments: list[Path], invalid_log_path: Path) -> None:
+    """Gibt die Zusammenfassung des aktuellen Versandmodus aus."""
     print(f"Mode: {mode.label}")
     print(f"Recipients loaded: {len(recipients)}")
     print(f"Recipients skipped before sending: {skipped_before_send}")
@@ -286,6 +296,7 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
 
 
 def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config) -> int:
+    """Versendet echte Mails oder fuehrt den Trockenlauf aus."""
     if not args.send:
         _info("Running dry-run rendering; no real emails will be sent.")
         return _process_recipients(
@@ -327,6 +338,7 @@ def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path
 
 
 def _delete_input_files(files: list[Path], verbose: bool) -> None:
+    """Loescht Eingabe Dateien."""
     _info(f"Deleting {len(files)} input file(s).")
     for path in files:
         path.unlink()
@@ -431,6 +443,7 @@ def _process_one_recipient(
         write_sent_log: bool,
         verbose: bool,
 ) -> None:
+    """Verarbeitet einen einzelnen Empfaenger bis zum Versand oder Trockenlauf."""
     _info(f"Preparing mail for {recipient.email}.")
     _verbose(verbose, f"Rendering mail for {recipient.email}.")
     rendered = render_mail(
@@ -469,6 +482,7 @@ def _process_one_recipient(
 
 
 def _send_with_mailer(mailer: SmtpMailer, recipient, rendered, attachments: list[Path], log_path: Path, write_sent_log: bool, verbose: bool) -> None:
+    """Versendet eine gerenderte Mail ueber den geoeffneten Mailer."""
     _verbose(verbose, f"Sending mail to '{recipient.email}'.")
     _info(f"Sending mail to {recipient.email}.")
     mailer.send(

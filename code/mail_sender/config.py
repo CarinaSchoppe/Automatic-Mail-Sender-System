@@ -1,3 +1,5 @@
+"""Laedt die SMTP-Konfiguration aus Umgebung und Settings-Datei."""
+
 from __future__ import annotations
 
 import os
@@ -14,6 +16,7 @@ except ImportError:  # pragma: no cover
 
 
     def _dotenv_load_stub():
+        """Kapselt den Arbeitsschritt _dotenv_load_stub."""
         return False
 
 
@@ -29,6 +32,7 @@ class ConfigError(RuntimeError):
 
 @dataclass(frozen=True)
 class SmtpConfig:
+    """Buendelt alle Werte, die fuer die SMTP-Verbindung benoetigt werden."""
     host: str
     port: int
     username: str
@@ -39,6 +43,7 @@ class SmtpConfig:
 
 
 def _load_settings() -> dict:
+    """Laedt Einstellungen."""
     if not SETTINGS_PATH.exists():
         return {}
     try:
@@ -51,6 +56,7 @@ def _load_settings() -> dict:
 
 
 def load_smtp_config(require_password: bool) -> SmtpConfig:
+    """Laedt smtp Konfiguration."""
     if load_dotenv is not None:
         load_dotenv()
 
@@ -60,6 +66,7 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         # 1. OS Env
         # 2. settings.toml
         # 3. default
+        """Ermittelt die benoetigten Werte."""
         val = os.getenv(key)
         if val is not None:
             return val.strip()

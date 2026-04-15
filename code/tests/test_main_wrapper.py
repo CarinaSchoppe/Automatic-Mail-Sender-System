@@ -74,7 +74,7 @@ def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
         runpy.run_path(
             "code/main.py",
             run_name="__main__",
-            init_globals={"SEND": False, "SEND_TARGET_COUNT": 0},
+            init_globals={"RUN_AI_RESEARCH": True, "SEND": False, "SEND_TARGET_COUNT": 0},
         )
 
     assert exc_info.value.code == 0

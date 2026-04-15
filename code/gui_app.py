@@ -1,3 +1,5 @@
+"""Startet die grafische Workbench als schlanker Einstiegspunkt."""
+
 from __future__ import annotations
 
 from gui.app import main

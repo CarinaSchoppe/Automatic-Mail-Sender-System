@@ -1,3 +1,8 @@
+"""
+Client-Implementierung für die Kommunikation mit der OpenAI Responses API.
+Beinhaltet Datei-Uploads für Kontext und automatische Wiederholungsversuche bei Rate-Limits.
+"""
+
 from __future__ import annotations
 
 import os
@@ -24,6 +29,20 @@ def generate_with_openai(
         verbose: bool = False,
         load_env: Callable[[], object] = load_dotenv,
 ) -> str | None | Any:
+    """
+    Führt eine Anfrage an OpenAI durch, lädt Anhänge hoch und verarbeitet die Antwort.
+    
+    Args:
+        model (str): Das zu verwendende OpenAI-Modell.
+        prompt (str): Der Text-Prompt.
+        attachment_paths (list[Path]): Pfade zu Dateien für den Kontext.
+        reasoning_effort (str): Stufe der Denk-Leistung.
+        verbose (bool): Detailliertes Logging.
+        load_env (Callable): Funktion zum Laden der Umgebungsvariablen.
+        
+    Returns:
+        Das Ergebnis als String (meist CSV).
+    """
     load_env()
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:

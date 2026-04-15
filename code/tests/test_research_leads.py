@@ -589,7 +589,7 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
 
 def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
     monkeypatch.setattr(
-        research_leads,
+        providers,
         "generate_with_gemini",
         lambda model, prompt, attachments, reasoning_effort="middle", verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
     )
@@ -614,7 +614,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
-    def fake_generate(attachments, *args, **kwargs):
+    def fake_generate(model, prompt, attachments, *args, **kwargs):
         verbose = kwargs.get("verbose", False)
         assert attachments == []
         assert verbose is True
@@ -639,7 +639,7 @@ def test_run_research_retries_without_attachments_after_empty_response(
     cv.write_text("cv", encoding="utf-8")
     calls = []
 
-    def fake_generate(attachments, *args, **kwargs):
+    def fake_generate(model, prompt, attachments, *args, **kwargs):
         calls.append(attachments)
         if attachments and len(calls) == 1:
             return ""
@@ -662,7 +662,7 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
 ) -> None:
     calls = []
 
-    def fake_generate(prompt, *args, **kwargs):
+    def fake_generate(model, prompt, *args, **kwargs):
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
@@ -694,7 +694,7 @@ def test_model_for_provider_uses_provider_specific_env(monkeypatch: pytest.Monke
 
 def test_generate_with_provider_selects_openai_and_rejects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        research_leads,
+        providers,
         "generate_with_openai",
         lambda model, prompt, attachments, reasoning_effort="middle", verbose=False: "company,mail,source_url\nA,a@example.com,https://a.example/contact\n",
     )
@@ -717,7 +717,7 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
     assert result == 0
     assert "New recipients: 1" in capsys.readouterr().out
 
-    def broken_run():
+    def broken_run(_cfg):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(research_leads, "run_research", broken_run)
@@ -731,7 +731,7 @@ def test_generate_with_gemini_requires_api_key(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
-        research_leads.generate_with_gemini("model", "prompt", [])
+        providers.generate_with_gemini("model", "prompt", [])
 
 
 def test_generate_with_openai_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -739,7 +739,7 @@ def test_generate_with_openai_requires_api_key(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
-        research_leads.generate_with_openai("model", "prompt", [])
+        providers.generate_with_openai("model", "prompt", [])
 
 
 def test_generate_with_openai_uses_web_search_and_uploaded_files(
@@ -788,7 +788,7 @@ def test_generate_with_openai_uses_web_search_and_uploaded_files(
     monkeypatch.setitem(sys.modules, "openai", fake_openai)
     monkeypatch.setenv("OPENAI_API_KEY", "key")
 
-    assert research_leads.generate_with_openai("gpt-5.4", "prompt", [attachment], "low", True) == (
+    assert providers.generate_with_openai("gpt-5.4", "prompt", [attachment], "low", True) == (
         "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
     output = capsys.readouterr().out
@@ -819,10 +819,11 @@ def test_generate_with_openai_reads_output_content_when_output_text_empty(monkey
 
     fake_openai = py_types.ModuleType("openai")
     fake_openai.OpenAI = FakeOpenAI
+    fake_openai.RateLimitError = type("RateLimitError", (Exception,), {})
     monkeypatch.setitem(sys.modules, "openai", fake_openai)
     monkeypatch.setenv("OPENAI_API_KEY", "key")
 
-    assert research_leads.generate_with_openai("gpt-5.4", "prompt", [], "middle", False) == (
+    assert providers.generate_with_openai("gpt-5.4", "prompt", [], "middle", False) == (
         "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
     )
 
@@ -857,10 +858,11 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             # args[1] might be contents list in Gemini API
             contents = kwargs.get("contents", args[1] if len(args) > 1 else [])
             assert contents == ["prompt", uploaded]
-            assert config.temperature == 0.3
-            assert config.thinking_config.thinking_level.name == "FULL"
-            assert config.tool_config.function_calling_config.mode == "AUTO"
-            assert config.tool_config.include_server_side_tool_invocations is True
+            config_val = kwargs.get("config")
+            assert config_val.temperature == 0.3
+            assert config_val.thinking_config.thinking_level.name == "FULL"
+            assert config_val.tool_config.function_calling_config.mode == "AUTO"
+            assert config_val.tool_config.include_server_side_tool_invocations is True
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
@@ -1049,12 +1051,15 @@ def test_generate_with_openai_fakes_csv_extension(
     captured_paths = []
 
     class FakeFiles:
-        pass
+        @staticmethod
+        def create(file, purpose: str):
+            captured_paths.append(Path(file.name))
+            return py_types.SimpleNamespace(id="file_123")
 
     class FakeResponses:
         @staticmethod
         def create(*args, **kwargs):
-            return py_types.SimpleNamespace(output_text='{"leads": []}')
+            return py_types.SimpleNamespace(output_text='{"leads": []}', output=[])
 
     class FakeClient:
         def __init__(self, *args, **kwargs) -> None:
@@ -1185,7 +1190,7 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
 
 
 def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    def broken_parse():
+    def broken_parse(*_args, **_kwargs):
         raise ValueError("bad csv")
 
     monkeypatch.setattr(research_leads, "parse_recipients", broken_parse)
@@ -1229,7 +1234,7 @@ def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
 
 
 def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    def broken_dialect():
+    def broken_dialect(*_args, **_kwargs):
         raise csv.Error("bad dialect")
 
     monkeypatch.setattr(research_leads, "detect_dialect", broken_dialect)

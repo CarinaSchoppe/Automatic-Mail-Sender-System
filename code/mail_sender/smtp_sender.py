@@ -1,3 +1,5 @@
+"""Kapselt SMTPS-Verbindungen und den Versand gerenderter Mails."""
+
 from __future__ import annotations
 
 import mimetypes
@@ -14,11 +16,14 @@ from mail_sender.templates import InlineImage
 
 
 class SmtpMailer:
+    """Verwaltet eine SMTPS-Sitzung und verschickt MIME-Nachrichten."""
     def __init__(self, config: SmtpConfig) -> None:
+        """Initialisiert die Instanz und ihre benoetigten Zustandswerte."""
         self._config = config
         self._server: smtplib.SMTP_SSL | None = None
 
     def __enter__(self) -> "SmtpMailer":
+        """Oeffnet die Ressource fuer die Nutzung im Context Manager."""
         context = ssl.create_default_context()
         server = smtplib.SMTP_SSL(self._config.host, self._config.port, context=context)
         server.login(self._config.username, self._config.password)
@@ -26,6 +31,7 @@ class SmtpMailer:
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
+        """Schliesst die Ressource beim Verlassen des Context Managers."""
         if self._server is not None:
             self._server.quit()
             self._server = None
@@ -39,6 +45,7 @@ class SmtpMailer:
             attachments: list[Path],
             inline_images: list[InlineImage],
     ) -> None:
+        """Versendet Daten."""
         if self._server is None:
             raise RuntimeError("SMTP connection is not open.")
 
@@ -75,6 +82,7 @@ class SmtpMailer:
 
 
 def guess_content_type(path: Path, fallback: tuple[str, str]) -> tuple[str, str]:
+    """Ermittelt content type."""
     content_type, encoding = mimetypes.guess_type(path)
     if content_type is None or encoding is not None:
         return fallback

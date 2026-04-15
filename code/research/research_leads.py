@@ -60,18 +60,37 @@ COMPANY_KEYS = {"company", "firma", "organisation", "organization", "name"}
 
 
 def generate_with_provider(*args, **kwargs):
+    """
+    Delegiert den Aufruf zur Generierung von Leads an den entsprechenden Provider-Client.
+    
+    Args:
+        *args: Variable Positionsargumente.
+        **kwargs: Variable Schlüsselwortargumente.
+        
+    Returns:
+        Das Ergebnis der Lead-Generierung (meist ein CSV-String).
+    """
     return _providers.generate_with_provider(*args, **kwargs)
 
 
 def generate_with_gemini(*args, **kwargs):
+    """
+    Delegiert den Aufruf zur Generierung von Leads spezifisch an Google Gemini.
+    """
     return _gemini_generate(*args, **kwargs)
 
 
 def generate_with_openai(*args, **kwargs):
+    """
+    Delegiert den Aufruf zur Generierung von Leads spezifisch an OpenAI.
+    """
     return _openai_generate(*args, **kwargs)
 
 
 def generate_with_ollama(*args, **kwargs):
+    """
+    Delegiert den Aufruf zur Generierung von Leads spezifisch an eine lokale Ollama-Instanz.
+    """
     return _ollama_generate(*args, **kwargs)
 
 
@@ -89,7 +108,20 @@ DefaultCsvDialect = _parsing.DefaultCsvDialect
 
 
 class ThreadSafeRecipientSink:
+    """
+    Ein thread-sicherer Container zum Sammeln von validierten Leads (Empfängern).
+    Verhindert doppelte Einträge und bricht die Suche ab, sobald das Ziel erreicht ist.
+    """
     def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig):
+        """
+        Initialisiert den Sink mit Zielvorgaben und bereits bekannten Daten.
+        
+        Args:
+            target_count (int): Anzahl der insgesamt gewünschten E-Mail-Adressen.
+            seen_emails (set[str]): Menge der bereits kontaktierten E-Mails (Deduplizierung).
+            seen_companies (set[str]): Menge der bereits recherchierten Firmen.
+            config (ResearchConfig): Die aktuelle Recherche-Konfiguration.
+        """
         self.target_count = target_count
         self.seen_emails = {email.lower() for email in seen_emails}
         self.seen_companies = {company for company in seen_companies if company}
@@ -98,6 +130,15 @@ class ThreadSafeRecipientSink:
         self.lock = threading.Lock()
 
     def add_recipient(self, recipient: Recipient) -> bool:
+        """
+        Versucht einen neuen Empfänger hinzuzufügen. Prüft auf Duplikate und Zielerreichung.
+        
+        Args:
+            recipient (Recipient): Der gefundene Lead.
+            
+        Returns:
+            bool: True, wenn das Gesamtziel (target_count) erreicht wurde, andernfalls False.
+        """
         email_key = recipient.email.lower()
         company_key = _normalize_company(recipient.company)
 
@@ -144,10 +185,12 @@ class ThreadSafeRecipientSink:
             return True
 
     def is_full(self) -> bool:
+        """Prueft Kapazitaet."""
         with self.lock:
             return len(self.recipients) >= self.target_count
 
     def is_seen(self, email: str, company: str | None = None) -> bool:
+        """Prueft Duplikate."""
         email_key = email.lower()
         company_key = _normalize_company(company) if company else None
         with self.lock:
@@ -159,6 +202,7 @@ class ThreadSafeRecipientSink:
 
 
 def _load_settings() -> dict:
+    """Laedt Einstellungen."""
     settings_path = CODE_DIR.parent / "settings.toml"
     if not settings_path.exists():
         return {}
@@ -172,10 +216,12 @@ def _load_settings() -> dict:
 
 
 def default_config() -> ResearchConfig:
+    """Erzeugt Standardwerte fuer Konfiguration."""
     load_dotenv()
     settings = _load_settings()
 
     def _get(key: str, default):
+        """Ermittelt Daten."""
         val = os.getenv(key)
         if val is not None:
             if isinstance(default, bool):
@@ -230,6 +276,7 @@ def default_config() -> ResearchConfig:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Startet Daten."""
     args_list = argv if argv is not None else sys.argv[1:]
     config = parse_args(args_list)
     try:
@@ -246,6 +293,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def parse_args(argv: list[str]) -> ResearchConfig:
+    """Parst Argumente."""
     env_config = default_config()
     parser = argparse.ArgumentParser(description="research new lead CSV files with AI providers or self-hosted web scraping.")
     parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai", "ollama", "self"], help="Research provider.")
@@ -532,6 +580,7 @@ def _generate_research_response(
         input_context: str,
         stop_event: threading.Event | None = None,
 ) -> str | None | Any:
+    """Generiert Recherche Antwort."""
     if stop_event and stop_event.is_set():
         return ""
 
@@ -583,10 +632,12 @@ def run_ollama_web_research(
         existing_emails: set[str],
         existing_companies: set[str],
 ) -> list[Recipient]:
+    """Fuehrt aus Ollama-Ausgabe web Recherche."""
     return _self_research.run_ollama_web_research(config, mode, existing_emails, existing_companies)
 
 
 def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
+    """Fuehrt die Logik fuer self_search_queries aus."""
     return _self_research.self_search_queries(config, mode)
 
 
@@ -611,6 +662,7 @@ def _fetch_text(*args, **kwargs):
 
 
 def normalize_company(company: str) -> str:
+    """Normalisiert Unternehmen."""
     return _parsing.normalize_company(company)
 
 
@@ -618,6 +670,7 @@ _normalize_company = normalize_company
 
 
 def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path]:
+    """Listet resume Anhaenge."""
     all_attachments = list_attachments(directory)
     _verbose(verbose, f"Attachment files found before CV/resume filter: {len(all_attachments)}")
     resume_attachments = [
@@ -642,6 +695,7 @@ def list_research_context_files(mode: MailMode, verbose: bool = False) -> list[P
 
 
 def _needs_retry(raw_response: str, existing_emails: set[str], verbose: bool = False) -> bool:
+    """Prueft retry."""
     if _is_model_error(raw_response, verbose):
         return True
     _verbose(verbose, "No Model error")
@@ -654,6 +708,7 @@ def _needs_retry(raw_response: str, existing_emails: set[str], verbose: bool = F
 
 
 def _is_model_error(raw_response: str, verbose: bool = False) -> bool:
+    """Prueft model error."""
     if not raw_response or raw_response == "":
         return True
 
@@ -671,6 +726,7 @@ def _is_model_error(raw_response: str, verbose: bool = False) -> bool:
 
 
 def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
+    """Sammelt bestehende Eintraege E-Mails."""
     emails: set[str] = set()
     output_dir = base_dir / "output"
 
@@ -713,10 +769,12 @@ def collect_mode_existing_companies(mode: MailMode, verbose: bool = False) -> se
 
 
 def _is_verbose_log_enabled(verbose: bool) -> bool:
+    """Prueft Verbose-Ausgabe Logdaten enabled."""
     return verbose
 
 
 def read_input_context(directory: Path, max_chars: int = 6000, verbose: bool = False) -> str:
+    """Liest Eingabe context."""
     parts: list[str] = []
     files = list_recipient_files(directory)
     _verbose(verbose, f"Input context files found: {len(files)}.")
@@ -783,6 +841,7 @@ def build_prompt(
 
 
 def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Recipient]) -> Path:
+    """Schreibt Empfaenger CSV-Daten."""
     directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_mode = mode_label.lower().replace(" ", "_")
@@ -797,6 +856,7 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
 
 
 def _model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:
+    """Fuehrt die Logik fuer _model_for_provider aus."""
     normalized = provider.strip().lower()
     if normalized == "self":
         return "self"

@@ -1,3 +1,5 @@
+"""Rendert Mailvorlagen, Signaturen und Inline-Bilder."""
+
 from __future__ import annotations
 
 import html
@@ -12,6 +14,7 @@ from mail_sender.recipients import Recipient
 
 @dataclass(frozen=True)
 class InlineImage:
+    """Beschreibt ein Inline-Bild fuer HTML-Mails."""
     path: Path
     cid: str
     width: int
@@ -19,6 +22,7 @@ class InlineImage:
 
 @dataclass(frozen=True)
 class RenderedMail:
+    """Enthaelt alle gerenderten Inhalte einer versandfertigen Mail."""
     subject: str
     text_body: str
     html_body: str
@@ -33,6 +37,7 @@ def render_mail(
         signature_image_path: Path | None = None,
         signature_image_width: int = 180,
 ) -> RenderedMail:
+    """Rendert Mail."""
     if not template_path.exists():
         raise FileNotFoundError(f"Mail template not found: {template_path}")
     if not signature_path.exists():
@@ -75,6 +80,7 @@ def render_mail(
 
 
 def _split_subject(text: str) -> tuple[str, str]:
+    """Kapselt den Arbeitsschritt _split_subject."""
     lines = text.splitlines()
     if lines and lines[0].lower().startswith("subject:"):
         subject = lines[0].split(":", 1)[1].strip()
@@ -87,15 +93,18 @@ def _split_subject(text: str) -> tuple[str, str]:
 
 
 def _render_text_signature(signature: str) -> str:
+    """Rendert Text Signatur."""
     return signature.replace("{IMAGE}", "[Logo]").strip()
 
 
 def _text_to_html(text: str) -> str:
+    """Kapselt den Arbeitsschritt _text_to_html."""
     escaped = html.escape(text).replace("\n", "<br>\n")
     return f"<html><body>{escaped}</body></html>"
 
 
 def _render_html_with_signature_image(body: str, signature: str, cid: str, width: int) -> str:
+    """Rendert HTML-Inhalt mit eingebundenem Signaturbild."""
     safe_body = html.escape(body.strip()).replace("\n", "<br>\n")
     image_html = (
         f'<img src="cid:{cid}" width="{width}" '

@@ -1,3 +1,5 @@
+"""Enthaelt gemeinsame Parser und Verbose-Helfer fuer Provider-Antworten."""
+
 from __future__ import annotations
 
 import contextlib
@@ -39,6 +41,7 @@ def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
 
 
 def extract_gemini_response_text(response) -> str | None | Any:
+    """Extrahiert Gemini-Ausgabe Antwort Text."""
     direct_text = getattr(response, "text", None)
     if direct_text:
         return direct_text
@@ -54,6 +57,7 @@ def extract_gemini_response_text(response) -> str | None | Any:
 
 
 def extract_openai_response_text(response) -> str | None | Any:
+    """Extrahiert OpenAI-Ausgabe Antwort Text."""
     output_text = getattr(response, "output_text", None)
     if output_text:
         return output_text
@@ -68,6 +72,7 @@ def extract_openai_response_text(response) -> str | None | Any:
 
 
 def verbose_openai_output(verbose: bool, response) -> None:
+    """Kapselt den Arbeitsschritt verbose_openai_output."""
     if not verbose:
         return
     output_items = getattr(response, "output", None) or []
@@ -82,6 +87,7 @@ def verbose_openai_output(verbose: bool, response) -> None:
 
 
 def verbose_gemini_candidates(verbose: bool, response) -> None:
+    """Kapselt den Arbeitsschritt verbose_gemini_candidates."""
     if not verbose:
         return
 

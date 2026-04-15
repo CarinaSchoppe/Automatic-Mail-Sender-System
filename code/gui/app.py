@@ -1,3 +1,5 @@
+"""Definiert die Tkinter-Workbench fuer Einstellungen, Laeufe und Ausgaben."""
+
 from __future__ import annotations
 
 import csv
@@ -39,6 +41,7 @@ HOVER_TEXTS = {
 
 
 def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
+    """Erstellt Variable."""
     value = source.get(spec.key, spec.default)
     if spec.kind == "bool":
         return tk.BooleanVar(value=bool(value))
@@ -50,6 +53,7 @@ def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
 
 
 def _make_tree(parent: ttk.Frame, columns: tuple[str, ...]) -> ttk.Treeview:
+    """Erstellt Tabellenansicht."""
     tree = ttk.Treeview(parent, columns=columns, show="headings")
     for column in columns:
         tree.heading(column, text=column)
@@ -77,6 +81,7 @@ class MailSenderWorkbench:
     }
 
     def __init__(self, root: tk.Tk | None = None, *, project_root: Path = PROJECT_ROOT) -> None:
+        """Initialisiert die Instanz und ihre benoetigten Zustandswerte."""
         self.root = root or tk.Tk()
         self.project_root = project_root
         self.settings_path = project_root / "settings.toml"
@@ -112,9 +117,11 @@ class MailSenderWorkbench:
         self.root.after(100, self._drain_queue)
 
     def run(self) -> None:
+        """Fuehrt den Arbeitsschritt aus."""
         self.root.mainloop()
 
     def _configure_styles(self) -> None:
+        """Kapselt den Arbeitsschritt _configure_styles."""
         style = ttk.Style(self.root)
         try:
             style.theme_use("clam")
@@ -196,6 +203,7 @@ class MailSenderWorkbench:
         style.configure("Header.TLabel", background=self.PALETTE["navy"], foreground="#ffffff")
 
     def _build_shell(self) -> None:
+        """Baut Fensterrahmen."""
         header = ttk.Frame(self.root, padding=(18, 14, 18, 10), style="Header.TFrame")
         header.pack(fill="x")
         ttk.Label(header, text="MailSenderSystem", font=("Segoe UI", 18, "bold"), style="Header.TLabel").pack(side="left")
@@ -242,24 +250,29 @@ class MailSenderWorkbench:
         ttk.Label(self.root, textvariable=self.status_var, style="Status.TLabel", padding=(16, 5)).pack(fill="x", side="bottom")
 
     def _toolbar_button(self, parent: ttk.Frame, text: str, command, *, style: str = "TButton") -> ttk.Button:
+        """Kapselt den Arbeitsschritt _toolbar_button."""
         button = ttk.Button(parent, text=text, command=command, style=style)
         button.pack(side="left", padx=4)
         self._attach_hover(button, HOVER_TEXTS.get(text, text))
         return button
 
     def _on_enter(self, text: str) -> None:
+        """Reagiert auf das Ereignis fuer enter."""
         if hasattr(self, "status_var") and self.status_var:
             self.status_var.set(text)
 
     def _on_leave(self) -> None:
+        """Reagiert auf das Ereignis fuer leave."""
         if hasattr(self, "status_var") and self.status_var:
             self.status_var.set("Ready.")
 
     def _attach_hover(self, widget: tk.Widget, text: str) -> None:
+        """Kapselt den Arbeitsschritt _attach_hover."""
         widget.bind("<Enter>", lambda _e: self._on_enter(text))
         widget.bind("<Leave>", lambda _e: self._on_leave())
 
     def _build_settings_tab(self) -> None:
+        """Baut Einstellungen Registerkarte."""
         top = ttk.Frame(self.settings_tab)
         top.pack(fill="x", pady=(0, 10))
         ttk.Checkbutton(top, text="Compact save: remove settings that match defaults", variable=self.compact_save).pack(side="left")
@@ -278,6 +291,7 @@ class MailSenderWorkbench:
                 self._add_setting_row(frame, row, spec)
 
     def _build_env_tab(self) -> None:
+        """Baut Umgebungswerte Registerkarte."""
         top = ttk.Frame(self.env_tab)
         top.pack(fill="x", pady=(0, 10))
         ttk.Label(top, text=f".env: {self.env_path}", style="Muted.TLabel").pack(side="left")
@@ -292,6 +306,7 @@ class MailSenderWorkbench:
                 self._add_setting_row(frame, row, spec, env=True)
 
     def _scrollable_body(self, parent: ttk.Frame) -> ttk.Frame:
+        """Kapselt den Arbeitsschritt _scrollable_body."""
         canvas = tk.Canvas(parent, borderwidth=0, highlightthickness=0, background=self.PALETTE["window_bg"])
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
         body = ttk.Frame(canvas, style="TFrame")
@@ -303,6 +318,7 @@ class MailSenderWorkbench:
         return body
 
     def _add_setting_row(self, parent: ttk.Frame, row: int, spec: SettingSpec, *, env: bool = False) -> None:
+        """Fuegt eine Einstellungszeile zum Formular hinzu."""
         ttk.Label(parent, text=spec.label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
         var = _create_variable(spec, self.env_values if env else self.values)
         variables = self.env_variables if env else self.variables
@@ -319,6 +335,7 @@ class MailSenderWorkbench:
             updating = {"active": False}
 
             def sync_entry(*_args, source_var=var, target_var=entry_var, integer=spec.kind == "int") -> None:
+                """Kapselt den Arbeitsschritt sync_entry."""
                 if updating["active"]:
                     return
                 updating["active"] = True
@@ -328,6 +345,7 @@ class MailSenderWorkbench:
                 updating["active"] = False
 
             def sync_slider(*_args, source_var=entry_var, target_var=var, setting=spec) -> None:
+                """Kapselt den Arbeitsschritt sync_slider."""
                 if updating["active"]:
                     return
                 raw = source_var.get().strip()
@@ -384,6 +402,7 @@ class MailSenderWorkbench:
         parent.columnconfigure(1, weight=1)
 
     def _build_prompts_tab(self) -> None:
+        """Baut Prompts Registerkarte."""
         top = ttk.Frame(self.prompts_tab)
         top.pack(fill="x", pady=(0, 10))
 
@@ -416,6 +435,7 @@ class MailSenderWorkbench:
         self._on_prompt_mode_change()
 
     def _on_prompt_mode_change(self, _event=None) -> None:
+        """Reagiert auf das Ereignis fuer Prompt Modus change."""
         if hasattr(self, "_last_prompt_mode") and self._last_prompt_mode:
             self.prompts[self._last_prompt_mode] = self.prompt_text.get("1.0", tk.END).strip()
 
@@ -437,6 +457,7 @@ class MailSenderWorkbench:
         self.prompt_text.insert("1.0", self.prompts.get(mode, ""))
 
     def _build_inputs_tab(self) -> None:
+        """Baut Eingaben Registerkarte."""
         toolbar = ttk.Frame(self.inputs_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         ttk.Label(toolbar, text="Mode").pack(side="left", padx=(0, 6))
@@ -471,6 +492,7 @@ class MailSenderWorkbench:
         self.file_viewer.bind("<KeyRelease>", self._on_input_edit)
 
     def _build_found_tab(self) -> None:
+        """Baut found Registerkarte."""
         toolbar = ttk.Frame(self.found_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
@@ -478,6 +500,7 @@ class MailSenderWorkbench:
         self.found_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_selected_file(self.found_tree, "found"))
 
     def _build_sent_tab(self) -> None:
+        """Baut versendete Eintraege Registerkarte."""
         toolbar = ttk.Frame(self.sent_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
@@ -493,6 +516,7 @@ class MailSenderWorkbench:
         self.sent_tree = self.sent_trees["PhD"]
 
     def _build_logs_tab(self) -> None:
+        """Baut Logdaten Registerkarte."""
         toolbar = ttk.Frame(self.logs_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
@@ -501,6 +525,7 @@ class MailSenderWorkbench:
         self.log_tree.bind("<Double-1>", lambda _event: self.open_selected_log_tab())
 
     def _build_console_tab(self) -> None:
+        """Baut console Registerkarte."""
         toolbar = ttk.Frame(self.console_tab)
         toolbar.pack(fill="x", pady=(0, 8))
         self._toolbar_button(toolbar, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
@@ -512,6 +537,7 @@ class MailSenderWorkbench:
 
     @staticmethod
     def _load_values(schema: list[SettingSpec], source: dict[str, Any], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> None:
+        """Laedt Werte."""
         for spec in schema:
             value = source.get(spec.key, spec.default)
             if spec.kind == "list" and spec.key in text_widgets:
@@ -521,13 +547,16 @@ class MailSenderWorkbench:
                 variables[spec.key].set(value)
 
     def _load_form_values(self) -> None:
+        """Laedt Formular Werte."""
         self._load_values(SETTINGS_SCHEMA, self.values, self.variables, self.text_widgets)
 
     def _load_env_values(self) -> None:
+        """Laedt Umgebungswerte Werte."""
         self._load_values(ENV_SCHEMA, self.env_values, self.env_variables, self.env_text_widgets)
 
     @staticmethod
     def _collect_values(schema: list[SettingSpec], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> dict[str, Any]:
+        """Sammelt Werte."""
         values: dict[str, Any] = {}
         for spec in schema:
             if spec.kind == "list" and spec.key in text_widgets:
@@ -538,17 +567,21 @@ class MailSenderWorkbench:
         return values
 
     def collect_form_values(self) -> dict[str, Any]:
+        """Sammelt Formular Werte."""
         return self._collect_values(SETTINGS_SCHEMA, self.variables, self.text_widgets)
 
     def collect_env_values(self) -> dict[str, Any]:
+        """Sammelt Umgebungswerte Werte."""
         return self._collect_values(ENV_SCHEMA, self.env_variables, self.env_text_widgets)
 
     def save_all(self) -> None:
+        """Speichert all."""
         self.save_settings()
         self.save_env()
         self.save_all_prompts()
 
     def save_all_prompts(self) -> None:
+        """Speichert all Prompts."""
         mode = self.prompt_mode_var.get()
         if mode:
             self.prompts[mode] = self.prompt_text.get("1.0", tk.END).strip()
@@ -564,6 +597,7 @@ class MailSenderWorkbench:
             self.status_var.set("Prompts saved successfully.")
 
     def _reset_current_prompt(self) -> None:
+        """Kapselt den Arbeitsschritt _reset_current_prompt."""
         from mail_sender.prompts import DEFAULT_PROMPTS
 
         mode = self.prompt_mode_var.get()
@@ -575,6 +609,7 @@ class MailSenderWorkbench:
                     self.status_var.set(f"Reset prompt for {mode} to default.")
 
     def save_settings(self) -> None:
+        """Speichert Einstellungen."""
         try:
             write_settings(self.settings_path, self.collect_form_values(), omit_defaults=self.compact_save.get())
         except OSError as exc:
@@ -583,6 +618,7 @@ class MailSenderWorkbench:
         self._append_console(f"[INFO] Saved settings to {self.settings_path}\n")
 
     def save_env(self) -> None:
+        """Speichert Umgebungswerte."""
         try:
             write_env(self.env_path, self.collect_env_values())
         except OSError as exc:
@@ -591,6 +627,7 @@ class MailSenderWorkbench:
         self._append_console(f"[INFO] Saved .env to {self.env_path}\n")
 
     def reload_settings(self) -> None:
+        """Kapselt den Arbeitsschritt reload_settings."""
         self._loading = True
         self.values = load_settings(self.settings_path)
         self.env_values = load_env(self.env_path)
@@ -602,6 +639,7 @@ class MailSenderWorkbench:
         self._append_console("[INFO] Reloaded settings.toml, .env and prompts.toml\n")
 
     def load_config_file(self) -> None:
+        """Laedt Konfiguration Datei."""
         selected = filedialog.askopenfilename(
             title="Load settings TOML",
             initialdir=str(self.project_root),
@@ -615,6 +653,7 @@ class MailSenderWorkbench:
         self._append_console(f"[INFO] Loaded settings config: {self.settings_path}\n")
 
     def save_config_file(self) -> None:
+        """Speichert Konfiguration Datei."""
         selected = filedialog.asksaveasfilename(
             title="Save settings TOML",
             initialdir=str(self.project_root),
@@ -627,6 +666,7 @@ class MailSenderWorkbench:
         self._append_console(f"[INFO] Saved settings config: {selected}\n")
 
     def refresh_tables(self) -> None:
+        """Aktualisiert Tabellen."""
         if hasattr(self, "found_tree"):
             self._refresh_found_mails()
         if hasattr(self, "sent_tree"):
@@ -637,6 +677,7 @@ class MailSenderWorkbench:
             self._refresh_logs()
 
     def _refresh_sent_mails(self) -> None:
+        """Aktualisiert versendete Eintraege mails."""
         for tree in self.sent_trees.values():
             tree.delete(*tree.get_children())
         output_dir = self.project_root / "output"
@@ -656,6 +697,7 @@ class MailSenderWorkbench:
                 continue
 
     def _refresh_found_mails(self) -> None:
+        """Aktualisiert found mails."""
         self.found_tree.delete(*self.found_tree.get_children())
         input_dir = self.project_root / "input"
         for path in sorted(input_dir.glob("*/*.csv")) if input_dir.exists() else []:
@@ -673,6 +715,7 @@ class MailSenderWorkbench:
                 continue
 
     def _refresh_input_files(self) -> None:
+        """Aktualisiert Eingabe Dateien."""
         self.input_tree.delete(*self.input_tree.get_children())
         input_dir = self.project_root / "input"
         selected_mode = self.input_mode_var.get()
@@ -684,6 +727,7 @@ class MailSenderWorkbench:
                     self.input_tree.insert("", "end", values=(path.name, mode, path.stat().st_size), tags=(str(path),))
 
     def import_input_file(self) -> None:
+        """Importiert Eingabe Datei."""
         selected = filedialog.askopenfilename(
             title="Import lead CSV/TXT",
             initialdir=str(self.project_root),
@@ -700,6 +744,7 @@ class MailSenderWorkbench:
         self.refresh_tables()
 
     def _show_selected_file(self, tree: ttk.Treeview, kind: str) -> None:
+        """Kapselt den Arbeitsschritt _show_selected_file."""
         selection = tree.selection()
         if not selection:
             return
@@ -726,11 +771,13 @@ class MailSenderWorkbench:
             self.file_viewer.config(state=tk.NORMAL)
 
     def _on_input_edit(self, _event=None) -> None:
+        """Reagiert auf das Ereignis fuer Eingabe edit."""
         if hasattr(self, "_save_after_id") and self._save_after_id:
             self.root.after_cancel(self._save_after_id)
         self._save_after_id = self.root.after(500, self._perform_input_save)
 
     def _perform_input_save(self) -> None:
+        """Kapselt den Arbeitsschritt _perform_input_save."""
         self._save_after_id = None
         if not hasattr(self, "current_view_path") or not hasattr(self, "current_view_kind"):
             return
@@ -747,6 +794,7 @@ class MailSenderWorkbench:
             self._append_console(f"[ERROR] Auto-save failed for {self.current_view_path.name}: {exc}\n")
 
     def _delete_selected_input(self) -> None:
+        """Loescht selected Eingabe."""
         selection = self.input_tree.selection()
         if not selection:
             messagebox.showinfo("No Selection", "Please select an input file to delete.")
@@ -778,6 +826,7 @@ class MailSenderWorkbench:
                 messagebox.showerror("Error", f"Could not delete file: {exc}")
 
     def _path_for_tree_row(self, kind: str, values: list[Any]) -> Path | None:
+        """Kapselt den Arbeitsschritt _path_for_tree_row."""
         if not values:
             return None
         filename = str(values[0])
@@ -794,6 +843,7 @@ class MailSenderWorkbench:
         return None
 
     def open_selected_log_tab(self) -> None:
+        """Oeffnet selected Logdaten Registerkarte."""
         selection = self.log_tree.selection()
         if not selection:
             return
@@ -814,9 +864,11 @@ class MailSenderWorkbench:
         self.notebook.select(frame)
 
     def close_tab(self, tab: ttk.Frame) -> None:
+        """Kapselt den Arbeitsschritt close_tab."""
         self.notebook.forget(tab)
 
     def _refresh_logs(self) -> None:
+        """Aktualisiert Logdaten."""
         self.log_tree.delete(*self.log_tree.get_children())
         log_dir_value = self.collect_form_values().get("VERBOSE_LOG_DIR", "logs") if self.variables else "logs"
         log_dir = Path(str(log_dir_value))
@@ -827,6 +879,7 @@ class MailSenderWorkbench:
             self.log_tree.insert("", "end", values=(path.name, _format_mtime(stat.st_mtime), stat.st_size))
 
     def start_process(self, script_args: list[str]) -> None:
+        """Startet Prozess."""
         if self.process and self.process.poll() is None:
             messagebox.showwarning("Process running", "A process is already running.")
             return
@@ -835,11 +888,13 @@ class MailSenderWorkbench:
         self._start_command(command)
 
     def start_mail_only(self) -> None:
+        """Startet Mail only."""
         self.save_all()
         command = self._mail_only_command()
         self._start_command(command)
 
     def _mail_only_command(self) -> list[str]:
+        """Kapselt den Arbeitsschritt _mail_only_command."""
         settings = self.collect_form_values()
         args = [
             sys.executable,
@@ -874,6 +929,7 @@ class MailSenderWorkbench:
         return args
 
     def _start_command(self, command: list[str]) -> None:
+        """Startet command."""
         if self.process and self.process.poll() is None:
             messagebox.showwarning("Process running", "A process is already running.")
             return
@@ -890,11 +946,13 @@ class MailSenderWorkbench:
         threading.Thread(target=self._read_process_output, daemon=True).start()
 
     def stop_process(self) -> None:
+        """Stoppt Prozess."""
         if self.process and self.process.poll() is None:
             self.process.kill()
             self._append_console("[INFO] Instant stop signal sent (SIGKILL).\n")
 
     def _read_process_output(self) -> None:
+        """Liest Prozess Ausgabe."""
         assert self.process is not None
         assert self.process.stdout is not None
         for line in self.process.stdout:
@@ -904,6 +962,7 @@ class MailSenderWorkbench:
         self.message_queue.put(("refresh", ""))
 
     def _drain_queue(self) -> None:
+        """Kapselt den Arbeitsschritt _drain_queue."""
         while True:
             try:
                 kind, payload = self.message_queue.get_nowait()
@@ -916,11 +975,13 @@ class MailSenderWorkbench:
         self.root.after(100, self._drain_queue)
 
     def _append_console(self, text: str) -> None:
+        """Schreibt Prozessausgaben an die Konsole."""
         if hasattr(self, "console") and self.console:
             self.console.insert("end", text)
             self.console.see("end")
 
     def _style_text_widget(self, widget: tk.Text) -> None:
+        """Kapselt den Arbeitsschritt _style_text_widget."""
         widget.configure(
             background=self.PALETTE["surface"],
             foreground=self.PALETTE["text"],
@@ -933,6 +994,7 @@ class MailSenderWorkbench:
         )
 
     def _schedule_autosave(self, target: str = "all") -> None:
+        """Kapselt den Arbeitsschritt _schedule_autosave."""
         if self._loading or not self.autosave.get():
             return
         self._autosave_target = target
@@ -941,6 +1003,7 @@ class MailSenderWorkbench:
         self._autosave_after_id = self.root.after(500, self._autosave_now)
 
     def _autosave_now(self) -> None:
+        """Kapselt den Arbeitsschritt _autosave_now."""
         self._autosave_after_id = None
         if self._autosave_target == "settings":
             self.save_settings()
@@ -950,18 +1013,21 @@ class MailSenderWorkbench:
             self.save_all()
 
     def _auto_refresh_tick(self) -> None:
+        """Kapselt den Arbeitsschritt _auto_refresh_tick."""
         if self.auto_refresh.get():
             self.refresh_tables()
         self.root.after(5000, self._auto_refresh_tick)
 
 
 def _format_mtime(timestamp: float) -> str:
+    """Formatiert Aenderungszeit."""
     from datetime import datetime
 
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _mode_from_output_filename(filename: str) -> str:
+    """Kapselt den Arbeitsschritt _mode_from_output_filename."""
     normalized = filename.lower()
     if "phd" in normalized:
         return "PhD"
@@ -971,6 +1037,7 @@ def _mode_from_output_filename(filename: str) -> str:
 
 
 def main() -> int:
+    """Startet den jeweiligen Ablauf."""
     root = tk.Tk()
     app = MailSenderWorkbench(root)
     app.run()

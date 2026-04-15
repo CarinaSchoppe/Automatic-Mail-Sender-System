@@ -34,6 +34,7 @@ def append_log(
         log_path: Path,
         recipient: Recipient,
 ) -> None:
+    """Haengt einen Versanddatensatz an die Logdatei an."""
     _append_csv_row(log_path, HEADERS, [
         recipient.company,
         recipient.email,
@@ -42,6 +43,7 @@ def append_log(
 
 
 def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> None:
+    """Haengt eine ungueltige E-Mail an das Fehlerlog an."""
     _append_csv_row(log_path, INVALID_HEADERS, [
         recipient.company,
         recipient.email,
@@ -51,6 +53,7 @@ def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> N
 
 
 def read_logged_emails(log_path: Path) -> set[str]:
+    """Liest logged E-Mails."""
     rows = read_logged_rows(log_path)
     return {row["mail"] for row in rows if row["mail"]}
 
@@ -94,10 +97,12 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
 
 
 def read_invalid_emails(log_path: Path) -> set[str]:
+    """Liest ungueltige Eintraege E-Mails."""
     return read_logged_emails(log_path)
 
 
 def read_known_output_emails(output_dir: Path) -> set[str]:
+    """Liest bekannte Eintraege Ausgabe E-Mails."""
     if not output_dir.exists() or not output_dir.is_dir():
         return set()
 
@@ -110,6 +115,7 @@ def read_known_output_emails(output_dir: Path) -> set[str]:
 
 
 def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index: int | None = None) -> None:
+    """Haengt eine Zeile an eine CSV-Datei an."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with _CSV_WRITE_LOCK:
         file_exists = path.exists()
@@ -137,6 +143,7 @@ def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index
 
 
 def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
+    """Findet Kopfzeile index."""
     for index, value in enumerate(header, start=1):
         if normalize_key(value) in allowed_keys:
             return index

@@ -1,3 +1,5 @@
+"""Liest und normalisiert Empfaengerlisten aus CSV- und Textdateien."""
+
 from __future__ import annotations
 
 import csv
@@ -11,18 +13,22 @@ RECIPIENT_FILE_SUFFIXES = {".csv", ".txt"}
 
 @dataclass(frozen=True)
 class Recipient:
+    """Beschreibt einen einzelnen Mail-Empfaenger und seine Vorlagendaten."""
     email: str
     company: str = ""
 
     @property
     def greeting(self) -> str:
+        """Kapselt den Arbeitsschritt greeting."""
         return "Hello"
 
     @property
     def company_or_email(self) -> str:
+        """Kapselt den Arbeitsschritt company_or_email."""
         return self.company or self.email
 
     def template_context(self) -> dict[str, str]:
+        """Kapselt den Arbeitsschritt template_context."""
         context = {
             "email": self.email,
             "mail": self.email,
@@ -34,6 +40,7 @@ class Recipient:
 
 
 def read_recipients(path: Path) -> list[Recipient]:
+    """Liest Empfaenger."""
     if not path.exists():
         raise FileNotFoundError(f"Recipient file not found: {path}")
 
@@ -51,6 +58,7 @@ def read_recipients(path: Path) -> list[Recipient]:
 
 
 def read_recipients_from_dir(directory: Path) -> list[Recipient]:
+    """Liest Empfaenger from dir."""
     if not directory.exists():
         raise FileNotFoundError(f"Recipient input directory not found: {directory}")
     if not directory.is_dir():
@@ -71,6 +79,7 @@ def read_recipients_from_dir(directory: Path) -> list[Recipient]:
 
 
 def list_recipient_files(directory: Path) -> list[Path]:
+    """Listet Empfaenger Dateien."""
     if not directory.exists() or not directory.is_dir():
         return []
 
@@ -92,6 +101,7 @@ class DefaultCsvDialect(csv.Dialect):
 
 
 def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
+    """Erkennt CSV-Dialekt."""
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
@@ -99,6 +109,7 @@ def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
 
 
 def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
+    """Liest Empfaengerdaten aus einer Datei mit Kopfzeile."""
     header = [normalize_key(value) for value in rows[0]]
     if not set(header) & EMAIL_KEYS:
         raise ValueError("recipients.csv must have a mail column.")
@@ -126,6 +137,7 @@ def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
 
 
 def _first_value(values: dict[str, str], keys: set[str]) -> str:
+    """Kapselt den Arbeitsschritt _first_value."""
     for key in keys:
         value = values.get(key, "").strip()
         if value:
@@ -134,10 +146,12 @@ def _first_value(values: dict[str, str], keys: set[str]) -> str:
 
 
 def normalize_key(value: str) -> str:
+    """Normalisiert Schluessel."""
     return value.strip().lower().replace("_", "-").replace(" ", "")
 
 
 def normalize_email(value: str) -> str:
+    """Normalisiert E-Mail."""
     email = value.strip()
     if email.lower().startswith("mailto:"):
         email = email[7:].strip()
@@ -145,6 +159,7 @@ def normalize_email(value: str) -> str:
 
 
 def _validate_email(email: str) -> bool:
+    """Validiert E-Mail."""
     if "@" not in email or email.startswith("@") or email.endswith("@"):
         return False
     return True

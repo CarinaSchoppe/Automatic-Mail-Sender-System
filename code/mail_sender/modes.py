@@ -1,3 +1,5 @@
+"""Beschreibt die verfuegbaren Versandmodi und ihre Projektpfade."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ MODE_NAMES = ["PhD", "Freelance_German", "Freelance_English"]
 
 @dataclass(frozen=True)
 class MailMode:
+    """Beschreibt Pfade und Anzeigenamen eines Versandmodus."""
     key: str
     label: str
     recipients_dir: Path
@@ -17,6 +20,7 @@ class MailMode:
 
 
 def get_mode(mode: str, base_dir: Path) -> MailMode:
+    """Ermittelt Modus."""
     normalized = mode.strip().lower().replace("-", "_").replace(" ", "_")
     if normalized == "phd":
         return MailMode(
@@ -48,6 +52,7 @@ def get_mode(mode: str, base_dir: Path) -> MailMode:
 
 
 def _freelance_mode(base_dir: Path, template_name: str, attachments_dir_name: str, label: str) -> MailMode:
+    """Kapselt den Arbeitsschritt _freelance_mode."""
     return MailMode(
         key="freelance",
         label=label,

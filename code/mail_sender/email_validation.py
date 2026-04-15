@@ -1,3 +1,5 @@
+"""Validiert E-Mail-Adressen per Syntax, DNS und optionalem SMTP-Probe."""
+
 from __future__ import annotations
 
 import re
@@ -11,6 +13,7 @@ DEFINITE_MAILBOX_REJECT_CODES = {550, 551, 553}
 
 @dataclass(frozen=True)
 class EmailValidationResult:
+    """Beschreibt das Ergebnis einer E-Mail-Validierung."""
     is_valid: bool
     reason: str = ""
 
@@ -22,6 +25,7 @@ def validate_email_address(
         smtp_timeout: float = 8.0,
         skip_dns_check: bool = False,
 ) -> EmailValidationResult:
+    """Validiert E-Mail address."""
     normalized = email.strip().lower()
     if not EMAIL_PATTERN.match(normalized):
         return EmailValidationResult(False, "invalid email syntax")
@@ -46,10 +50,12 @@ def validate_email_address(
 
 
 def _domain_accepts_mail(domain: str) -> bool:
+    """Kapselt den Arbeitsschritt _domain_accepts_mail."""
     return bool(_mail_exchange_hosts(domain)) or _domain_has_a_record(domain)
 
 
 def _mail_exchange_hosts(domain: str) -> list[str]:
+    """Kapselt den Arbeitsschritt _mail_exchange_hosts."""
     try:
         import dns.resolver
         import dns.exception
@@ -73,6 +79,7 @@ def _mail_exchange_hosts(domain: str) -> list[str]:
 
 
 def _domain_has_a_record(domain: str) -> bool:
+    """Kapselt den Arbeitsschritt _domain_has_a_record."""
     try:
         socket.getaddrinfo(domain, None)
     except socket.gaierror:
@@ -81,6 +88,7 @@ def _domain_has_a_record(domain: str) -> bool:
 
 
 def _probe_mailbox_exists(email: str, mx_hosts: list[str], smtp_from_email: str, timeout: float) -> EmailValidationResult | None:
+    """Kapselt den Arbeitsschritt _probe_mailbox_exists."""
     for host in mx_hosts[:3]:
         try:
             with smtplib.SMTP(host, 25, timeout=timeout) as smtp:
@@ -102,6 +110,7 @@ def _probe_mailbox_exists(email: str, mx_hosts: list[str], smtp_from_email: str,
 
 
 def _decode_smtp_message(message) -> str:
+    """Kapselt den Arbeitsschritt _decode_smtp_message."""
     if isinstance(message, bytes):
         return message.decode("utf-8", errors="replace").strip()
     return str(message or "").strip()

@@ -1,4 +1,8 @@
-"""Settings-driven entry point for research, sending, logging, and target loops."""
+"""
+Zentraler Einstiegspunkt fÃ¼r das MailSenderSystem.
+Verwaltet die Einstellungen, startet die Recherche-Pipeline und den E-Mail-Versand.
+UnterstÃ¼tzt Zielwert-Loops fÃ¼r automatisiertes Senden.
+"""
 
 import sys
 import tomllib
@@ -13,21 +17,39 @@ from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
 from research.research_leads import main as research_main
 
+# Projekt-Wurzelverzeichnis und Pfad zur Konfigurationsdatei
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
 
 
 def _load_settings() -> dict:
+    """
+    LÃ¤dt die Einstellungen aus der settings.toml Datei.
+
+    Returns:
+        dict: Die geladenen Einstellungen oder ein leeres Dictionary, falls die Datei nicht existiert.
+    """
     if not SETTINGS_PATH.exists():
         return {}
     with SETTINGS_PATH.open("rb") as handle:
         return tomllib.load(handle)
 
 
+# Globale Einstellungen, die beim Import geladen werden
 SETTINGS = _load_settings()
 
 
 def _setting(name: str, default: Any) -> Any:
+    """
+    Hilfsfunktion zum Abrufen einer Einstellung mit Fallback auf Standardwerte.
+
+    Args:
+        name (str): Name der Einstellung.
+        default (Any): Standardwert, falls die Einstellung nicht gefunden wird.
+
+    Returns:
+        Any: Der Wert der Einstellung.
+    """
     return globals().get(name, SETTINGS.get(name, default))
 
 
@@ -72,30 +94,73 @@ DELETE_INPUT_AFTER_SUCCESS: bool = cast(bool, _setting("DELETE_INPUT_AFTER_SUCCE
 
 
 def _add_value(args: list[str], flag: str, value) -> None:
+    """
+    FÃ¼gt ein Argument-Paar (Flag und Wert) zu einer Argumentliste hinzu.
+
+    Args:
+        args (list[str]): Die Liste der Argumente.
+        flag (str): Das Flag (z.B. --mode).
+        value: Der zugehÃ¶rige Wert.
+    """
     if value is not None:
         args.extend([flag, str(value)])
 
 
 def _add_flag(args: list[str], enabled: bool, flag: str) -> None:
+    """
+    FÃ¼gt ein boolesches Flag zu einer Argumentliste hinzu, falls es aktiviert ist.
+
+    Args:
+        args (list[str]): Die Liste der Argumente.
+        enabled (bool): Ob das Flag hinzugefÃ¼gt werden soll.
+        flag (str): Das Flag (z.B. --verbose).
+    """
     if enabled:
         args.append(flag)
 
 
 class _Tee:
+    """
+    Hilfsklasse, um Ausgaben parallel in mehrere Streams (z.B. stdout und Datei) zu schreiben.
+    """
     def __init__(self, *streams) -> None:
+        """
+        Initialisiert den Tee mit den Ziel-Streams.
+
+        Args:
+            *streams: Beliebige Anzahl von Stream-Objekten (mÃ¼ssen write() und flush() unterstÃ¼tzen).
+        """
         self.streams = streams
 
     def write(self, data: str) -> int:
+        """
+        Schreibt die Daten in alle registrierten Streams.
+
+        Args:
+            data (str): Die zu schreibenden Daten.
+
+        Returns:
+            int: Die LÃ¤nge der geschriebenen Daten.
+        """
         for stream in self.streams:
             stream.write(data)
         return len(data)
 
     def flush(self) -> None:
+        """
+        Leert alle registrierten Streams.
+        """
         for stream in self.streams:
             stream.flush()
 
 
 def _resolve_log_dir() -> Path:
+    """
+    Ermittelt den absoluten Pfad zum Log-Verzeichnis.
+
+    Returns:
+        Path: Das Log-Verzeichnis.
+    """
     path = Path(str(VERBOSE_LOG_DIR))
     if not path.is_absolute():
         path = PROJECT_ROOT / path
@@ -103,6 +168,12 @@ def _resolve_log_dir() -> Path:
 
 
 def _create_log_file():
+    """
+    Erstellt eine neue Log-Datei fÃ¼r den aktuellen Durchlauf.
+
+    Returns:
+        tuple[Path, TextIO] | None: Pfad und Handle der Log-Datei oder None, falls Logging deaktiviert ist.
+    """
     if not SAVE_VERBOSE_LOG:
         return None
 
@@ -116,6 +187,9 @@ def _create_log_file():
 
 
 def _print_effective_settings() -> None:
+    """
+    Gibt die aktuell wirksamen Einstellungen zur Information auf der Konsole aus.
+    """
     _info(f"Settings file: {SETTINGS_PATH if SETTINGS_PATH.exists() else 'not found; using built-in defaults'}.")
     _info(f"Mode: {MODE}. AI research: {'on' if RUN_AI_RESEARCH else 'off'}. Provider: {RESEARCH_AI_PROVIDER}. Reasoning: {RESEARCH_REASONING_EFFORT}.")
     _info(f"Mail sending: {'real send enabled' if SEND else 'dry-run / no mail send unless research is disabled'}.")
@@ -134,6 +208,12 @@ def _print_effective_settings() -> None:
 
 
 def _build_research_args() -> list[str]:
+    """
+    Baut die Argumentliste fÃ¼r den Aufruf des Recherche-Moduls zusammen.
+
+    Returns:
+        list[str]: Liste der CLI-Argumente fÃ¼r research_leads.
+    """
     args = [
         "--provider",
         str(RESEARCH_AI_PROVIDER),
@@ -179,6 +259,15 @@ def _build_research_args() -> list[str]:
 
 
 def _build_mail_args(max_send_count: int | None = None) -> list[str]:
+    """
+    Baut die Argumentliste fÃ¼r den Aufruf des Mail-Sender-Moduls zusammen.
+
+    Args:
+        max_send_count (int | None): Optionale Begrenzung der zu versendenden Mails.
+
+    Returns:
+        list[str]: Liste der CLI-Argumente fÃ¼r mail_sender.
+    """
     args = [
         "--mode",
         MODE,
@@ -209,18 +298,42 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
 
 
 def _target_send_enabled() -> bool:
+    """
+    PrÃ¼ft, ob der Zielwert-Versand (Loop) aktiviert ist.
+
+    Returns:
+        bool: True, wenn ein Zielwert > 0 konfiguriert ist.
+    """
     return int(SEND_TARGET_COUNT) > 0
 
 
 def _count_logged_sent_emails() -> int:
+    """
+    ZÃ¤hlt die bereits in den Log-Dateien als versendet markierten E-Mails.
+
+    Returns:
+        int: Anzahl der versendeten E-Mails.
+    """
     return len(read_known_output_emails(PROJECT_ROOT / "output"))
 
 
 def _get_logged_emails() -> set[str]:
+    """
+    Gibt die Menge der bereits in den Log-Dateien vorhandenen E-Mail-Adressen zurÃ¼ck.
+
+    Returns:
+        set[str]: Menge der E-Mail-Adressen.
+    """
     return read_known_output_emails(PROJECT_ROOT / "output")
 
 
 def _read_output_sent_rows() -> list[dict[str, str]]:
+    """
+    Liest alle Zeilen aus den CSV-Ergebnisdateien im output-Ordner (auÃŸer invalid_mails.csv).
+
+    Returns:
+        list[dict[str, str]]: Liste der gelesenen Zeilen als Dictionaries.
+    """
     output_dir = PROJECT_ROOT / "output"
     rows: list[dict[str, str]] = []
     if not output_dir.exists():
@@ -232,6 +345,12 @@ def _read_output_sent_rows() -> list[dict[str, str]]:
 
 
 def _print_run_summary(sent_details: list[dict[str, str]]) -> None:
+    """
+    Gibt eine Zusammenfassung der in diesem Durchlauf versendeten E-Mails aus.
+
+    Args:
+        sent_details (list[dict[str, str]]): Details der versendeten Mails.
+    """
     if not sent_details:
         return
 
@@ -281,6 +400,15 @@ def _validate_target_send_settings() -> bool:
 
 
 def _run_research_once(round_number: int | None = None) -> int:
+    """
+    FÃ¼hrt einen Recherche-Durchgang aus.
+
+    Args:
+        round_number (int | None): Optionale Nummer der aktuellen Runde im Target-Loop.
+
+    Returns:
+        int: Exit-Status der Recherche (0 bei Erfolg).
+    """
     label = f" round {round_number}" if round_number is not None else ""
     _info(f"Starting AI research{label} for mode {MODE} with {RESEARCH_AI_PROVIDER}.")
     research_args = _build_research_args()
@@ -292,6 +420,15 @@ def _run_research_once(round_number: int | None = None) -> int:
 
 
 def _run_mail_once(max_send_count: int | None = None) -> int:
+    """
+    FÃ¼hrt einen Mail-Versand-Durchgang aus.
+
+    Args:
+        max_send_count (int | None): Begrenzung der zu versendenden Mails.
+
+    Returns:
+        int: Exit-Status des Mail-Senders (0 bei Erfolg).
+    """
     _info(f"Starting mail sender for mode {MODE}; sending is {'enabled' if SEND else 'disabled (dry-run)'}.")
     mail_args = _build_mail_args(max_send_count=max_send_count)
     _verbose(VERBOSE, f"Mail CLI args: {mail_args}.")
@@ -389,6 +526,12 @@ def _run_target_send_loop() -> int:
 
 
 def _run() -> int:
+    """
+    Hauptlogik fÃ¼r den Programmablauf (Recherche und/oder Versand).
+
+    Returns:
+        int: Exit-Status des Gesamtablaufs.
+    """
     if len(sys.argv) > 1:
         _info("CLI arguments detected; starting mail sender directly.")
         _verbose(VERBOSE, f"Forwarded raw CLI args to mail sender: {sys.argv[1:]}.")
@@ -437,6 +580,12 @@ def _run() -> int:
 
 
 def _run_with_optional_log() -> int:
+    """
+    FÃ¼hrt die Hauptlogik aus und spiegelt die Konsole optional in eine Log-Datei.
+
+    Returns:
+        int: Exit-Status des Programms.
+    """
     log_file = _create_log_file()
     if log_file is None:
         return _run()

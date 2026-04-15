@@ -1,3 +1,8 @@
+"""
+Zentrale Schnittstelle zur Auswahl und zum Aufruf verschiedener KI-Provider.
+Unterstützt Google Gemini, OpenAI und lokale Ollama-Instanzen.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,6 +43,21 @@ def generate_with_provider(
         verbose: bool = False,
         ollama_base_url: str | None = None,
 ) -> str | None | Any:
+    """
+    Wählt basierend auf dem 'provider' den entsprechenden KI-Dienst aus.
+    
+    Args:
+        provider (str): Der Name des Providers (gemini, openai, ollama).
+        model (str): Das zu verwendende KI-Modell.
+        prompt (str): Die Anweisungen für die KI.
+        attachment_paths (list[Path]): Liste von Dateipfaden, die als Kontext hochgeladen werden sollen.
+        reasoning_effort (str): Die gewünschte Stufe der Denk-Leistung (low, middle, high).
+        verbose (bool): Ob detaillierte Logs ausgegeben werden sollen.
+        ollama_base_url (str | None): Optionale URL für lokale Ollama-Instanzen.
+        
+    Returns:
+        Das Ergebnis der Generierung (meist ein String oder CSV-Inhalt).
+    """
     normalized = provider.strip().lower()
     if normalized == "gemini":
         return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
@@ -55,6 +75,9 @@ def generate_with_gemini(
         reasoning_effort: str = "middle",
         verbose: bool = False,
 ) -> str | None | Any:
+    """
+    Spezifischer Aufruf für den Google Gemini Provider.
+    """
     return _gemini_generate(model, prompt, attachment_paths, reasoning_effort, verbose, load_dotenv)
 
 
@@ -65,4 +88,7 @@ def generate_with_openai(
         reasoning_effort: str = "middle",
         verbose: bool = False,
 ) -> str | None | Any:
+    """
+    Spezifischer Aufruf für den OpenAI Provider.
+    """
     return _openai_generate(model, prompt, attachment_paths, reasoning_effort, verbose, load_dotenv)

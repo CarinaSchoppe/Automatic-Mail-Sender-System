@@ -1,3 +1,8 @@
+"""
+Definition von zentralen Datenstrukturen und Protokollen für die Recherche-Pipeline.
+Ermöglicht eine konsistente Konfigurationsübergabe und abstrakte Ergebnissammler.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +14,10 @@ from mail_sender.recipients import Recipient
 
 @dataclass(frozen=True)
 class ResearchConfig:
+    """
+    Bündelt alle Parameter für einen Recherche-Durchlauf.
+    Inklusive Provider-Einstellungen, Limits, Threading und Crawling-Optionen.
+    """
     provider: str
     mode_name: str
     model: str
@@ -38,10 +47,17 @@ class ResearchConfig:
 
 @runtime_checkable
 class RecipientSink(Protocol):
+    """
+    Schnittstellen-Definition für Objekte, die gefundene Leads (Recipient) sammeln.
+    Ermöglicht eine Entkoppelung zwischen der Suche (Crawler/KI) und der Speicherung.
+    """
     def add_recipient(self, recipient: Recipient) -> bool:
-        """Add recipient and return True if it was accepted (new and within target)."""
+        """
+        Fügt einen Empfänger hinzu. 
+        Gibt True zurück, wenn dieser akzeptiert wurde und noch im Zielbereich liegt.
+        """
         ...
 
     def is_full(self) -> bool:
-        """Return True if target reached."""
+        """Gibt True zurück, wenn das Gesamtziel an Empfängern erreicht wurde."""
         ...

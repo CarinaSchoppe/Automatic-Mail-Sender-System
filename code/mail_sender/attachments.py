@@ -1,9 +1,12 @@
+"""Sammelt Anhangsdateien fuer den Mailversand."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 
 def list_attachments(directory: Path) -> list[Path]:
+    """Listet Anhaenge."""
     if not directory.exists():
         raise FileNotFoundError(f"Attachment directory not found: {directory}")
     if not directory.is_dir():

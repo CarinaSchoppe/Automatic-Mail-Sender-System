@@ -1,3 +1,8 @@
+"""
+Client-Implementierung für die Kommunikation mit Google Gemini.
+Unterstützt Datei-Uploads, Google Search Grounding und exponentielles Backoff bei API-Fehlern.
+"""
+
 from __future__ import annotations
 
 import os
@@ -23,6 +28,20 @@ def generate_with_gemini(
         verbose: bool = False,
         load_env: Callable[[], object] = load_dotenv,
 ) -> str | None | Any:
+    """
+    Führt eine Anfrage an Google Gemini durch, lädt Anhänge hoch und verarbeitet die Antwort.
+    
+    Args:
+        model (str): Das zu verwendende Gemini-Modell.
+        prompt (str): Der Text-Prompt.
+        attachment_paths (list[Path]): Pfade zu Dateien für den Kontext.
+        reasoning_effort (str): Stufe der Denk-Leistung (ThinkingLevel).
+        verbose (bool): Detailliertes Logging.
+        load_env (Callable): Funktion zum Laden der Umgebungsvariablen.
+        
+    Returns:
+        Das Ergebnis als String (meist CSV).
+    """
     load_env()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:

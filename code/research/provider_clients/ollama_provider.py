@@ -1,3 +1,5 @@
+"""Implementiert Ollama-Aufrufe fuer die lokale Recherchepipeline."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,7 @@ def generate_with_ollama(
         base_url: str = "http://localhost:11434",
         verbose: bool = False,
 ) -> str:
+    """Generiert Ausgaben ueber Ollama."""
     payload = {
         "model": model,
         "prompt": prompt,

@@ -1,3 +1,8 @@
+"""
+Modul für die lokale Webrecherche ohne externe KI-Provider (außer optional Ollama).
+Beinhaltet Google-Suche-Scraper, Web-Crawler und E-Mail-Extraktion.
+"""
+
 from __future__ import annotations
 
 import html
@@ -35,7 +40,19 @@ def run_self_research(
         existing_emails: set[str],
         existing_companies: set[str],
 ) -> list[Recipient]:
-    """Run local search/crawl research and return centrally deduplicated recipients."""
+    """
+    Führt eine lokale Recherche durch: Sucht bei Google nach Keywords, crawlt die Ergebnisse
+    und extrahiert E-Mail-Adressen direkt aus dem HTML.
+    
+    Args:
+        config (ResearchConfig): Die Recherche-Konfiguration.
+        mode (MailMode): Der aktuelle Modus (z.B. PhD).
+        existing_emails (set[str]): Bereits bekannte E-Mails.
+        existing_companies (set[str]): Bereits bekannte Firmen.
+        
+    Returns:
+        list[Recipient]: Liste der gefundenen neuen Leads.
+    """
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
     seen_emails = {email.lower() for email in existing_emails}
     seen_companies = {company for company in existing_companies if company}
@@ -106,7 +123,10 @@ def run_ollama_web_research(
         existing_emails: set[str],
         existing_companies: set[str],
 ) -> list[Recipient]:
-    """Use local crawling for web context, then a local Ollama model to filter CSV output."""
+    """
+    Kombiniert lokales Crawling mit einer Filterung durch ein lokales Ollama-Modell.
+    Crawlt erst die Webseiten und lässt Ollama dann entscheiden, welche Leads relevant sind.
+    """
     candidates = run_self_research(config, mode, existing_emails, existing_companies)
     prompt = build_ollama_web_research_prompt(config, mode, _recipients_to_csv_text(candidates))
     raw_response = generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
@@ -120,6 +140,9 @@ def run_ollama_web_research(
 
 
 def build_ollama_web_research_prompt(config, mode: MailMode, candidate_csv: str) -> str:
+    """
+    Erstellt den Prompt für Ollama, um die lokal gecrawlten Leads zu filtern.
+    """
     return f"""
     You are filtering web-researched email leads for mode {mode.label}.
 
@@ -141,6 +164,9 @@ def build_ollama_web_research_prompt(config, mode: MailMode, candidate_csv: str)
 
 
 def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) -> list[str]:
+    """
+    Sammelt URLs von der Google-Suche für die angegebenen Suchanfragen.
+    """
     urls: list[str] = []
     seen: set[str] = set()
     for query in queries:
@@ -165,6 +191,10 @@ def crawl_self_result_url(
         stop_event: threading.Event | None = None,
         sink: RecipientSink | None = None,
 ) -> list[Recipient]:
+    """
+    Crawlt eine einzelne Webseite (und verlinkte Unterseiten bis zu einer gewissen Tiefe),
+    um E-Mail-Adressen und Firmennamen zu extrahieren.
+    """
     to_visit = [(start_url, 0)]
     visited: set[str] = set()
     candidates: list[Recipient] = []
@@ -206,6 +236,9 @@ def crawl_self_result_url(
 
 
 def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
+    """
+    Ermittelt die Suchanfragen für Google (entweder aus der Config oder Standardwerte).
+    """
     keywords = [keyword.strip() for keyword in config.self_search_keywords if keyword.strip()]
     if not keywords:
         keywords = list(default_self_keywords(mode.label))
@@ -213,6 +246,9 @@ def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
 
 
 def default_self_keywords(mode_name: str) -> tuple[str, ...]:
+    """
+    Gibt Standard-Suchbegriffe für die verschiedenen Modi zurück.
+    """
     normalized = mode_name.strip().lower()
     if normalized == "phd":
         return (
@@ -234,6 +270,9 @@ def default_self_keywords(mode_name: str) -> tuple[str, ...]:
 
 
 def google_search_url(query: str, start: int) -> str:
+    """
+    Erstellt eine Google-Such-URL für eine Query und eine bestimmte Ergebnisseite.
+    """
     params = urllib.parse.urlencode({"q": query, "num": "10", "start": str(start), "hl": "en"})
     return f"https://www.google.com/search?{params}"
 
@@ -242,6 +281,9 @@ _google_search_url = google_search_url
 
 
 def fetch_text(url: str, timeout: float, verbose: bool) -> str:
+    """
+    Lädt den HTML-Inhalt einer URL herunter.
+    """
     try:
         request = urllib.request.Request(url, headers=HTTP_HEADERS)
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -258,6 +300,9 @@ def fetch_text(url: str, timeout: float, verbose: bool) -> str:
 
 
 def _extract_google_result_urls(html_text: str) -> list[str]:
+    """
+    Extrahiert die tatsächlichen Ziel-URLs aus einer Google-Suchergebnisseite.
+    """
     urls: list[str] = []
     for href in HTML_LINK_PATTERN.findall(html_text):
         decoded = html.unescape(href)
@@ -274,6 +319,9 @@ def _extract_google_result_urls(html_text: str) -> list[str]:
 
 
 def _extract_relevant_same_site_links(current_url: str, html_text: str, base_netloc: str) -> list[str]:
+    """
+    Findet interne Links auf einer Seite, die für die Suche nach Kontaktinformationen relevant sein könnten.
+    """
     hinted_links: list[str] = []
     other_links: list[str] = []
     seen: set[str] = set()
@@ -297,6 +345,10 @@ def _extract_relevant_same_site_links(current_url: str, html_text: str, base_net
 
 
 def _extract_emails_from_text(text: str) -> list[str]:
+    """
+    Sucht mittels Regex nach E-Mail-Adressen im Text.
+    Versucht auch Verschleierungen wie [at] zu erkennen.
+    """
     emails = []
     seen = set()
     cleaned_text = html.unescape(text).replace("[at]", "@").replace("(at)", "@").replace(" at ", "@")
@@ -310,6 +362,9 @@ def _extract_emails_from_text(text: str) -> list[str]:
 
 
 def _company_from_page(url: str, page_text: str) -> str:
+    """
+    Versucht den Firmennamen aus dem <title> Tag oder der URL zu extrahieren.
+    """
     title_match = HTML_TITLE_PATTERN.search(page_text)
     if title_match:
         title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html.unescape(title_match.group(1)))).strip()
@@ -319,6 +374,9 @@ def _company_from_page(url: str, page_text: str) -> str:
 
 
 def _normalize_url_for_dedupe(url: str) -> str:
+    """
+    Normalisiert eine URL für die Deduplizierung (z.B. trailing slashes entfernen).
+    """
     parsed = urllib.parse.urlparse(url)
     return urllib.parse.urlunparse((
         parsed.scheme.lower(),
@@ -331,6 +389,9 @@ def _normalize_url_for_dedupe(url: str) -> str:
 
 
 def _looks_like_asset_url(path: str) -> bool:
+    """
+    Prüft, ob eine URL wahrscheinlich auf eine Datei (Bild, PDF etc.) statt auf eine HTML-Seite verweist.
+    """
     return path.lower().endswith((
         ".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
         ".pdf", ".zip", ".rar", ".7z", ".mp4", ".mp3", ".woff", ".woff2", ".ttf",
@@ -338,12 +399,18 @@ def _looks_like_asset_url(path: str) -> bool:
 
 
 def _is_blocked_result_url(url: str) -> bool:
+    """
+    Filtert bekannte große Portale aus den Suchergebnissen aus, die meist keine direkten Firmen-E-Mails liefern.
+    """
     netloc = urllib.parse.urlparse(url).netloc.lower()
     blocked = ("google.", "youtube.", "facebook.", "instagram.", "linkedin.", "twitter.", "x.com")
     return any(domain in netloc for domain in blocked)
 
 
 def recipients_to_csv_text(recipients: list[Recipient]) -> str:
+    """
+    Wandelt eine Liste von Empfängern in einen CSV-String um.
+    """
     lines = ["company,mail,source_url"]
     for recipient in recipients:
         lines.append(f"{_csv_cell(recipient.company)},{_csv_cell(recipient.email)},self-crawl")
@@ -354,6 +421,9 @@ _recipients_to_csv_text = recipients_to_csv_text
 
 
 def _csv_cell(value: str) -> str:
+    """
+    Hilfsfunktion zum Escaping von CSV-Zellen.
+    """
     if any(char in value for char in [",", '"', "\n", "\r"]):
         return '"' + value.replace('"', '""') + '"'
     return value
