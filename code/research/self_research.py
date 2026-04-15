@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MailMode
 from mail_sender.recipients import Recipient, normalize_email
-
 from research import mode_instructions
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose

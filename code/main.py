@@ -9,6 +9,8 @@ from pathlib import Path
 from mail_sender.cli import main as mail_main
 from mail_sender.sent_log import read_known_output_emails, read_logged_rows
 from research.research_leads import main as research_main
+from research.logging_utils import info as _info
+from research.logging_utils import verbose as _verbose
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
@@ -74,15 +76,6 @@ def _add_value(args: list[str], flag: str, value) -> None:
 def _add_flag(args: list[str], enabled: bool, flag: str) -> None:
     if enabled:
         args.append(flag)
-
-
-def _info(message: str) -> None:
-    print(f"[INFO] {message}")
-
-
-def _verbose(enabled: bool, message: str) -> None:
-    if enabled:
-        print(f"[VERBOSE] {message}")
 
 
 class _Tee:
@@ -239,10 +232,10 @@ def _print_run_summary(sent_details: list[dict[str, str]]) -> None:
 
     # Filter to unique emails just in case, though the logic should handle it
     unique_emails = {d["mail"].lower() for d in sent_details}
-    
+
     print("\n" + "=" * 60)
     print(f"Summary: {len(unique_emails)} unique email(s) sent to these recipients:")
-    
+
     # Sort by company
     sorted_details = sorted(sent_details, key=lambda x: (x.get("company") or "").lower())
     for detail in sorted_details:
@@ -302,16 +295,16 @@ def _run_target_send_loop() -> int:
 
     target_count = int(SEND_TARGET_COUNT)
     max_rounds = int(SEND_TARGET_MAX_ROUNDS)
-    
+
     # We track unique emails sent in this run to reach the target_count increment.
     start_emails = _get_logged_emails()
     start_count = len(start_emails)
     target_total = start_count + target_count
-    
+
     current_emails = start_emails
     current_count = start_count
     round_number = 0
-    
+
     # Details for the final summary (list of dicts with company/mail)
     run_sent_details: list[dict[str, str]] = []
     # Set of emails already added to run_sent_details to avoid duplicates in summary
@@ -319,7 +312,7 @@ def _run_target_send_loop() -> int:
 
     _info(f"Target send loop enabled: send and log {target_count} new email(s).")
     _info(f"Logged sent emails at start: {start_count}. Target logged total: {target_total}.")
-    
+
     if max_rounds > 0:
         _info(f"Safety gate active: Maximum of {max_rounds} round(s) allowed.")
     else:
@@ -336,7 +329,7 @@ def _run_target_send_loop() -> int:
 
         remaining = target_total - current_count
         _info(f"Target loop round {round_number}: {remaining} unique email(s) still needed.")
-        
+
         research_status = _run_research_once(round_number)
         if research_status != 0:
             _print_run_summary(run_sent_details)
@@ -352,11 +345,11 @@ def _run_target_send_loop() -> int:
         emails_before = {r["mail"].lower() for r in rows_before if r.get("mail")}
 
         mail_status = _run_mail_once(max_send_count=remaining)
-        
+
         rows_after = _read_output_sent_rows()
         current_emails = {r["mail"].lower() for r in rows_after if r.get("mail")}
         current_count = len(current_emails)
-        
+
         # Identify newly logged emails in this round
         for row in rows_after:
             email = row.get("mail", "").lower()
@@ -371,10 +364,10 @@ def _run_target_send_loop() -> int:
             _info("Mail sender returned an error; stopping target loop.")
             _print_run_summary(run_sent_details)
             return mail_status
-            
+
         if sent_this_run >= target_count:
             break
-            
+
         # Check if we made progress
         if len(current_emails - emails_before) <= 0:
             _info("No new unique sent-log entries were created in this round; stopping to avoid an endless loop.")
@@ -418,10 +411,10 @@ def _run() -> int:
         _info("AI research disabled; starting mail sender only.")
 
     mail_status = _run_mail_once()
-    
+
     # Identify newly logged emails
     rows_after = _read_output_sent_rows()
-    
+
     run_sent_details = []
     seen_in_run = set()
     for row in rows_after:

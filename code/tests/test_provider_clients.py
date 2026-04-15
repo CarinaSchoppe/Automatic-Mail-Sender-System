@@ -47,4 +47,3 @@ def test_provider_common_extracts_nested_response_text() -> None:
 
     assert extract_gemini_response_text(gemini_response) == "company,mail"
     assert extract_openai_response_text(openai_response) == "company,mail"
-

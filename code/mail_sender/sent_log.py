@@ -80,11 +80,11 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
                 company = ""
                 if company_index is not None and len(row) >= company_index:
                     company = row[company_index - 1].strip()
-                
+
                 email = ""
                 if len(row) >= email_index:
                     email = normalize_email(row[email_index - 1]).lower()
-                
+
                 rows.append({"company": company, "mail": email})
             return rows
     except Exception:

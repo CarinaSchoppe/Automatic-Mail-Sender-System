@@ -79,13 +79,13 @@ def generate_with_gemini(
             msg = str(e).lower()
             # If it's a rate limit error (429) or temporary server error (500, 503)
             is_retryable = "429" in msg or "quota" in msg or "exhausted" in msg or "500" in msg or "503" in msg
-            
+
             if is_retryable and attempt < max_retries - 1:
-                wait_time = (2 ** attempt) + 10.0 # Exponential backoff + fixed buffer
-                _verbose(verbose, f"Gemini API error (retryable). Retrying in {wait_time:.2f}s (Attempt {attempt+1}/{max_retries}). Error: {e}")
+                wait_time = (2 ** attempt) + 10.0  # Exponential backoff + fixed buffer
+                _verbose(verbose, f"Gemini API error (retryable). Retrying in {wait_time:.2f}s (Attempt {attempt + 1}/{max_retries}). Error: {e}")
                 time.sleep(wait_time)
                 continue
-            
+
             _verbose(verbose, f"Gemini API error (non-retryable or max retries). Error: {e}")
             raise
 
@@ -97,4 +97,3 @@ def generate_with_gemini(
         _verbose(verbose, f"Gemini prompt_feedback: {prompt_feedback!r}")
     verbose_gemini_candidates(verbose, response)
     return response_text
-

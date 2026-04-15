@@ -25,7 +25,7 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
 
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_path(
-                "code/main.py",
+            "code/main.py",
             run_name="__main__",
             init_globals={
                 "RUN_AI_RESEARCH": True,
@@ -90,6 +90,7 @@ def test_main_summary_output(monkeypatch, capsys) -> None:
     # Round 0: empty
     # Round 1: one entry
     state = {"calls": 0}
+
     def fake_read_logged_rows(path):
         state["calls"] += 1
         if state["calls"] <= 1:
@@ -117,6 +118,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
     # Round 1 start: 0
     # Round 1 end: 1
     count_state = {"val": 0}
+
     def fake_read_emails(path):
         count = count_state["val"]
         count_state["val"] = 1
@@ -124,6 +126,7 @@ def test_target_loop_summary_output(monkeypatch, capsys) -> None:
 
     # Mock read_logged_rows for summary
     row_state = {"calls": 0}
+
     def fake_read_rows(path):
         row_state["calls"] += 1
         if row_state["calls"] <= 1:
@@ -383,6 +386,7 @@ def test_run_with_optional_log_can_skip_log_and_closes_on_error(monkeypatch, tmp
 
     assert list(tmp_path.glob("run_phd_*.log"))
 
+
 def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
     # Mock settings
     monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 100)
@@ -405,7 +409,7 @@ def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
     # Round 1 end: current_count = 2 (progress made)
     # But loop condition is 2 < 101.
     # After round 1 finished, it checks round_number > max_rounds.
-    
+
     row_sets = iter([
         [{"company": "Old", "mail": "old@example.com"}],
         [{"company": "Old", "mail": "old@example.com"}, {"company": "Round 1", "mail": "new@example.com"}],
@@ -435,7 +439,7 @@ def test_target_loop_unlimited_warning(monkeypatch, capsys) -> None:
     monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {"old@example.com"})
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
-    
+
     monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: [])
 
     app_main._run_target_send_loop()

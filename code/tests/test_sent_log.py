@@ -25,7 +25,7 @@ def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
         assert reader[0] == ["company", "mail", "sent_at"]
         assert reader[1][:2] == ["ACME", "person@example.com"]
         assert "+10:00" in reader[1][2]
-    
+
     assert read_logged_emails(log_path) == {"person@example.com"}
     assert read_logged_rows(log_path) == [{"company": "ACME", "mail": "person@example.com"}]
 

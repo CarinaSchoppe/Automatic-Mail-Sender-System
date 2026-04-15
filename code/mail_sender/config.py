@@ -9,6 +9,7 @@ from pathlib import Path
 load_dotenv: Callable[[], bool] | None
 try:
     from dotenv import load_dotenv as _dotenv_load
+
     load_dotenv = _dotenv_load
 except ImportError:  # pragma: no cover - optional until requirements are installed
     load_dotenv = None

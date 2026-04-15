@@ -4,8 +4,8 @@ import csv
 import json
 import runpy
 import sys
-import types as py_types
 import threading
+import types as py_types
 from pathlib import Path
 
 import pytest
@@ -14,7 +14,6 @@ from mail_sender.recipients import Recipient
 from mail_sender.sent_log import append_log
 from research import research_leads
 from research.research_leads import ResearchConfig
-
 
 CODE_DIR = Path(__file__).resolve().parents[1]
 

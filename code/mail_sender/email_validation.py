@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import re
-import socket
 import smtplib
+import socket
 from dataclasses import dataclass
-
 
 EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 DEFINITE_MAILBOX_REJECT_CODES = {550, 551, 553}

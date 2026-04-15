@@ -24,7 +24,6 @@ from gui.settings_store import (
 )
 from mail_sender.prompts import load_prompts, save_prompts
 
-
 HOVER_TEXTS = {
     "Reload": "Reload settings.toml and .env from disk.",
     "Load Config": "Load another settings TOML file into the Settings tab.",
@@ -706,11 +705,11 @@ class MailSenderWorkbench:
             text = path.read_text(encoding="utf-8-sig", errors="replace")
         except OSError as exc:
             text = f"Could not read file: {exc}"
-        
+
         self.file_viewer.config(state=tk.NORMAL)
         self.file_viewer.delete("1.0", "end")
         self.file_viewer.insert("1.0", text)
-        
+
         if kind != "input":
             self.file_viewer.config(state=tk.DISABLED)
         else:
@@ -727,7 +726,7 @@ class MailSenderWorkbench:
             return
         if self.current_view_kind != "input" or not self.current_view_path:
             return
-        
+
         try:
             content = self.file_viewer.get("1.0", tk.END)
             # Remove last newline added by Tkinter Text widget
@@ -742,18 +741,18 @@ class MailSenderWorkbench:
         if not selection:
             messagebox.showinfo("No Selection", "Please select an input file to delete.")
             return
-        
+
         item = self.input_tree.item(selection[0])
         values = item.get("values", [])
         path = self._path_for_tree_row("input", values)
-        
+
         if not path or not path.exists():
             messagebox.showerror("Error", "File not found.")
             return
-        
+
         if path.name == ".gitkeep":
-             messagebox.showwarning("Warning", "Cannot delete .gitkeep file.")
-             return
+            messagebox.showwarning("Warning", "Cannot delete .gitkeep file.")
+            return
 
         if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{path.name}'?"):
             try:

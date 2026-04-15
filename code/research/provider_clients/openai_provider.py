@@ -71,7 +71,7 @@ def generate_with_openai(
             if attempt == max_retries - 1:
                 _verbose(verbose, f"OpenAI Rate limit reached. Max retries ({max_retries}) exceeded.")
                 raise
-            
+
             # Default wait time
             wait_time = 15.0
             # Try to parse wait time from error message
@@ -79,9 +79,9 @@ def generate_with_openai(
             msg = str(e)
             match = re.search(r"try again in ([\d.]+)s", msg)
             if match:
-                wait_time = float(match.group(1)) + 1.0 # Buffer
-            
-            _verbose(verbose, f"OpenAI Rate limit reached. Retrying in {wait_time:.2f}s (Attempt {attempt+1}/{max_retries}). Error: {msg}")
+                wait_time = float(match.group(1)) + 1.0  # Buffer
+
+            _verbose(verbose, f"OpenAI Rate limit reached. Retrying in {wait_time:.2f}s (Attempt {attempt + 1}/{max_retries}). Error: {msg}")
             time.sleep(wait_time)
 
     _verbose(verbose, "OpenAI response received.")
@@ -89,4 +89,3 @@ def generate_with_openai(
     _verbose(verbose, f"OpenAI response output_text raw: {response_text!r}")
     verbose_openai_output(verbose, response)
     return response_text
-

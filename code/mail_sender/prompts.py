@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROMPTS_PATH = PROJECT_ROOT / "prompts.toml"
@@ -216,5 +215,5 @@ def save_prompts(prompts: dict[str, str], path: Path = PROMPTS_PATH) -> None:
             lines.append(f'"{key}" = \"\"\"\n{value}\"\"\"')
         else:
             lines.append(f'"{key}" = "{escaped_value}"')
-    
+
     path.write_text("\n".join(lines), encoding="utf-8")

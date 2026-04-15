@@ -25,7 +25,6 @@ class SettingSpec:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
 
-
 SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("RUN_AI_RESEARCH", "Run AI research first", "bool", True, "Run", "Creates a fresh input CSV before the mail sender starts."),
     SettingSpec("MODE", "Mode", "choice", "Freelance_German", "Run", "Selects which templates, input folder, attachments, and sent log are used.", ("PhD", "Freelance_German", "Freelance_English", "Auto")),
@@ -73,7 +72,6 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SMTP_FROM_NAME", "From name", "str", "Carina Sophie Schoppe", "SMTP", "Display name used as sender."),
     SettingSpec("SMTP_FROM_EMAIL", "From email", "str", "info@carinaschoppe.com", "SMTP", "Sender email address."),
 )
-
 
 ENV_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SMTP_USERNAME", "SMTP username", "str", "", "SMTP Secrets", "Login username for SMTP. Keep this in .env."),

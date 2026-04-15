@@ -81,13 +81,13 @@ SELF_VERIFY_EMAIL_SMTP = false
 SEND = true
 
 # Target new sends: Repeated research/send target. 0 disables the target loop.
-SEND_TARGET_COUNT = 250
+SEND_TARGET_COUNT = 57
 
 # Max target rounds: Safety limit for repeated target loop. 0 means unlimited.
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 7
+PARALLEL_THREADS = 3
 
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
 VERIFY_EMAIL_SMTP = true

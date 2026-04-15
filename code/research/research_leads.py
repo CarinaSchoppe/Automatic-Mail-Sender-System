@@ -30,39 +30,26 @@ if str(CODE_DIR) not in sys.path:
 from mail_sender.attachments import list_attachments
 from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MODE_NAMES, MailMode, get_mode
-from mail_sender.recipients import COMPANY_KEYS as COMPANY_KEYS
-from mail_sender.recipients import EMAIL_KEYS as EMAIL_KEYS
-from mail_sender.recipients import Recipient
-from mail_sender.recipients import list_recipient_files
-from mail_sender.recipients import normalize_key as normalize_key
-from mail_sender.recipients import read_recipients
-from mail_sender.sent_log import read_logged_emails
-from mail_sender.sent_log import read_logged_rows
+from mail_sender.recipients import Recipient, list_recipient_files, read_recipients
+from mail_sender.sent_log import read_logged_emails, read_logged_rows, read_known_output_emails
 from research import parsing as _parsing
 from research import providers as _providers
 from research import self_research as _self_research
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
-from research.parsing import DefaultCsvDialect as DefaultCsvDialect
-from research.parsing import _detect_dialect
-from research.parsing import _find_field as _find_field
-from research.parsing import _parse_json_recipients as _parse_json_recipients
-from research.parsing import _strip_csv_fence as _strip_csv_fence
-from research.parsing import _strip_json_fence as _strip_json_fence
-from research.parsing import normalize_company as _normalize_company
-from research.parsing import parse_recipients
-from research.providers import _fake_txt_extensions as _fake_txt_extensions
-from research.providers import _verbose_gemini_candidates as _verbose_gemini_candidates
-from research.providers import _verbose_openai_output as _verbose_openai_output
-from research.self_research import _company_from_page
-from research.self_research import _extract_emails_from_text
-from research.self_research import _extract_google_result_urls
-from research.self_research import _extract_relevant_same_site_links
-from research.self_research import _fetch_text
-from research.self_research import _is_blocked_result_url
-from research.self_research import _normalize_url_for_dedupe
-from research.self_research import default_self_keywords as _default_self_keywords
+from research.parsing import parse_recipients, normalize_company as _normalize_company
+from research.self_research import (
+    _company_from_page,
+    _extract_emails_from_text,
+    _extract_google_result_urls,
+    _extract_relevant_same_site_links,
+    _fetch_text,
+    _is_blocked_result_url,
+    _normalize_url_for_dedupe,
+    default_self_keywords as _default_self_keywords,
+)
 
+# Late import for prompts to avoid circular issues
 mode_instructions = importlib.import_module(
     f"{__package__}.mode_instructions" if __package__ else "mode_instructions"
 )
@@ -71,6 +58,50 @@ RESUME_ATTACHMENT_PATTERN = re.compile(
     r"(?:^|[\s._-])(cv|resume|lebenslauf|curriculum(?:[\s._-]+vitae)?)(?:$|[\s._-])",
     re.IGNORECASE,
 )
+
+EMAIL_KEYS = {"mail", "email", "recipient", "recipients", "target", "empfänger", "empfaenger"}
+COMPANY_KEYS = {"company", "firma", "organisation", "organization", "name"}
+
+
+def generate_with_provider(
+        provider: str,
+        model: str,
+        prompt: str,
+        attachment_paths: list[Path],
+        reasoning_effort: str = "middle",
+        verbose: bool = False,
+        ollama_base_url: str | None = None,
+) -> str:
+    p = provider.strip().lower()
+    if p == "gemini":
+        return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
+    if p == "openai":
+        return generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
+    if p == "ollama":
+        return generate_with_ollama(model, prompt, ollama_base_url or "http://localhost:11434", verbose)
+    raise ValueError(f"Unknown research provider: {provider}")
+
+
+def generate_with_gemini(*args, **kwargs):
+    return _providers.generate_with_gemini(*args, **kwargs)
+
+
+def generate_with_openai(*args, **kwargs):
+    return _providers.generate_with_openai(*args, **kwargs)
+
+
+def generate_with_ollama(*args, **kwargs):
+    return _providers.generate_with_ollama(*args, **kwargs)
+
+
+_fake_txt_extensions = _providers._fake_txt_extensions
+_verbose_gemini_candidates = _providers._verbose_gemini_candidates
+_verbose_openai_output = _providers._verbose_openai_output
+_parse_json_recipients = _parsing._parse_json_recipients
+_detect_dialect = _parsing._detect_dialect
+_find_field = _parsing._find_field
+_strip_csv_fence = _parsing._strip_csv_fence
+_strip_json_fence = _parsing._strip_json_fence
 
 
 @dataclass(frozen=True)
@@ -238,7 +269,7 @@ def default_config() -> ResearchConfig:
         min_companies=_get("RESEARCH_MIN_COMPANIES", 15),
         max_companies=_get("RESEARCH_MAX_COMPANIES", 25),
         person_emails_per_company=_get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3),
-        base_dir=_env_path("RESEARCH_BASE_DIR", CODE_DIR.parent),
+        base_dir=CODE_DIR.parent,
         write_output=_get("RESEARCH_WRITE_OUTPUT", True),
         verbose=_get("RESEARCH_VERBOSE", False),
         upload_attachments=_get("RESEARCH_UPLOAD_ATTACHMENTS", True),
@@ -268,7 +299,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"research mode: {config.mode_name}")
     print(f"New recipients: {len(recipients)}")
-    print(f"Output CSV: {output_path if output_path else 'not written'}")
+    if output_path:
+        print(f"Output CSV: {output_path}")
     return 0
 
 
@@ -559,10 +591,10 @@ def _generate_research_response(
         input_context: str,
         stop_event: threading.Event | None = None,
 ) -> str:
-    if (stop_event and stop_event.is_set()):
+    if stop_event and stop_event.is_set():
         return ""
 
-    raw_response = generate_with_provider(
+    raw_response = _providers.generate_with_provider(
         config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose, config.ollama_base_url
     )
     if stop_event and stop_event.is_set():
@@ -570,11 +602,10 @@ def _generate_research_response(
 
     if _needs_retry(raw_response, existing_emails, config.verbose) and attachments:
         _info("AI response was not usable yet; retrying once without CV/resume uploads.")
-        _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
         if stop_event and stop_event.is_set():
             return raw_response
 
-        raw_response = generate_with_provider(
+        raw_response = _providers.generate_with_provider(
             config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
     if stop_event and stop_event.is_set():
@@ -583,12 +614,10 @@ def _generate_research_response(
     if _needs_retry(raw_response, existing_emails, config.verbose):
         retry_prompt = build_prompt(config, mode, set(), set(), input_context)
         _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
-        _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
-        _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
         if stop_event and stop_event.is_set():
             return raw_response
 
-        raw_response = generate_with_provider(
+        raw_response = _providers.generate_with_provider(
             config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
     return raw_response
@@ -669,7 +698,7 @@ def run_ollama_web_research(
 
     _info(f"Ollama web research: filtering {len(candidates)} candidates via AI model {config.model}.")
     prompt = _self_research.build_ollama_web_research_prompt(config, mode, _self_research._recipients_to_csv_text(candidates))
-    raw_response = generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
+    raw_response = _providers.generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
     recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
 
     final_recipients = recipients if recipients else candidates
@@ -800,7 +829,6 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     output_dir = base_dir / "output"
     
     # Load all emails from output logs (excluding invalid_mails.csv)
-    from mail_sender.sent_log import read_known_output_emails
     logged = read_known_output_emails(output_dir)
     emails.update(logged)
     _verbose(verbose, f"Loaded {len(logged)} logged email exclusion(s) from {output_dir}.")
@@ -816,11 +844,9 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     for mode_name in MODE_NAMES:
         mode = get_mode(mode_name, base_dir)
         recipient_files = list_recipient_files(mode.recipients_dir)
-        _verbose(verbose, f"Found {len(recipient_files)} existing input file(s) for exclusion scan in {mode.recipients_dir}.")
         for path in recipient_files:
             recipients = read_recipients(path)
             emails.update(recipient.email.lower() for recipient in recipients)
-            _verbose(verbose, f"Loaded {len(recipients)} existing recipient email exclusion(s) from {path}.")
     return emails
 
 
@@ -873,8 +899,6 @@ def build_prompt(
         input_context: str = "",
 ) -> str:
     """Build the provider prompt using the Overseer template."""
-    from research import mode_instructions
-
     if isinstance(existing_companies, str) and not input_context:
         input_context = existing_companies
         existing_companies = None
@@ -908,68 +932,13 @@ def build_prompt(
     )
 
 
-def generate_with_provider(
-        provider: str,
-        model: str,
-        prompt: str,
-        attachment_paths: list[Path],
-        reasoning_effort: str = "middle",
-        verbose: bool = False,
-        ollama_base_url: str | None = None,
-) -> str:
-    normalized = provider.strip().lower()
-    if normalized == "gemini":
-        return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
-    if normalized == "openai":
-        return generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
-    if normalized == "ollama":
-        return generate_with_ollama(model, prompt, ollama_base_url or "http://localhost:11434", verbose)
-    raise ValueError("Unknown research provider. Use gemini, openai, ollama, or self.")
-
-
-def generate_with_gemini(
-        model: str,
-        prompt: str,
-        attachment_paths: list[Path],
-        reasoning_effort: str = "middle",
-        verbose: bool = False,
-) -> str:
-    _providers.load_dotenv = load_dotenv
-    return _providers.generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
-
-
-def generate_with_openai(
-        model: str,
-        prompt: str,
-        attachment_paths: list[Path],
-        reasoning_effort: str = "middle",
-        verbose: bool = False,
-) -> str:
-    _providers.load_dotenv = load_dotenv
-    return _providers.generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
-
-
-def generate_with_ollama(
-        model: str,
-        prompt: str,
-        base_url: str = "http://localhost:11434",
-        verbose: bool = False,
-) -> str:
-    return _providers.generate_with_ollama(model, prompt, base_url, verbose)
-
-
 def _parse_headerless_csv_recipients(
         raw_text: str,
         existing_emails: set[str],
         existing_companies: set[str] | None = None,
         verbose: bool = False,
 ) -> list[Recipient]:
-    original = _parsing._detect_dialect
-    _parsing._detect_dialect = _detect_dialect
-    try:
-        return _parsing._parse_headerless_csv_recipients(raw_text, existing_emails, existing_companies, verbose)
-    finally:
-        _parsing._detect_dialect = original
+    return _parsing._parse_headerless_csv_recipients(raw_text, existing_emails, existing_companies, verbose)
 
 
 def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Recipient]) -> Path:
@@ -984,27 +953,6 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
         for recipient in recipients:
             writer.writerow([recipient.company, recipient.email, ""])
     return path
-
-
-def _env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        return default
-    return int(value)
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_path(name: str, default: Path) -> Path:
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        return default.resolve()
-    return Path(value).resolve()
 
 
 def _model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:

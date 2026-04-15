@@ -22,7 +22,7 @@ def generate_with_ollama(
     }
     url = f"{base_url.rstrip('/')}/api/generate"
     _verbose(verbose, f"Calling Ollama local model at {url} with model={model}.")
-    
+
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -37,13 +37,13 @@ def generate_with_ollama(
             break
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
-                _verbose(verbose, f"Ollama HTTP error {e.code}. Retrying in 5s (Attempt {attempt+1}/{max_retries}).")
+                _verbose(verbose, f"Ollama HTTP error {e.code}. Retrying in 5s (Attempt {attempt + 1}/{max_retries}).")
                 time.sleep(5)
                 continue
             raise RuntimeError(f"Ollama request failed with HTTP {e.code}: {e.reason}") from e
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if attempt < max_retries - 1:
-                _verbose(verbose, f"Ollama connection error: {exc}. Retrying in 5s (Attempt {attempt+1}/{max_retries}).")
+                _verbose(verbose, f"Ollama connection error: {exc}. Retrying in 5s (Attempt {attempt + 1}/{max_retries}).")
                 time.sleep(5)
                 continue
             raise RuntimeError(f"Ollama request failed. Is Ollama running at {base_url}? {exc}") from exc
@@ -58,4 +58,3 @@ def generate_with_ollama(
     text = str(data.get("response", ""))
     _verbose(verbose, f"Ollama response characters: {len(text)}")
     return text
-
