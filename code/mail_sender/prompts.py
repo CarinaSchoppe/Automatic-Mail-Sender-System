@@ -201,7 +201,7 @@ def load_prompts(path: Path = PROMPTS_PATH) -> dict[str, str]:
         except (OSError, tomllib.TOMLDecodeError):
             # Fallback to defaults on error
             pass
-        except Exception: # Fallback for unexpected errors
+        except Exception:  # Fallback for unexpected errors
             pass
     return prompts
 
@@ -223,5 +223,5 @@ def save_prompts(prompts: dict[str, str], path: Path = PROMPTS_PATH) -> None:
         path.write_text("\n".join(lines), encoding="utf-8")
     except OSError:
         pass
-    except Exception: # Fallback for unexpected write errors
+    except Exception:  # Fallback for unexpected write errors
         pass

@@ -89,7 +89,7 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
             return rows
     except (OSError, csv.Error):
         return []
-    except Exception: # Fallback for unexpected errors during read
+    except Exception:  # Fallback for unexpected errors during read
         return []
 
 
@@ -120,10 +120,10 @@ def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index
                 with path.open("r", encoding="utf-8-sig", newline="") as f:
                     reader = csv.reader(f)
                     try:
-                        next(reader) # skip header
+                        next(reader)  # skip header
                         for existing_row in reader:
                             if len(existing_row) > unique_index and existing_row[unique_index].lower() == val_to_check:
-                                return # Already exists
+                                return  # Already exists
                     except StopIteration:
                         pass
             except (OSError, csv.Error):

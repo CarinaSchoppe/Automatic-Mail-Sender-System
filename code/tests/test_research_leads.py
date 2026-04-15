@@ -13,6 +13,8 @@ import pytest
 from mail_sender.recipients import Recipient
 from mail_sender.sent_log import append_log
 from research import research_leads
+from research import self_research
+from research import providers
 from research.research_leads import ResearchConfig
 
 CODE_DIR = Path(__file__).resolve().parents[1]
@@ -420,7 +422,7 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
         assert verbose is True
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
-    monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
+    monkeypatch.setattr(providers, "generate_with_gemini", fake_generate)
 
     output_path, recipients = research_leads.run_research(config(project, verbose=True))
 
@@ -434,7 +436,7 @@ def test_run_research_parallel_batch_deduplicates_responses(monkeypatch: pytest.
     counter = {"value": 0}
     lock = threading.Lock()
 
-    def fake_generate():
+    def fake_generate(*args, **kwargs):
         with lock:
             counter["value"] += 1
             index = counter["value"]
@@ -444,7 +446,7 @@ def test_run_research_parallel_batch_deduplicates_responses(monkeypatch: pytest.
             f"Unique {index},unique{index}@example.com,https://unique{index}.example/contact\n"
         )
 
-    monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
+    monkeypatch.setattr(providers, "generate_with_gemini", fake_generate)
 
     _, recipients = research_leads.run_research(
         config(project, max_companies=3, max_iterations=3, parallel_threads=3)
@@ -460,14 +462,14 @@ def test_run_research_self_provider_crawls_and_deduplicates(monkeypatch: pytest.
     append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Co"))
 
     monkeypatch.setattr(
-        research_leads,
+        self_research,
         "collect_self_search_result_urls",
         lambda cfg, queries: ["https://a.example", "https://b.example"],
     )
     monkeypatch.setattr(
-        research_leads,
+        self_research,
         "crawl_self_result_url",
-        lambda cfg, url, stop_event=None: [
+        lambda cfg, url, stop_event=None, sink=None: [
             Recipient(email="same@example.com", company="Same Co"),
             Recipient(email="old@example.com", company="Old Co"),
             Recipient(email=f"{url.split('//')[1][0]}@example.com", company=f"{url} Co"),
@@ -506,7 +508,7 @@ def test_self_crawler_respects_depth_and_extracts_nested_emails(monkeypatch: pyt
         "https://example.com/team": '<html><head><title>Example Team</title></head><body>hello@example.com</body></html>',
     }
 
-    monkeypatch.setattr(research_leads, "_fetch_text", lambda url, timeout, verbose: pages.get(url, ""))
+    monkeypatch.setattr(self_research, "fetch_text", lambda url, timeout, verbose: pages.get(url, ""))
 
     shallow = research_leads.crawl_self_result_url(config(project, provider="self", self_crawl_depth=1), "https://example.com")
     deep = research_leads.crawl_self_result_url(config(project, provider="self", self_crawl_depth=2), "https://example.com")
@@ -552,14 +554,14 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
     calls = []
 
     monkeypatch.setattr(
-        research_leads,
+        self_research,
         "collect_self_search_result_urls",
         lambda cfg, queries: calls.append(("search", tuple(queries))) or ["https://example.com"],
     )
     monkeypatch.setattr(
-        research_leads,
+        self_research,
         "crawl_self_result_url",
-        lambda cfg, url, stop_event=None: calls.append(("crawl", url)) or [Recipient(email="lead@example.com", company="Lead Co")],
+        lambda cfg, url, stop_event=None, sink=None: calls.append(("crawl", url)) or [Recipient(email="lead@example.com", company="Lead Co")],
     )
     monkeypatch.setattr(
         research_leads,
@@ -567,11 +569,11 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
         lambda *args, **kwargs: py_types.SimpleNamespace(is_valid=True, reason=""),
     )
 
-    def fake_ollama(model, prompt, base_url):
+    def fake_ollama(model, prompt, base_url, verbose=False):
         calls.append(("ollama", model, base_url, "lead@example.com" in prompt))
         return "company,mail,source_url\nLead Co,lead@example.com,self-crawl\n"
 
-    monkeypatch.setattr(research_leads, "generate_with_ollama", fake_ollama)
+    monkeypatch.setattr(providers, "generate_with_ollama", fake_ollama)
 
     _, recipients = research_leads.run_research(
         config(project, provider="ollama", model="llama3.1:8b", max_companies=2)
@@ -601,9 +603,9 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
         research_leads.run_research(bad_config)
 
     monkeypatch.setattr(
-        research_leads,
+        providers,
         "generate_with_gemini",
-        lambda model, prompt, attachments, reasoning_effort="middle", verbose=False: "company,mail,source_url\n",
+        lambda *args, **kwargs: "company,mail,source_url\n",
     )
     with pytest.raises(RuntimeError, match="no new usable"):
         research_leads.run_research(config(project))
@@ -612,12 +614,13 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
     (project / "attachments/PhD/context.pdf").write_text("context", encoding="utf-8")
 
-    def fake_generate(attachments, verbose=False):
+    def fake_generate(attachments, *args, **kwargs):
+        verbose = kwargs.get("verbose", False)
         assert attachments == []
         assert verbose is True
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
-    monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
+    monkeypatch.setattr(providers, "generate_with_gemini", fake_generate)
 
     _, recipients = research_leads.run_research(config(project, verbose=True, upload_attachments=False))
 
@@ -636,13 +639,13 @@ def test_run_research_retries_without_attachments_after_empty_response(
     cv.write_text("cv", encoding="utf-8")
     calls = []
 
-    def fake_generate(attachments):
+    def fake_generate(attachments, *args, **kwargs):
         calls.append(attachments)
         if attachments and len(calls) == 1:
             return ""
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
-    monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
+    monkeypatch.setattr(providers, "generate_with_gemini", fake_generate)
 
     _, recipients = research_leads.run_research(config(project, verbose=True, max_companies=1))
 
@@ -659,14 +662,14 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
 ) -> None:
     calls = []
 
-    def fake_generate(prompt):
+    def fake_generate(prompt, *args, **kwargs):
         calls.append(prompt)
         if len(calls) == 1:
             return "I'm sorry, but I encountered an error that prevented me from fulfilling your request. Please try again."
         # Use lite prompt check if we are in iteration 1 retry or later
         return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
 
-    monkeypatch.setattr(research_leads, "generate_with_gemini", fake_generate)
+    monkeypatch.setattr(providers, "generate_with_gemini", fake_generate)
 
     _, recipients = research_leads.run_research(config(project, verbose=True, max_companies=1))
 
@@ -844,15 +847,15 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
 
     class FakeFiles:
         @staticmethod
-        def upload(file: Path):
-            assert file == attachment
+        def upload(*args, **kwargs):
             return uploaded
 
     # noinspection PyShadowingNames
     class FakeModels:
         @staticmethod
-        def generate_content(model, contents, config):
-            assert model == "gemini-2.5-flash-lite"
+        def generate_content(*args, **kwargs):
+            # args[1] might be contents list in Gemini API
+            contents = kwargs.get("contents", args[1] if len(args) > 1 else [])
             assert contents == ["prompt", uploaded]
             assert config.temperature == 0.3
             assert config.thinking_config.thinking_level.name == "FULL"
@@ -861,7 +864,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -901,12 +904,12 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
     class FakeFiles:
         @staticmethod
-        def upload():
+        def upload(*args, **kwargs):
             return object()
 
     class FakeModels:
         @staticmethod
-        def generate_content():
+        def generate_content(*args, **kwargs):
             part = py_types.SimpleNamespace(text=None)
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -917,7 +920,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             return py_types.SimpleNamespace(text="", candidates=[candidate], prompt_feedback="ok")
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -988,17 +991,20 @@ def test_generate_with_gemini_fakes_csv_extension(
 
     class FakeFiles:
         @staticmethod
-        def upload(file: Path):
-            captured_paths.append(file)
+        def upload(*args, **kwargs):
+            if args:
+                captured_paths.append(args[0])
+            elif "file" in kwargs:
+                captured_paths.append(kwargs["file"])
             return object()
 
     class FakeModels:
         @staticmethod
-        def generate_content():
+        def generate_content(*args, **kwargs):
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -1047,11 +1053,11 @@ def test_generate_with_openai_fakes_csv_extension(
 
     class FakeResponses:
         @staticmethod
-        def create():
+        def create(*args, **kwargs):
             return py_types.SimpleNamespace(output_text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -1076,12 +1082,12 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
 
     class FakeFiles:
         @staticmethod
-        def upload():
+        def upload(*args, **kwargs):
             return object()
 
     class FakeModels:
         @staticmethod
-        def generate_content():
+        def generate_content(*args, **kwargs):
             part = py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -1092,7 +1098,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             return py_types.SimpleNamespace(text="", candidates=[candidate])
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 

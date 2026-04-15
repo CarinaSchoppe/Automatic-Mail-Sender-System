@@ -12,7 +12,6 @@ from research.provider_clients.common import (
     verbose_gemini_candidates,
     verbose_openai_output,
 )
-
 from research.provider_clients.gemini_provider import generate_with_gemini as _gemini_generate
 from research.provider_clients.ollama_provider import generate_with_ollama
 from research.provider_clients.openai_provider import generate_with_openai as _openai_generate

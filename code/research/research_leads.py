@@ -167,7 +167,7 @@ def _load_settings() -> dict:
             return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
         return {}
-    except Exception: # Fallback for unexpected errors
+    except Exception:  # Fallback for unexpected errors
         return {}
 
 
@@ -588,6 +588,26 @@ def run_ollama_web_research(
 
 def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
     return _self_research.self_search_queries(config, mode)
+
+
+def crawl_self_result_url(*args, **kwargs):
+    """Compatibility wrapper around the self research crawling logic."""
+    return _self_research.crawl_self_result_url(*args, **kwargs)
+
+
+def _extract_google_result_urls(*args, **kwargs):
+    """Compatibility wrapper for testing."""
+    return _self_research._extract_google_result_urls(*args, **kwargs)
+
+
+def collect_self_search_result_urls(*args, **kwargs):
+    """Compatibility wrapper for testing."""
+    return _self_research.collect_self_search_result_urls(*args, **kwargs)
+
+
+def _fetch_text(*args, **kwargs):
+    """Compatibility wrapper for testing."""
+    return _self_research.fetch_text(*args, **kwargs)
 
 
 def normalize_company(company: str) -> str:

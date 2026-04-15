@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import os
 import tomllib
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 try:
     from dotenv import load_dotenv as _dotenv_load
+
     load_dotenv = _dotenv_load
 except ImportError:  # pragma: no cover
     _dotenv_load = None
+
+
     def _dotenv_load_stub():
         return False
+
+
     load_dotenv = _dotenv_load_stub
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -42,7 +46,7 @@ def _load_settings() -> dict:
             return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
         return {}
-    except Exception: # Fallback for unexpected errors
+    except Exception:  # Fallback for unexpected errors
         return {}
 
 
