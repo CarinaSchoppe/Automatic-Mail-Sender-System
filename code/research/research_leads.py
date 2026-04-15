@@ -18,7 +18,7 @@ import sys
 import threading
 import tomllib
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime
 from pathlib import Path
 from typing import cast, Any
@@ -544,9 +544,10 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
 
         stop_event = threading.Event()
         batch_new_count = 0
-        sink = ThreadSafeRecipientSink(target_count, seen_emails_in_run, seen_companies_in_run, config, mode)
+        sink = ThreadSafeRecipientSink(remaining_target, seen_emails_in_run, seen_companies_in_run, config, mode)
 
-        with ThreadPoolExecutor(max_workers=batch_size) as executor:
+        executor = ThreadPoolExecutor(max_workers=batch_size)
+        try:
             futures = {
                 executor.submit(
                     _generate_and_process_response,
@@ -555,21 +556,30 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
                 for i in range(batch_size)
             }
 
-            for future in as_completed(futures):
-                if stop_event.is_set():
-                    continue
+            pending = set(futures)
+            while pending and not stop_event.is_set():
+                done, pending = wait(pending, timeout=0.5, return_when=FIRST_COMPLETED)
+                for future in done:
+                    try:
+                        thread_added = future.result()
+                        batch_new_count += thread_added
+                        if thread_added > 0:
+                            _info(f"Added {thread_added} new recipients from AI response. Total found in run: {len(all_recipients) + len(sink.recipients)}/{target_count}.")
 
-                try:
-                    thread_added = future.result()
-                    batch_new_count += thread_added
-                    if thread_added > 0:
-                        _info(f"Added {thread_added} new recipients from AI response. Total found in run: {len(all_recipients) + len(sink.recipients)}/{target_count}.")
+                        if sink.is_full():
+                            _info(f"Target of {target_count} reached. Stopping batch.")
+                            stop_event.set()
+                    except (OSError, RuntimeError, ValueError) as e:
+                        _info(f"AI request failed in thread: {type(e).__name__}: {e}")
 
-                    if sink.is_full():
-                        _info(f"Target of {target_count} reached. Stopping batch.")
-                        stop_event.set()
-                except (OSError, RuntimeError, ValueError) as e:
-                    _info(f"AI request failed in thread: {type(e).__name__}: {e}")
+            if stop_event.is_set():
+                _info("Hard cut: target reached, proceeding without waiting for remaining AI requests.")
+
+        finally:
+            # shutdown(wait=False) prevents waiting for running threads when exiting the try/finally.
+            # However, if we are using the context manager 'with ThreadPoolExecutor', it would still wait.
+            # So we use a manual try-finally to ensure we can control the wait behavior.
+            executor.shutdown(wait=False)
 
         batch_actually_added = 0
         for r in sink.recipients:

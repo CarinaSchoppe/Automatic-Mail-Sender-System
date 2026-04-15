@@ -11,7 +11,7 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MailMode
@@ -64,50 +64,57 @@ def run_self_research(
 
     stop_event = threading.Event()
 
-    with ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls))) as executor:
+    executor = ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls)))
+    try:
         futures = {executor.submit(crawl_self_result_url, config, url, stop_event, sink): url for url in result_urls}
-        for future in as_completed(futures):
-            if stop_event.is_set():
-                continue
-            url = futures[future]
-            try:
-                candidates = future.result()
-            except (OSError, RuntimeError, ValueError) as exc:
-                _verbose(config.verbose, f"Self research crawl failed for {url}: {exc}")
-                continue
+        pending = set(futures)
+        while pending and not stop_event.is_set():
+            done, pending = wait(pending, timeout=0.5, return_when=FIRST_COMPLETED)
+            for future in done:
+                url = futures[future]
+                try:
+                    candidates = future.result()
+                except (OSError, RuntimeError, ValueError) as exc:
+                    _verbose(config.verbose, f"Self research crawl failed for {url}: {exc}")
+                    continue
 
-            if not sink:
-                for candidate in candidates:
-                    if len(recipients) >= target_count:
-                        stop_event.set()
-                        break
-                    email_key = candidate.email.lower()
-                    company_key = normalize_company(candidate.company)
-                    if email_key in seen_emails:
-                        _verbose(config.verbose, f"Self candidate skipped because email already exists: {candidate.email}")
-                        continue
-                    if company_key and company_key in seen_companies:
-                        _verbose(config.verbose, f"Self candidate skipped because company already exists: {candidate.company}")
-                        continue
+                if not sink:
+                    for candidate in candidates:
+                        if len(recipients) >= target_count:
+                            stop_event.set()
+                            break
+                        email_key = candidate.email.lower()
+                        company_key = normalize_company(candidate.company)
+                        if email_key in seen_emails:
+                            _verbose(config.verbose, f"Self candidate skipped because email already exists: {candidate.email}")
+                            continue
+                        if company_key and company_key in seen_companies:
+                            _verbose(config.verbose, f"Self candidate skipped because company already exists: {candidate.company}")
+                            continue
 
-                    validation = validate_email_address(
-                        candidate.email,
-                        verify_mailbox=config.self_verify_email_smtp,
-                        smtp_timeout=config.self_request_timeout,
-                    )
-                    if not validation.is_valid:
-                        _verbose(config.verbose, f"Self candidate skipped by validation: {candidate.email} | {validation.reason}")
-                        continue
+                        validation = validate_email_address(
+                            candidate.email,
+                            verify_mailbox=config.self_verify_email_smtp,
+                            smtp_timeout=config.self_request_timeout,
+                        )
+                        if not validation.is_valid:
+                            _verbose(config.verbose, f"Self candidate skipped by validation: {candidate.email} | {validation.reason}")
+                            continue
 
-                    recipients.append(candidate)
-                    seen_emails.add(email_key)
-                    if company_key:
-                        seen_companies.add(company_key)
-                    _verbose(config.verbose, f"Self candidate accepted: {candidate.company} <{candidate.email}>")
+                        recipients.append(candidate)
+                        seen_emails.add(email_key)
+                        if company_key:
+                            seen_companies.add(company_key)
+                        _verbose(config.verbose, f"Self candidate accepted: {candidate.company} <{candidate.email}>")
 
-            if (sink and sink.is_full()) or (not sink and len(recipients) >= target_count):
-                stop_event.set()
-                break
+                if (sink and sink.is_full()) or (not sink and len(recipients) >= target_count):
+                    stop_event.set()
+                    break
+
+        if stop_event.is_set():
+            _info("Self research: target reached, hard cut active.")
+    finally:
+        executor.shutdown(wait=False)
 
     if sink:
         # If we used a sink, we return its collected recipients
