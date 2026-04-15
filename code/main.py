@@ -283,7 +283,6 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
         ("--send", SEND),
         ("--verbose", VERBOSE),
         ("--resend-existing", RESEND_EXISTING),
-        ("--skip-invalid-check", SKIP_INVALID_CHECK),
         ("--allow-empty-attachments", ALLOW_EMPTY_ATTACHMENTS),
         ("--log-dry-run", LOG_DRY_RUN),
         ("--no-write-sent-log", not WRITE_SENT_LOG),
@@ -292,6 +291,8 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
         ("--skip-email-dns-check", SKIP_EMAIL_DNS_CHECK),
     ]:
         _add_flag(args, enabled, flag)
+    _add_flag(args, SKIP_INVALID_CHECK, "--skip-invalid-check")
+    _add_flag(args, not SKIP_INVALID_CHECK, "--no-skip-invalid-check")
     _add_value(args, "--max-send-count", max_send_count)
     _add_value(args, "--parallel-threads", PARALLEL_THREADS)
     _add_value(args, "--verify-email-smtp-timeout", VERIFY_EMAIL_SMTP_TIMEOUT)

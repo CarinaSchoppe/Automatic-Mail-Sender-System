@@ -91,10 +91,40 @@ def test_cli_skips_addresses_already_in_invalid_log(project: Path, capsys) -> No
         writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
         writer.writerow(["Bad", "bad@example.invalid", "domain has no MX or A record", "2026-04-14T10:00+10:00"])
 
-    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments", "--no-skip-invalid-check"])
 
     assert result == 0
     assert "already listed in invalid_mails.csv" in capsys.readouterr().out
+
+
+def test_cli_resend_existing_and_skip_invalid_check_allows_invalid_log_address(project: Path, capsys) -> None:
+    """Prueft, dass Resend und Skip-invalid eine geloggte Invalid-Mail erlauben."""
+    write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
+    with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["Bad", "bad@example.invalid", "2026-04-14T10:00+10:00"])
+    with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
+        writer.writerow(["Bad", "bad@example.invalid", "old invalid result", "2026-04-14T10:00+10:00"])
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--allow-empty-attachments",
+        "--resend-existing",
+        "--skip-invalid-check",
+        "--skip-email-dns-check",
+    ])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "[DRY_RUN] bad@example.invalid" in output
+    assert "Existing CSV check: disabled (--resend-existing)" in output
+    assert "Invalid CSV check: disabled (--skip-invalid-check)" in output
 
 
 def test_cli_checks_all_output_csv_logs(project: Path, capsys) -> None:

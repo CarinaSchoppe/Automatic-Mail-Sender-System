@@ -1042,6 +1042,7 @@ class MailSenderWorkbench:
             ("--send", "SEND"),
             ("--verbose", "VERBOSE"),
             ("--resend-existing", "RESEND_EXISTING"),
+            ("--skip-invalid-check", "SKIP_INVALID_CHECK"),
             ("--allow-empty-attachments", "ALLOW_EMPTY_ATTACHMENTS"),
             ("--log-dry-run", "LOG_DRY_RUN"),
             ("--delete-input-after-success", "DELETE_INPUT_AFTER_SUCCESS"),
@@ -1049,6 +1050,8 @@ class MailSenderWorkbench:
         ]:
             if settings[key]:
                 args.append(flag)
+        if not settings["SKIP_INVALID_CHECK"]:
+            args.append("--no-skip-invalid-check")
         if not settings["WRITE_SENT_LOG"]:
             args.append("--no-write-sent-log")
         return args
