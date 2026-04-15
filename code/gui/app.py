@@ -11,8 +11,18 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any
 
-from gui.settings_store import ENV_SCHEMA, PROJECT_ROOT, SETTINGS_SCHEMA, SettingSpec
-from gui.settings_store import coerce_value, load_env, load_settings, write_env, write_settings
+from gui.settings_store import (
+    ENV_SCHEMA,
+    PROJECT_ROOT,
+    SETTINGS_SCHEMA,
+    SettingSpec,
+    coerce_value,
+    load_env,
+    load_settings,
+    write_env,
+    write_settings,
+)
+from mail_sender.prompts import load_prompts, save_prompts
 
 
 HOVER_TEXTS = {
@@ -68,6 +78,7 @@ class MailSenderWorkbench:
         self._autosave_after_id: str | None = None
         self._autosave_target = "all"
         self.auto_refresh = tk.BooleanVar(value=True)
+        self.prompts = load_prompts(self.project_root / "prompts.toml")
 
         self.root.title("MailSenderSystem Workbench")
         self.root.geometry("1220x780")
@@ -183,6 +194,7 @@ class MailSenderWorkbench:
         self.notebook.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         self.settings_tab = ttk.Frame(self.notebook, padding=12)
         self.env_tab = ttk.Frame(self.notebook, padding=12)
+        self.prompts_tab = ttk.Frame(self.notebook, padding=12)
         self.inputs_tab = ttk.Frame(self.notebook, padding=12)
         self.found_tab = ttk.Frame(self.notebook, padding=12)
         self.sent_tab = ttk.Frame(self.notebook, padding=12)
@@ -190,6 +202,7 @@ class MailSenderWorkbench:
         self.console_tab = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(self.settings_tab, text="Settings")
         self.notebook.add(self.env_tab, text=".env")
+        self.notebook.add(self.prompts_tab, text="Prompts")
         self.notebook.add(self.inputs_tab, text="AI Inputs")
         self.notebook.add(self.found_tab, text="Found Mails")
         self.notebook.add(self.sent_tab, text="Sent Mails")
@@ -197,6 +210,7 @@ class MailSenderWorkbench:
         self.notebook.add(self.console_tab, text="Run Console")
         self._build_settings_tab()
         self._build_env_tab()
+        self._build_prompts_tab()
         self._build_inputs_tab()
         self._build_found_tab()
         self._build_sent_tab()
@@ -347,6 +361,47 @@ class MailSenderWorkbench:
             return tk.DoubleVar(value=float(value))
         return tk.StringVar(value=str(value))
 
+    def _build_prompts_tab(self) -> None:
+        top = ttk.Frame(self.prompts_tab)
+        top.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(top, text="Select Mode:").pack(side="left", padx=(0, 10))
+
+        self.prompt_mode_var = tk.StringVar()
+        modes = list(self.prompts.keys())
+        self.prompt_mode_combo = ttk.Combobox(
+            top, textvariable=self.prompt_mode_var, values=modes, state="readonly", width=25
+        )
+        self.prompt_mode_combo.pack(side="left")
+        self.prompt_mode_combo.bind("<<ComboboxSelected>>", self._on_prompt_mode_change)
+
+        if modes:
+            self.prompt_mode_var.set(modes[0])
+
+        self.prompt_text = scrolledtext.ScrolledText(self.prompts_tab, wrap="word", undo=True, font=("Consolas", 10))
+        self.prompt_text.pack(fill="both", expand=True, pady=10)
+        self._style_text_widget(self.prompt_text)
+
+        bottom = ttk.Frame(self.prompts_tab)
+        bottom.pack(fill="x")
+
+        ttk.Button(bottom, text="Save Prompts", command=self.save_all_prompts, style="Accent.TButton").pack(side="right")
+        ttk.Button(bottom, text="Reset current to Default", command=self._reset_current_prompt).pack(side="right", padx=10)
+
+        self._on_prompt_mode_change()
+
+    def _on_prompt_mode_change(self, _event=None) -> None:
+        if hasattr(self, "_last_prompt_mode") and self._last_prompt_mode:
+            self.prompts[self._last_prompt_mode] = self.prompt_text.get("1.0", tk.END).strip()
+
+        mode = self.prompt_mode_var.get()
+        if not mode:
+            return
+
+        self._last_prompt_mode = mode
+        self.prompt_text.delete("1.0", tk.END)
+        self.prompt_text.insert("1.0", self.prompts.get(mode, ""))
+
     def _build_inputs_tab(self) -> None:
         toolbar = ttk.Frame(self.inputs_tab)
         toolbar.pack(fill="x", pady=(0, 8))
@@ -468,6 +523,31 @@ class MailSenderWorkbench:
     def save_all(self) -> None:
         self.save_settings()
         self.save_env()
+        self.save_all_prompts()
+
+    def save_all_prompts(self) -> None:
+        mode = self.prompt_mode_var.get()
+        if mode:
+            self.prompts[mode] = self.prompt_text.get("1.0", tk.END).strip()
+
+        try:
+            save_prompts(self.prompts, self.project_root / "prompts.toml")
+        except Exception as exc:
+            messagebox.showerror("Save failed", f"Failed to save prompts: {exc}")
+            return
+
+        self._append_console(f"[INFO] Saved prompts to {self.project_root / 'prompts.toml'}\n")
+        self.status_var.set("Prompts saved successfully.")
+
+    def _reset_current_prompt(self) -> None:
+        from mail_sender.prompts import DEFAULT_PROMPTS
+
+        mode = self.prompt_mode_var.get()
+        if mode and mode in DEFAULT_PROMPTS:
+            if messagebox.askyesno("Reset Prompt", f"Are you sure you want to reset the prompt for '{mode}' to its default?"):
+                self.prompt_text.delete("1.0", tk.END)
+                self.prompt_text.insert("1.0", DEFAULT_PROMPTS[mode])
+                self.status_var.set(f"Reset prompt for {mode} to default.")
 
     def save_settings(self) -> None:
         try:
@@ -489,10 +569,12 @@ class MailSenderWorkbench:
         self._loading = True
         self.values = load_settings(self.settings_path)
         self.env_values = load_env(self.env_path)
+        self.prompts = load_prompts(self.project_root / "prompts.toml")
         self._load_form_values()
         self._load_env_values()
+        self._on_prompt_mode_change()
         self._loading = False
-        self._append_console("[INFO] Reloaded settings.toml and .env\n")
+        self._append_console("[INFO] Reloaded settings.toml, .env and prompts.toml\n")
 
     def load_config_file(self) -> None:
         selected = filedialog.askopenfilename(
