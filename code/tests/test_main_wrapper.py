@@ -10,10 +10,8 @@ import pytest
 import main as app_main
 
 
-def test_main_wrapper_can_run_research(monkeypatch) -> None:
-    """Prueft das Verhalten fuer main wrapper can run research."""
-    calls = []
-
+def setup_mock_mains(monkeypatch, calls: list) -> None:
+    """Konfiguriert Fake-Hauptfunktionen fuer research und mail."""
     def fake_research_main(args):
         """Kapselt den Hilfsschritt fake_research_main."""
         calls.append(("research", args))
@@ -27,6 +25,38 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
     monkeypatch.setattr("research.research_leads.main", fake_research_main)
     monkeypatch.setattr("mail_sender.cli.main", fake_mail_main)
     monkeypatch.setattr("sys.argv", ["code/main.py"])
+
+
+def setup_target_send_config(monkeypatch, **kwargs) -> None:
+    """Setzt die Standard-Konfiguration fuer Target-Send-Tests."""
+    defaults = {
+        "RUN_AI_RESEARCH": True,
+        "SEND": True,
+        "RESEARCH_WRITE_OUTPUT": True,
+        "WRITE_SENT_LOG": True,
+        "RESEND_EXISTING": False,
+        "MODE": "PhD",
+        "SEND_TARGET_COUNT": 2,
+        "SEND_TARGET_MAX_ROUNDS": 0,
+    }
+    defaults.update(kwargs)
+    for key, value in defaults.items():
+        monkeypatch.setattr(app_main, key, value)
+
+
+def _setup_target_loop_mocks(monkeypatch, **kwargs) -> None:
+    """Setzt Standard-Mocks und Konfigurationen fuer Target-Loop-Tests."""
+    setup_target_send_config(monkeypatch, **kwargs)
+    monkeypatch.setattr(app_main, "SAVE_VERBOSE_LOG", kwargs.get("SAVE_VERBOSE_LOG", False))
+    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {"old@example.com"})
+    monkeypatch.setattr(app_main, "research_main", lambda args: 0)
+    monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
+
+
+def test_main_wrapper_can_run_research(monkeypatch) -> None:
+    """Prueft das Verhalten fuer main wrapper can run research."""
+    calls = []
+    setup_mock_mains(monkeypatch, calls)
 
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_path(
@@ -63,20 +93,7 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
 def test_main_wrapper_defaults_to_research(monkeypatch) -> None:
     """Prueft das Verhalten fuer main wrapper defaults to research."""
     calls = []
-
-    def fake_research_main(args):
-        """Kapselt den Hilfsschritt fake_research_main."""
-        calls.append(("research", args))
-        return 0
-
-    def fake_mail_main(args=None):
-        """Kapselt den Hilfsschritt fake_mail_main."""
-        calls.append(("mail", args))
-        return 0
-
-    monkeypatch.setattr("research.research_leads.main", fake_research_main)
-    monkeypatch.setattr("mail_sender.cli.main", fake_mail_main)
-    monkeypatch.setattr("sys.argv", ["code/main.py"])
+    setup_mock_mains(monkeypatch, calls)
 
     with pytest.raises(SystemExit) as exc_info:
         runpy.run_path(
@@ -246,14 +263,7 @@ def test_target_send_loop_repeats_until_logged_target_is_reached(monkeypatch) ->
         + [{"company": "New 1", "mail": "new1@example.com"}, {"company": "New 2", "mail": "new2@example.com"}, {"company": "New 3", "mail": "new3@example.com"}],
     ])
 
-    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
-    monkeypatch.setattr(app_main, "SEND", True)
-    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
-    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
-    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
-    monkeypatch.setattr(app_main, "MODE", "PhD")
-    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 3)
-    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
+    setup_target_send_config(monkeypatch, SEND_TARGET_COUNT=3)
     monkeypatch.setattr(app_main, "VERBOSE", False)
     monkeypatch.setattr(app_main, "research_main", lambda args: research_calls.append(args) or 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: mail_calls.append(args) or 0)
@@ -320,14 +330,7 @@ def test_target_send_loop_reports_all_invalid_setting_combinations(monkeypatch, 
 def test_target_send_loop_stops_when_no_new_sent_log_entries_are_created(monkeypatch, capsys) -> None:
     """Prueft das Verhalten fuer target send loop stops when no new sent log entries are created."""
     rows = [{"company": f"Old {i}", "mail": f"old{i}@example.com"} for i in range(5)]
-    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
-    monkeypatch.setattr(app_main, "SEND", True)
-    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
-    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
-    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
-    monkeypatch.setattr(app_main, "MODE", "PhD")
-    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 2)
-    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
+    setup_target_send_config(monkeypatch)
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: 0)
     monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {row["mail"] for row in rows})
@@ -340,14 +343,7 @@ def test_target_send_loop_stops_when_no_new_sent_log_entries_are_created(monkeyp
 
 def test_target_send_loop_stops_when_research_fails(monkeypatch) -> None:
     """Prueft das Verhalten fuer target send loop stops when research fails."""
-    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
-    monkeypatch.setattr(app_main, "SEND", True)
-    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
-    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
-    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
-    monkeypatch.setattr(app_main, "MODE", "PhD")
-    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 2)
-    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
+    setup_target_send_config(monkeypatch)
     monkeypatch.setattr(app_main, "research_main", lambda args: 6)
     monkeypatch.setattr(app_main, "_count_logged_sent_emails", lambda: 0)
 
@@ -357,14 +353,7 @@ def test_target_send_loop_stops_when_research_fails(monkeypatch) -> None:
 def test_target_send_loop_stops_at_max_rounds(monkeypatch, capsys) -> None:
     """Prueft das Verhalten fuer target send loop stops at max rounds."""
     row_sets = iter([[], [{"company": "One", "mail": "one@example.com"}]])
-    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
-    monkeypatch.setattr(app_main, "SEND", True)
-    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
-    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
-    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
-    monkeypatch.setattr(app_main, "MODE", "PhD")
-    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 2)
-    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 1)
+    setup_target_send_config(monkeypatch, SEND_TARGET_MAX_ROUNDS=1)
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: 0)
     monkeypatch.setattr(app_main, "_get_logged_emails", lambda: set())
@@ -377,14 +366,7 @@ def test_target_send_loop_stops_at_max_rounds(monkeypatch, capsys) -> None:
 def test_target_send_loop_stops_when_mail_sender_errors(monkeypatch, capsys) -> None:
     """Prueft das Verhalten fuer target send loop stops when mail sender errors."""
     row_sets = iter([[], [{"company": "One", "mail": "one@example.com"}]])
-    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
-    monkeypatch.setattr(app_main, "SEND", True)
-    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
-    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
-    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
-    monkeypatch.setattr(app_main, "MODE", "PhD")
-    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 2)
-    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
+    setup_target_send_config(monkeypatch)
     monkeypatch.setattr(app_main, "research_main", lambda args: 0)
     monkeypatch.setattr(app_main, "mail_main", lambda args: 4)
     monkeypatch.setattr(app_main, "_get_logged_emails", lambda: set())
@@ -418,20 +400,7 @@ def test_run_with_optional_log_can_skip_log_and_closes_on_error(monkeypatch, tmp
 def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
     # Mock settings
     """Prueft das Verhalten fuer target loop max rounds safety gate."""
-    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 100)
-    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 1)
-    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
-    monkeypatch.setattr(app_main, "SEND", True)
-    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
-    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
-    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
-    monkeypatch.setattr(app_main, "MODE", "PhD")
-    monkeypatch.setattr(app_main, "SAVE_VERBOSE_LOG", False)
-
-    # Mock dependencies
-    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {"old@example.com"})
-    monkeypatch.setattr(app_main, "research_main", lambda args: 0)
-    monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
+    _setup_target_loop_mocks(monkeypatch, SEND_TARGET_COUNT=100, SEND_TARGET_MAX_ROUNDS=1)
 
     # To simulate progress but then stop because of max_rounds=1
     # Round 1 start: current_count = 1
@@ -455,20 +424,7 @@ def test_target_loop_max_rounds_safety_gate(monkeypatch, capsys) -> None:
 def test_target_loop_unlimited_warning(monkeypatch, capsys) -> None:
     # Mock settings for unlimited with high target
     """Prueft das Verhalten fuer target loop unlimited warning."""
-    monkeypatch.setattr(app_main, "SEND_TARGET_COUNT", 100)
-    monkeypatch.setattr(app_main, "SEND_TARGET_MAX_ROUNDS", 0)
-    monkeypatch.setattr(app_main, "RUN_AI_RESEARCH", True)
-    monkeypatch.setattr(app_main, "SEND", True)
-    monkeypatch.setattr(app_main, "RESEARCH_WRITE_OUTPUT", True)
-    monkeypatch.setattr(app_main, "WRITE_SENT_LOG", True)
-    monkeypatch.setattr(app_main, "RESEND_EXISTING", False)
-    monkeypatch.setattr(app_main, "MODE", "PhD")
-    monkeypatch.setattr(app_main, "SAVE_VERBOSE_LOG", False)
-
-    # Mock dependencies to stop early
-    monkeypatch.setattr(app_main, "_get_logged_emails", lambda: {"old@example.com"})
-    monkeypatch.setattr(app_main, "research_main", lambda args: 0)
-    monkeypatch.setattr(app_main, "mail_main", lambda args=None: 0)
+    _setup_target_loop_mocks(monkeypatch, SEND_TARGET_COUNT=100, SEND_TARGET_MAX_ROUNDS=0)
 
     monkeypatch.setattr(app_main, "_read_output_sent_rows", lambda: [])
 

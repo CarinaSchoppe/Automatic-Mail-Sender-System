@@ -753,7 +753,7 @@ def crawl_self_result_url(*args, **kwargs):
 
 def _extract_google_result_urls(*args, **kwargs):
     """Compatibility wrapper for testing."""
-    return _self_research._extract_google_result_urls(*args, **kwargs)
+    return _self_research.extract_google_result_urls(*args, **kwargs)
 
 
 def collect_self_search_result_urls(*args, **kwargs):

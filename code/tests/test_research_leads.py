@@ -20,6 +20,33 @@ from research import research_leads
 from research import self_research
 from research.research_leads import ResearchConfig
 
+
+def setup_fake_genai(monkeypatch: pytest.MonkeyPatch, fake_client_class: type) -> None:
+    """Konfiguriert die Fake-Module fuer google.genai."""
+    fake_types = py_types.SimpleNamespace(
+        GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
+        GoogleSearch=lambda: py_types.SimpleNamespace(name="google_search"),
+        ToolConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
+        ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
+        ThinkingLevel=py_types.SimpleNamespace(
+            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
+            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
+            FULL=py_types.SimpleNamespace(name="FULL")
+        ),
+    )
+    fake_google = py_types.ModuleType("google")
+    fake_genai = py_types.ModuleType("google.genai")
+    fake_genai.Client = fake_client_class
+    fake_genai.types = fake_types
+    fake_google.genai = fake_genai
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
+    monkeypatch.setenv("GEMINI_API_KEY", "key")
+
 CODE_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -170,7 +197,7 @@ def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setenv("RESEARCH_BASE_DIR", "")
 
-    expected_base = Path(research_leads.__file__).resolve().parents[2]
+    expected_base = Path(str(research_leads.__file__)).resolve().parents[2]
     assert research_leads.default_config().base_dir == expected_base.resolve()
 
 
@@ -233,6 +260,7 @@ def test_build_prompt_accepts_legacy_input_context_position(project: Path) -> No
         config(project),
         research_leads.get_mode("PhD", project),
         set(),
+        None,
         "legacy context",
     )
 
@@ -976,29 +1004,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             self.files = FakeFiles()
             self.models = FakeModels()
 
-    fake_types = py_types.SimpleNamespace(
-        GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
-        GoogleSearch=lambda: py_types.SimpleNamespace(name="google_search"),
-        ToolConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
-        ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(
-            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
-            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
-            FULL=py_types.SimpleNamespace(name="FULL")
-        ),
-    )
-    fake_google = py_types.ModuleType("google")
-    fake_genai = py_types.ModuleType("google.genai")
-    fake_genai.Client = FakeClient
-    fake_genai.types = fake_types
-    fake_google.genai = fake_genai
-    monkeypatch.setitem(sys.modules, "google", fake_google)
-    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
-    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
-    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    setup_fake_genai(monkeypatch, FakeClient)
 
     assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [attachment], "high", True) == '{"leads": []}'
     output = capsys.readouterr().out
@@ -1043,29 +1049,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             self.files = FakeFiles()
             self.models = FakeModels()
 
-    fake_types = py_types.SimpleNamespace(
-        GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
-        GoogleSearch=lambda: py_types.SimpleNamespace(name="google_search"),
-        ToolConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
-        ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(
-            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
-            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
-            FULL=py_types.SimpleNamespace(name="FULL")
-        ),
-    )
-    fake_google = py_types.ModuleType("google")
-    fake_genai = py_types.ModuleType("google.genai")
-    fake_genai.Client = FakeClient
-    fake_genai.types = fake_types
-    fake_google.genai = fake_genai
-    monkeypatch.setitem(sys.modules, "google", fake_google)
-    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
-    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
-    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    setup_fake_genai(monkeypatch, FakeClient)
 
     assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [], "middle", True) == ""
     output = capsys.readouterr().out
@@ -1257,29 +1241,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             self.files = FakeFiles()
             self.models = FakeModels()
 
-    fake_types = py_types.SimpleNamespace(
-        GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
-        GoogleSearch=lambda: py_types.SimpleNamespace(name="google_search"),
-        ToolConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        FunctionCallingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        FunctionCallingConfigMode=py_types.SimpleNamespace(AUTO="AUTO"),
-        ThinkingConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
-        ThinkingLevel=py_types.SimpleNamespace(
-            BRIEF=py_types.SimpleNamespace(name="BRIEF"),
-            MEDIUM=py_types.SimpleNamespace(name="MEDIUM"),
-            FULL=py_types.SimpleNamespace(name="FULL")
-        ),
-    )
-    fake_google = py_types.ModuleType("google")
-    fake_genai = py_types.ModuleType("google.genai")
-    fake_genai.Client = FakeClient
-    fake_genai.types = fake_types
-    fake_google.genai = fake_genai
-    monkeypatch.setitem(sys.modules, "google", fake_google)
-    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
-    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
-    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    setup_fake_genai(monkeypatch, FakeClient)
 
     assert research_leads.generate_with_gemini("gemini-2.5-flash-lite", "prompt", [], "middle", False) == (
         "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
@@ -1373,17 +1335,17 @@ def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
 {"leads": [{"company": "A", "emails": ["a@example.com"], "source_urls": ["https://a.example/contact"]}]}
 ```
 """
-    recipients = research_leads.parse_recipients(json_text, set(), True)
+    recipients = research_leads.parse_recipients(json_text, set(), verbose=True)
     assert [(recipient.company, recipient.email) for recipient in recipients] == [("A", "a@example.com")]
     assert "Parsed JSON recipients: 1" in capsys.readouterr().out
 
     list_payload = """
 [{"company": "B", "email": "b@example.com", "source": "https://b.example/contact"}, "skip me"]
 """
-    recipients = research_leads._parse_json_recipients(list_payload, set(), True)
+    recipients = research_leads._parse_json_recipients(list_payload, set(), verbose=True)
     assert [(recipient.company, recipient.email) for recipient in recipients] == [("B", "b@example.com")]
 
-    assert research_leads._parse_json_recipients('"not a list"', set(), True) == []
+    assert research_leads._parse_json_recipients('"not a list"', set(), verbose=True) == []
 
     assert research_leads._strip_csv_fence("```csv\nA,a@example.com\n```") == "A,a@example.com"
     assert research_leads._strip_csv_fence("```\nA,a@example.com\n```") == "A,a@example.com"
@@ -1401,5 +1363,5 @@ def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(research_leads, "detect_dialect", broken_dialect)
     monkeypatch.setattr("research.parsing.detect_dialect", broken_dialect)
 
-    assert research_leads._parse_headerless_csv_recipients("A,a@example.com", set(), True) == []
+    assert research_leads._parse_headerless_csv_recipients("A,a@example.com", set(), verbose=True) == []
     assert "Headerless CSV parser failed to read CSV rows." in capsys.readouterr().out

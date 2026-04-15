@@ -14,6 +14,37 @@ def write_recipient(path: Path, company: str, email: str) -> None:
     path.write_text(f"company,mail\n{company},{email}\n", encoding="utf-8")
 
 
+def write_invalid_log(project: Path, company: str, mail: str, reason: str = "old invalid result") -> None:
+    """Schreibt einen Testeintrag in die invalid_mails.csv Datei."""
+    with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
+        writer.writerow([company, mail, reason, "2026-04-14T10:00+10:00"])
+
+
+def setup_fake_mailer(monkeypatch, send_callback) -> None:
+    """Konfiguriert einen FakeMailer mit einem Callback fuer den Sendevorgang."""
+
+    class FakeMailer:
+        """Hilfsklasse fuer simulierte SMTP-Sendevorgaenge."""
+
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _exc_type, _exc, _traceback) -> None:
+            pass
+
+        @staticmethod
+        def send(*args, **kwargs) -> None:
+            send_callback(*args, **kwargs)
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+
+
 def test_cli_auto_processes_each_input_folder_and_logs_dry_run(project: Path, capsys) -> None:
     """Prueft das Verhalten fuer cli auto processes each input folder and logs dry run."""
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
@@ -130,10 +161,7 @@ def test_cli_resend_existing_and_skip_invalid_check_allows_invalid_log_address(p
 def test_cli_skip_invalid_check_sends_invalid_log_address_when_not_sent(project: Path, capsys) -> None:
     """Prueft, dass Skip-invalid nur die Invalid-Liste ignoriert."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
-    with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
-        writer.writerow(["Bad", "bad@example.invalid", "old invalid result", "2026-04-14T10:00+10:00"])
+    write_invalid_log(project, "Bad", "bad@example.invalid")
 
     result = cli.main([
         "--mode",
@@ -160,10 +188,7 @@ def test_cli_skip_invalid_check_still_blocks_sent_log_address_without_resend(pro
         writer = csv.writer(f)
         writer.writerow(["company", "mail", "sent_at"])
         writer.writerow(["Bad", "bad@example.invalid", "2026-04-14T10:00+10:00"])
-    with (project / "output/invalid_mails.csv").open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["company", "mail", "invalid_reason", "detected_at"])
-        writer.writerow(["Bad", "bad@example.invalid", "old invalid result", "2026-04-14T10:00+10:00"])
+    write_invalid_log(project, "Bad", "bad@example.invalid")
 
     result = cli.main([
         "--mode",
@@ -386,29 +411,7 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
     )
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
-
-    class FakeMailer:
-        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
-
-        def __init__(self, config) -> None:
-            """Initialisiert oder verwaltet das Testobjekt."""
-            self.config = config
-
-        def __enter__(self):
-            """Initialisiert oder verwaltet das Testobjekt."""
-            return self
-
-        def __exit__(self, exc_type, exc, traceback) -> None:
-            """Initialisiert oder verwaltet das Testobjekt."""
-            return None
-
-        @staticmethod
-        def send(recipient, *_args, **_kwargs) -> None:
-            """Merkt die Empfaengeradresse des simulierten Versands."""
-            sent.append(recipient.email)
-
-    monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+    setup_fake_mailer(monkeypatch, lambda recipient, *_args, **_kwargs: sent.append(recipient.email))
 
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send", "--max-send-count", "2"])
 
@@ -427,29 +430,7 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
     )
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
-
-    class FakeMailer:
-        """Dokumentiert die Test- oder Hilfsklasse FakeMailer."""
-
-        def __init__(self, config) -> None:
-            """Initialisiert oder verwaltet das Testobjekt."""
-            self.config = config
-
-        def __enter__(self):
-            """Initialisiert oder verwaltet das Testobjekt."""
-            return self
-
-        def __exit__(self, exc_type, exc, traceback) -> None:
-            """Initialisiert oder verwaltet das Testobjekt."""
-            return None
-
-        @staticmethod
-        def send(recipient, *_args, **_kwargs) -> None:
-            """Merkt die Empfaengeradresse des simulierten parallelen Versands."""
-            sent.append(recipient.email)
-
-    monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+    setup_fake_mailer(monkeypatch, lambda recipient, *_args, **_kwargs: sent.append(recipient.email))
 
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send", "--parallel-threads", "2"])
 

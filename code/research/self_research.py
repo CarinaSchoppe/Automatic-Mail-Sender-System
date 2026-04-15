@@ -193,7 +193,7 @@ def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) 
             html_text = fetch_text(search_url, config.self_request_timeout, config.verbose)
             if not html_text:
                 continue
-            for result_url in _extract_google_result_urls(html_text):
+            for result_url in extract_google_result_urls(html_text):
                 normalized = _normalize_url_for_dedupe(result_url)
                 if normalized in seen or _is_blocked_result_url(result_url):
                     continue
@@ -316,21 +316,25 @@ def fetch_text(url: str, timeout: float, verbose: bool) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def _extract_google_result_urls(html_text: str) -> list[str]:
+def extract_google_result_urls(html_text: str) -> list[str]:
     """
     Extrahiert die tatsächlichen Ziel-URLs aus einer Google-Suchergebnisseite.
     """
     urls: list[str] = []
     for href in HTML_LINK_PATTERN.findall(html_text):
-        decoded = html.unescape(href)
+        if not isinstance(href, (str, bytes)):
+            continue
+        href_str = href.decode("utf-8", errors="replace") if isinstance(href, bytes) else href
+        decoded = html.unescape(href_str)
         if decoded.startswith("/url?"):
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(decoded).query)
-            target = query.get("q", [""])[0]
+            parsed_query = urllib.parse.urlparse(decoded).query
+            query_dict = urllib.parse.parse_qs(parsed_query)
+            target = query_dict.get("q", [""])[0]
         elif decoded.startswith("http"):
             target = decoded
         else:
             continue
-        if target.startswith("http"):
+        if isinstance(target, str) and target.startswith("http"):
             urls.append(target)
     return urls
 
@@ -343,7 +347,10 @@ def _extract_relevant_same_site_links(current_url: str, html_text: str, base_net
     other_links: list[str] = []
     seen: set[str] = set()
     for href in HTML_LINK_PATTERN.findall(html_text):
-        target = urllib.parse.urljoin(current_url, html.unescape(href))
+        if not isinstance(href, (str, bytes)):
+            continue
+        href_str = href.decode("utf-8", errors="replace") if isinstance(href, bytes) else href
+        target = urllib.parse.urljoin(current_url, html.unescape(href_str))
         parsed = urllib.parse.urlparse(target)
         if parsed.scheme not in {"http", "https"}:
             continue

@@ -47,13 +47,13 @@ def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
             temp_dir.cleanup()
 
 
-def extract_gemini_response_text(response) -> str | None | Any:
+def extract_gemini_response_text(response: Any) -> str:
     """
     Extrahiert den generierten Text aus einer Gemini-Antwort.
     Berücksichtigt verschiedene Antwort-Strukturen (direkter Text vs. Candidates/Parts).
     """
     direct_text = getattr(response, "text", None)
-    if direct_text:
+    if isinstance(direct_text, str) and direct_text:
         return direct_text
 
     texts: list[str] = []
@@ -61,25 +61,25 @@ def extract_gemini_response_text(response) -> str | None | Any:
         content = getattr(candidate, "content", None)
         for part in getattr(content, "parts", None) or []:
             part_text = getattr(part, "text", None)
-            if part_text:
+            if isinstance(part_text, str) and part_text:
                 texts.append(part_text)
     return "\n".join(texts)
 
 
-def extract_openai_response_text(response) -> str | None | Any:
+def extract_openai_response_text(response: Any) -> str:
     """
     Extrahiert den generierten Text aus einer OpenAI-Antwort (Responses API).
     Berücksichtigt verschiedene Antwort-Strukturen.
     """
     output_text = getattr(response, "output_text", None)
-    if output_text:
+    if isinstance(output_text, str) and output_text:
         return output_text
 
     texts: list[str] = []
     for output_item in getattr(response, "output", None) or []:
         for content_item in getattr(output_item, "content", None) or []:
             text = getattr(content_item, "text", None)
-            if text:
+            if isinstance(text, str) and text:
                 texts.append(text)
     return "\n".join(texts)
 
@@ -118,8 +118,8 @@ def verbose_gemini_candidates(verbose: bool, response) -> None:
         _verbose(verbose, f"Gemini candidate {index} finish_reason: {getattr(candidate, 'finish_reason', None)!r}")
         _verbose(verbose, f"Gemini candidate {index} safety_ratings: {getattr(candidate, 'safety_ratings', None)!r}")
         content = getattr(candidate, "content", None)
-        parts = getattr(content, "parts", None) if content is not None else None
-        if parts:
+        parts = getattr(content, "parts", None)
+        if isinstance(parts, (list, tuple)) and parts:
             for part_index, part in enumerate(parts, start=1):
                 _verbose(verbose, f"Gemini candidate {index} part {part_index} text: {getattr(part, 'text', None)!r}")
         else:

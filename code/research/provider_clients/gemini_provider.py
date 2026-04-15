@@ -59,14 +59,17 @@ def generate_with_gemini(
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("Install google-genai first: pip install -r requirements.txt") from exc
         types = imported_types
-    api_error_classes: tuple[type[BaseException], ...] = tuple(
-        error_type
-        for error_type in (
-            getattr(errors, "APIError", None),
-            getattr(errors, "ClientError", None),
-        )
-        if isinstance(error_type, type) and issubclass(error_type, BaseException)
-    ) or (Exception,)
+    api_error_list: list[type[BaseException]] = []
+    if errors:
+        for err_name in ["APIError", "ClientError"]:
+            err_cls = getattr(errors, err_name, None)
+            if isinstance(err_cls, type) and issubclass(err_cls, BaseException):
+                api_error_list.append(err_cls)
+
+    if not api_error_list:
+        api_error_list.append(Exception)
+
+    api_error_classes: tuple[type[BaseException], ...] = tuple(api_error_list)
 
     try:
         client = cast(Any, genai.Client(api_key=api_key))

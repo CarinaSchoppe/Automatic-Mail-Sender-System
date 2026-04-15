@@ -59,10 +59,24 @@ def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
     if spec.kind == "bool":
         return tk.BooleanVar(value=bool(value))
     if spec.kind == "int":
-        return tk.IntVar(value=int(value))
+        val = 0
+        raw_val = value if value is not None else spec.default
+        if isinstance(raw_val, (int, float, str)):
+            try:
+                val = int(raw_val)
+            except (ValueError, TypeError):
+                pass
+        return tk.IntVar(value=val)
     if spec.kind == "float":
-        return tk.DoubleVar(value=float(value))
-    return tk.StringVar(value=str(value))
+        val = 0.0
+        raw_val = value if value is not None else spec.default
+        if isinstance(raw_val, (int, float, str)):
+            try:
+                val = float(raw_val)
+            except (ValueError, TypeError):
+                pass
+        return tk.DoubleVar(value=val)
+    return tk.StringVar(value=str(value if value is not None else spec.default or ""))
 
 
 def _make_tree(parent: tk.Widget, columns: tuple[str, ...]) -> ttk.Treeview:
@@ -141,8 +155,8 @@ class MailSenderWorkbench:
         self._load_env_values()
         self._loading = False
         self.refresh_tables()
-        self.root.after(5000, self._auto_refresh_tick)
-        self.root.after(100, self._drain_queue)
+        self.root.after(5000, self._auto_refresh_tick, None)
+        self.root.after(100, self._drain_queue, None)
 
     def run(self) -> None:
         """
@@ -880,22 +894,22 @@ class MailSenderWorkbench:
         except OSError as exc:
             text = f"Could not read file: {exc}"
 
-        self.file_viewer.config(state=tk.NORMAL)
+        self.file_viewer.config(state="normal")
         self.file_viewer.delete("1.0", "end")
         self.file_viewer.insert("1.0", text)
 
         if kind != "input":
-            self.file_viewer.config(state=tk.DISABLED)
+            self.file_viewer.config(state="disabled")
         else:
-            self.file_viewer.config(state=tk.NORMAL)
+            self.file_viewer.config(state="normal")
 
     def _on_input_edit(self, _event=None) -> None:
         """Reagiert auf das Ereignis fuer Eingabe edit."""
         if self._save_after_id:
             self.root.after_cancel(self._save_after_id)
-        self._save_after_id = self.root.after(500, self._perform_input_save)
+        self._save_after_id = self.root.after(500, self._perform_input_save, None)
 
-    def _perform_input_save(self) -> None:
+    def _perform_input_save(self, _=None) -> None:
         """Speichert den aktuellen Inhalt des Eingabedatei-Editors."""
         self._save_after_id = None
         if self.current_view_kind != "input" or not self.current_view_path:
@@ -934,7 +948,7 @@ class MailSenderWorkbench:
                 path.unlink()
                 self._append_console(f"[INFO] Deleted {path}\n")
                 if hasattr(self, "current_view_path") and self.current_view_path == path:
-                    self.file_viewer.config(state=tk.NORMAL)
+                    self.file_viewer.config(state="normal")
                     self.file_viewer.delete("1.0", tk.END)
                     self.file_view_title.set("Select a file to edit or preview.")
                     self.current_view_path = None
@@ -1094,7 +1108,7 @@ class MailSenderWorkbench:
         self.message_queue.put(("log", f"[INFO] Process exited with code {exit_code}\n"))
         self.message_queue.put(("refresh", ""))
 
-    def _drain_queue(self) -> None:
+    def _drain_queue(self, _=None) -> None:
         """Überträgt Ausgaben des Hintergrundprozesses in die GUI-Konsole."""
         while True:
             try:
@@ -1105,7 +1119,7 @@ class MailSenderWorkbench:
                 self._append_console(payload)
             elif kind == "refresh":
                 self.refresh_tables()
-        self.root.after(100, self._drain_queue)
+        self.root.after(100, self._drain_queue, None)
 
     def _append_console(self, text: str) -> None:
         """Schreibt Prozessausgaben an die Konsole."""
@@ -1133,9 +1147,9 @@ class MailSenderWorkbench:
         self._autosave_target = target
         if self._autosave_after_id is not None:
             self.root.after_cancel(self._autosave_after_id)
-        self._autosave_after_id = self.root.after(500, self._autosave_now)
+        self._autosave_after_id = self.root.after(500, self._autosave_now, None)
 
-    def _autosave_now(self) -> None:
+    def _autosave_now(self, _=None) -> None:
         """Speichert die zuletzt geänderten Einstellungen sofort, falls Autosave aktiv ist."""
         self._autosave_after_id = None
         if self._autosave_target == "settings":
@@ -1145,11 +1159,11 @@ class MailSenderWorkbench:
         else:
             self.save_all()
 
-    def _auto_refresh_tick(self) -> None:
+    def _auto_refresh_tick(self, _=None) -> None:
         """Aktualisiert Tabellen regelmäßig, solange Auto-Refresh aktiviert ist."""
         if self.auto_refresh.get():
             self.refresh_tables()
-        self.root.after(5000, self._auto_refresh_tick)
+        self.root.after(5000, self._auto_refresh_tick, None)
 
 
 def _format_mtime(timestamp: float) -> str:
