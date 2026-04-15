@@ -213,7 +213,7 @@ def _extract_from_rows(
             _verbose(verbose, f"Recipient row skipped because of {reason}: {email}.")
             continue
 
-        recipients.append(Recipient(email=email, company=company))
+        recipients.append(Recipient(email=email, company=company, source_url=source_url))
         seen_emails.add(email)
         _verbose(verbose, f"Recipient row accepted: {company} <{email}>.")
 

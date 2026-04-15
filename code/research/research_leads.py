@@ -17,6 +17,7 @@ import re
 import sys
 import threading
 import tomllib
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -117,7 +118,7 @@ class ThreadSafeRecipientSink:
     Verhindert doppelte Einträge und bricht die Suche ab, sobald das Ziel erreicht ist.
     """
 
-    def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig):
+    def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig, mode: MailMode):
         """
         Initialisiert den Sink mit Zielvorgaben und bereits bekannten Daten.
 
@@ -126,20 +127,56 @@ class ThreadSafeRecipientSink:
             seen_emails (set[str]): Menge der bereits kontaktierten E-Mails (Deduplizierung).
             seen_companies (set[str]): Menge der bereits recherchierten Firmen.
             config (ResearchConfig): Die aktuelle Recherche-Konfiguration.
+            mode (MailMode): Der aktuelle E-Mail-Modus (für Speicherpfade).
         """
         self.target_count = target_count
         self.seen_emails = {email.lower() for email in seen_emails}
         self.seen_companies = {company for company in seen_companies if company}
         self.config = config
+        self.mode = mode
         self.recipients: list[Recipient] = []
         self.lock = threading.Lock()
+        self.thread_files: dict[int | None, Path] = {}
 
-    def add_recipient(self, recipient: Recipient) -> bool:
+    def _get_thread_file(self, thread_id: int | None) -> Path | None:
+        """
+        Liefert den Pfad zur CSV-Datei für einen bestimmten Thread. 
+        Erstellt die Datei und den Header, falls noch nicht geschehen.
+        """
+        if not self.config.write_output:
+            return None
+
+        with self.lock:
+            if thread_id in self.thread_files:
+                return self.thread_files[thread_id]
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unique_id = str(uuid.uuid4())[:8]
+            safe_mode = self.mode.label.lower().replace(" ", "_")
+            thread_suffix = f"_T{thread_id}" if thread_id is not None else ""
+
+            filename = f"leads_{safe_mode}_{timestamp}{thread_suffix}_{unique_id}.csv"
+            path = self.mode.recipients_dir / filename
+
+            try:
+                self.mode.recipients_dir.mkdir(parents=True, exist_ok=True)
+                with path.open("w", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["company", "mail", "source_url"])
+                self.thread_files[thread_id] = path
+                return path
+            except OSError as e:
+                _verbose(self.config.verbose, f"Could not create thread-specific lead file {path}: {e}")
+                return None
+
+    def add_recipient(self, recipient: Recipient, thread_id: int | None = None) -> bool:
         """
         Versucht einen neuen Empfänger hinzuzufügen. Prüft auf Duplikate und Zielerreichung.
+        Schreibt den Empfänger bei Erfolg sofort in eine thread-spezifische CSV-Datei.
 
         Args:
             recipient (Recipient): Der gefundene Lead.
+            thread_id (int, optional): Die ID des aufrufenden Threads für separate Dateien.
 
         Returns:
             bool: True, wenn das Gesamtziel (target_count) erreicht wurde, andernfalls False.
@@ -187,6 +224,17 @@ class ThreadSafeRecipientSink:
             self.seen_emails.add(email_key)
             if company_key:
                 self.seen_companies.add(company_key)
+
+            # Instant save to CSV
+            thread_file = self._get_thread_file(thread_id)
+            if thread_file:
+                try:
+                    with thread_file.open("a", newline="", encoding="utf-8") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([recipient.company, recipient.email, recipient.source_url])
+                except OSError as e:
+                    _verbose(self.config.verbose, f"Instant save failed for {recipient.email}: {e}")
+
             return True
 
     def is_full(self) -> bool:
@@ -496,13 +544,13 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
 
         stop_event = threading.Event()
         batch_new_count = 0
-        sink = ThreadSafeRecipientSink(target_count, seen_emails_in_run, seen_companies_in_run, config)
+        sink = ThreadSafeRecipientSink(target_count, seen_emails_in_run, seen_companies_in_run, config, mode)
 
         with ThreadPoolExecutor(max_workers=batch_size) as executor:
             futures = {
                 executor.submit(
                     _generate_and_process_response,
-                    config, mode, prompt, attachments, sink, input_context, stop_event
+                    config, mode, prompt, attachments, sink, input_context, stop_event, i
                 ): i
                 for i in range(batch_size)
             }
@@ -566,6 +614,7 @@ def _generate_and_process_response(
         sink: RecipientSink,
         input_context: str,
         stop_event: threading.Event | None = None,
+        thread_id: int | None = None,
 ) -> int:
     """
     Interne Worker-Methode: Generiert eine KI-Antwort und verarbeitet die darin 
@@ -592,7 +641,7 @@ def _generate_and_process_response(
     for cand in candidates:
         if stop_event and stop_event.is_set():
             break
-        if sink.add_recipient(cand):
+        if sink.add_recipient(cand, thread_id=thread_id):
             added_count += 1
             if sink.is_full():
                 if stop_event:
@@ -655,7 +704,9 @@ def run_self_research(
         existing_companies: set[str],
 ) -> list[Recipient]:
     """Compatibility wrapper around the self research base workflow."""
-    return _self_research.run_self_research(config, mode, existing_emails, existing_companies)
+    target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
+    sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config, mode)
+    return _self_research.run_self_research(config, mode, existing_emails, existing_companies, sink=sink)
 
 
 def run_ollama_web_research(
@@ -665,7 +716,9 @@ def run_ollama_web_research(
         existing_companies: set[str],
 ) -> list[Recipient]:
     """Fuehrt aus Ollama-Ausgabe web Recherche."""
-    return _self_research.run_ollama_web_research(config, mode, existing_emails, existing_companies)
+    target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
+    sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config, mode)
+    return _self_research.run_ollama_web_research(config, mode, existing_emails, existing_companies, sink=sink)
 
 
 def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
@@ -899,7 +952,7 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
         writer = csv.writer(handle)
         writer.writerow(["company", "mail", "source_url"])
         for recipient in recipients:
-            writer.writerow([recipient.company, recipient.email, ""])
+            writer.writerow([recipient.company, recipient.email, recipient.source_url])
     return path
 
 

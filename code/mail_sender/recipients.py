@@ -22,6 +22,7 @@ class Recipient:
     """
     email: str
     company: str = ""
+    source_url: str = ""
 
     @property
     def greeting(self) -> str:

@@ -52,7 +52,7 @@ class RecipientSink(Protocol):
     Ermöglicht eine Entkoppelung zwischen der Suche (Crawler/KI) und der Speicherung.
     """
 
-    def add_recipient(self, recipient: Recipient) -> bool:
+    def add_recipient(self, recipient: Recipient, thread_id: int | None = None) -> bool:
         """
         Fügt einen Empfänger hinzu.
         Gibt True zurück, wenn dieser akzeptiert wurde und noch im Zielbereich liegt.

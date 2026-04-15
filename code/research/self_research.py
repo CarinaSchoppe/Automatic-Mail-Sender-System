@@ -39,19 +39,11 @@ def run_self_research(
         mode: MailMode,
         existing_emails: set[str],
         existing_companies: set[str],
+        sink: RecipientSink | None = None,
 ) -> list[Recipient]:
     """
     Führt eine lokale Recherche durch: Sucht bei Google nach Keywords, crawlt die Ergebnisse
     und extrahiert E-Mail-Adressen direkt aus dem HTML.
-
-    Args:
-        config (ResearchConfig): Die Recherche-Konfiguration.
-        mode (MailMode): Der aktuelle Modus (z.B. PhD).
-        existing_emails (set[str]): Bereits bekannte E-Mails.
-        existing_companies (set[str]): Bereits bekannte Firmen.
-
-    Returns:
-        list[Recipient]: Liste der gefundenen neuen Leads.
     """
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
     seen_emails = {email.lower() for email in existing_emails}
@@ -70,9 +62,13 @@ def run_self_research(
     if not result_urls:
         raise RuntimeError("Self research found no search result URLs.")
 
+    stop_event = threading.Event()
+
     with ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls))) as executor:
-        futures = {executor.submit(crawl_self_result_url, config, url): url for url in result_urls}
+        futures = {executor.submit(crawl_self_result_url, config, url, stop_event, sink): url for url in result_urls}
         for future in as_completed(futures):
+            if stop_event.is_set():
+                continue
             url = futures[future]
             try:
                 candidates = future.result()
@@ -80,35 +76,43 @@ def run_self_research(
                 _verbose(config.verbose, f"Self research crawl failed for {url}: {exc}")
                 continue
 
-            for candidate in candidates:
-                if len(recipients) >= target_count:
-                    break
-                email_key = candidate.email.lower()
-                company_key = normalize_company(candidate.company)
-                if email_key in seen_emails:
-                    _verbose(config.verbose, f"Self candidate skipped because email already exists: {candidate.email}")
-                    continue
-                if company_key and company_key in seen_companies:
-                    _verbose(config.verbose, f"Self candidate skipped because company already exists: {candidate.company}")
-                    continue
+            if not sink:
+                for candidate in candidates:
+                    if len(recipients) >= target_count:
+                        stop_event.set()
+                        break
+                    email_key = candidate.email.lower()
+                    company_key = normalize_company(candidate.company)
+                    if email_key in seen_emails:
+                        _verbose(config.verbose, f"Self candidate skipped because email already exists: {candidate.email}")
+                        continue
+                    if company_key and company_key in seen_companies:
+                        _verbose(config.verbose, f"Self candidate skipped because company already exists: {candidate.company}")
+                        continue
 
-                validation = validate_email_address(
-                    candidate.email,
-                    verify_mailbox=config.self_verify_email_smtp,
-                    smtp_timeout=config.self_request_timeout,
-                )
-                if not validation.is_valid:
-                    _verbose(config.verbose, f"Self candidate skipped by validation: {candidate.email} | {validation.reason}")
-                    continue
+                    validation = validate_email_address(
+                        candidate.email,
+                        verify_mailbox=config.self_verify_email_smtp,
+                        smtp_timeout=config.self_request_timeout,
+                    )
+                    if not validation.is_valid:
+                        _verbose(config.verbose, f"Self candidate skipped by validation: {candidate.email} | {validation.reason}")
+                        continue
 
-                recipients.append(candidate)
-                seen_emails.add(email_key)
-                if company_key:
-                    seen_companies.add(company_key)
-                _verbose(config.verbose, f"Self candidate accepted: {candidate.company} <{candidate.email}>")
+                    recipients.append(candidate)
+                    seen_emails.add(email_key)
+                    if company_key:
+                        seen_companies.add(company_key)
+                    _verbose(config.verbose, f"Self candidate accepted: {candidate.company} <{candidate.email}>")
 
-            if len(recipients) >= target_count:
+            if (sink and sink.is_full()) or (not sink and len(recipients) >= target_count):
+                stop_event.set()
                 break
+
+    if sink:
+        # If we used a sink, we return its collected recipients
+        # Assuming sink.recipients is accessible (ThreadSafeRecipientSink has it)
+        return getattr(sink, "recipients", [])
 
     if not recipients:
         raise RuntimeError("Self research found no new usable email addresses.")
@@ -122,12 +126,13 @@ def run_ollama_web_research(
         mode: MailMode,
         existing_emails: set[str],
         existing_companies: set[str],
+        sink: RecipientSink | None = None,
 ) -> list[Recipient]:
     """
     Kombiniert lokales Crawling mit einer Filterung durch ein lokales Ollama-Modell.
     Crawlt erst die Webseiten und lässt Ollama dann entscheiden, welche Leads relevant sind.
     """
-    candidates = run_self_research(config, mode, existing_emails, existing_companies)
+    candidates = run_self_research(config, mode, existing_emails, existing_companies, sink=sink)
     prompt = build_ollama_web_research_prompt(config, mode, _recipients_to_csv_text(candidates))
     raw_response = providers.generate_with_ollama(
         config.model,
@@ -222,7 +227,7 @@ def crawl_self_result_url(
 
         company = _company_from_page(url, page_text)
         for email in _extract_emails_from_text(page_text):
-            rec = Recipient(email=email, company=company)
+            rec = Recipient(email=email, company=company, source_url=url)
             if sink:
                 if sink.add_recipient(rec):
                     candidates.append(rec)

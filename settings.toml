@@ -5,10 +5,10 @@
 # Run
 
 # Run AI research first: Creates a fresh input CSV before the mail sender starts.
-RUN_AI_RESEARCH = false
+RUN_AI_RESEARCH = true
 
 # Mode: Selects which templates, input folder, attachments, and sent log are used.
-MODE = "PhD"
+MODE = "Freelance_German"
 
 
 # Research
@@ -17,7 +17,7 @@ MODE = "PhD"
 RESEARCH_AI_PROVIDER = "gemini"
 
 # Gemini model: Gemini model for hosted research.
-GEMINI_MODEL = "gemini-3-flash-preview"
+GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
 # OpenAI model: OpenAI model for hosted research.
 OPENAI_MODEL = "gpt-5.4-mini-2026-03-17"
@@ -81,22 +81,22 @@ SELF_VERIFY_EMAIL_SMTP = false
 SEND = true
 
 # Target new sends: Repeated research/send target. 0 disables the target loop.
-SEND_TARGET_COUNT = 500
+SEND_TARGET_COUNT = 550
 
 # Max target rounds: Safety limit for repeated target loop. 0 means unlimited.
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 5
+PARALLEL_THREADS = 25
 
 
 # Mail
 
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
-VERIFY_EMAIL_SMTP = false
+VERIFY_EMAIL_SMTP = true
 
 # Skip DNS verification: If checked, skips MX/A record checks but still validates syntax and deduplication.
-SKIP_EMAIL_DNS_CHECK = true
+SKIP_EMAIL_DNS_CHECK = false
 
 # Verify timeout: Timeout for recipient SMTP probe.
 VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
@@ -105,7 +105,7 @@ VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
 RESEND_EXISTING = false
 
 # Skip invalid check: If checked, ignores invalid_mails.csv so listed recipients can be sent again.
-SKIP_INVALID_CHECK = true
+SKIP_INVALID_CHECK = false
 
 # Allow empty attachments: Allows running a mode even when the attachment folder is empty.
 ALLOW_EMPTY_ATTACHMENTS = false
