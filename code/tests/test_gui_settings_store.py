@@ -44,6 +44,7 @@ def test_settings_store_can_omit_defaults(tmp_path: Path) -> None:
 def test_setting_coercion_matches_widget_value_types() -> None:
     specs = {spec.key: spec for spec in SETTINGS_SCHEMA}
 
+    assert specs["SMTP_PORT"].slider is False
     assert coerce_value(specs["SEND"], "true") is True
     assert coerce_value(specs["PARALLEL_THREADS"], "7.0") == 7
     assert coerce_value(specs["SELF_REQUEST_TIMEOUT"], "3.5") == 3.5
