@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -28,7 +30,7 @@ def generate_with_openai(
         raise RuntimeError("Set OPENAI_API_KEY before running OpenAI research.")
 
     try:
-        from openai import OpenAI
+        from openai import OpenAI, RateLimitError
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Install openai first: pip install -r requirements.txt") from exc
 
@@ -53,13 +55,35 @@ def generate_with_openai(
 
     _verbose(verbose, "Calling OpenAI Responses API with web_search enabled.")
     _verbose(verbose, f"OpenAI config: web_search enabled, tool_choice=auto, reasoning_effort={openai_effort}.")
-    response = client.responses.create(  # type: ignore[call-overload]
-        model=model,
-        input=[{"role": "user", "content": content}],
-        tools=[{"type": "web_search"}],
-        tool_choice="auto",
-        reasoning={"effort": openai_effort},
-    )
+
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            response = client.responses.create(  # type: ignore[call-overload]
+                model=model,
+                input=[{"role": "user", "content": content}],
+                tools=[{"type": "web_search"}],
+                tool_choice="auto",
+                reasoning={"effort": openai_effort},
+            )
+            break
+        except RateLimitError as e:
+            if attempt == max_retries - 1:
+                _verbose(verbose, f"OpenAI Rate limit reached. Max retries ({max_retries}) exceeded.")
+                raise
+            
+            # Default wait time
+            wait_time = 15.0
+            # Try to parse wait time from error message
+            # E.g. "Please try again in 13.382s."
+            msg = str(e)
+            match = re.search(r"try again in ([\d.]+)s", msg)
+            if match:
+                wait_time = float(match.group(1)) + 1.0 # Buffer
+            
+            _verbose(verbose, f"OpenAI Rate limit reached. Retrying in {wait_time:.2f}s (Attempt {attempt+1}/{max_retries}). Error: {msg}")
+            time.sleep(wait_time)
+
     _verbose(verbose, "OpenAI response received.")
     response_text = extract_openai_response_text(response)
     _verbose(verbose, f"OpenAI response output_text raw: {response_text!r}")

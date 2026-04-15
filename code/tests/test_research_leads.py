@@ -124,7 +124,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.reasoning_effort == "high"
     assert parsed.send_target_count == 100
     assert parsed.max_iterations == 10
-    assert parsed.parallel_threads == 5
+    assert parsed.parallel_threads == 3
 
 
 def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
@@ -468,7 +468,7 @@ def test_run_research_self_provider_crawls_and_deduplicates(monkeypatch: pytest.
     monkeypatch.setattr(
         research_leads,
         "crawl_self_result_url",
-        lambda cfg, url: [
+        lambda cfg, url, stop_event=None: [
             Recipient(email="same@example.com", company="Same Co"),
             Recipient(email="old@example.com", company="Old Co"),
             Recipient(email=f"{url.split('//')[1][0]}@example.com", company=f"{url} Co"),
@@ -559,7 +559,7 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
     monkeypatch.setattr(
         research_leads,
         "crawl_self_result_url",
-        lambda cfg, url: calls.append(("crawl", url)) or [Recipient(email="lead@example.com", company="Lead Co")],
+        lambda cfg, url, stop_event=None: calls.append(("crawl", url)) or [Recipient(email="lead@example.com", company="Lead Co")],
     )
     monkeypatch.setattr(
         research_leads,
@@ -574,7 +574,7 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
     monkeypatch.setattr(research_leads, "generate_with_ollama", fake_ollama)
 
     _, recipients = research_leads.run_research(
-        config(project, provider="ollama", model="llama3.1:8b", max_companies=1)
+        config(project, provider="ollama", model="llama3.1:8b", max_companies=2)
     )
 
     assert recipients == [Recipient(email="lead@example.com", company="Lead Co")]

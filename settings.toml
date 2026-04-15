@@ -14,7 +14,7 @@ MODE = "Freelance_German"
 # Research
 
 # Research provider: gemini/openai use hosted web-capable models, ollama uses local crawling plus local filtering, self only crawls locally.
-RESEARCH_AI_PROVIDER = "openai"
+RESEARCH_AI_PROVIDER = "gemini"
 
 # Gemini model: Gemini model for hosted research.
 GEMINI_MODEL = "gemini-3-flash-preview"
@@ -32,10 +32,10 @@ OLLAMA_BASE_URL = "http://localhost:11434"
 RESEARCH_REASONING_EFFORT = "middle"
 
 # Minimum companies: Lower bound requested from the AI research prompt.
-RESEARCH_MIN_COMPANIES = 9
+RESEARCH_MIN_COMPANIES = 10
 
 # Maximum companies: Upper bound requested from the AI research prompt.
-RESEARCH_MAX_COMPANIES = 62
+RESEARCH_MAX_COMPANIES = 35
 
 # Person emails/company: Target person/work emails per company where the mode allows it.
 RESEARCH_PERSON_EMAILS_PER_COMPANY = 3

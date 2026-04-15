@@ -11,6 +11,7 @@ import importlib
 import os
 import re
 import sys
+import threading
 import tomllib
 import urllib.parse
 import urllib.request
@@ -158,7 +159,7 @@ def default_config() -> ResearchConfig:
         reasoning_effort=_get("RESEARCH_REASONING_EFFORT", "middle"),
         send_target_count=_get("SEND_TARGET_COUNT", 0),
         max_iterations=_get("SEND_TARGET_MAX_ROUNDS", 5),
-        parallel_threads=_get("PARALLEL_THREADS", 5),
+        parallel_threads=_get("PARALLEL_THREADS", 3),
         self_search_keywords=tuple(_get("SELF_SEARCH_KEYWORDS", _default_self_keywords(mode_name))),
         self_search_pages=_get("SELF_SEARCH_PAGES", 1),
         self_results_per_page=_get("SELF_RESULTS_PER_PAGE", 10),
@@ -344,39 +345,71 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
             _info(f"Stopping research because max_iterations={max_iterations} was reached.")
             break
 
-        remaining_iterations = max_iterations - iteration if max_iterations > 0 else config.parallel_threads
-        batch_size = max(1, min(config.parallel_threads, remaining_iterations))
+        remaining_target = target_count - len(all_recipients)
+        batch_size = config.parallel_threads
+        if max_iterations > 0:
+            batch_size = min(batch_size, max_iterations - iteration)
+        
         batch_start = iteration + 1
         iteration += batch_size
-        if batch_start > 1:
-            _info(f"Research batch starting at iteration {batch_start}: {len(all_recipients)}/{target_count} recipients found so far.")
+        
+        _info(f"Progress: {len(all_recipients)}/{target_count} recipients found. {remaining_target} missing.")
 
-        _info(f"Building {batch_size} AI research prompt(s).")
         prompt = build_prompt(config, mode, seen_emails_in_run, seen_companies_in_run, input_context)
         _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
 
-        _info(f"Calling AI provider with {batch_size} parallel request(s); this can take a moment.")
-        raw_responses = _generate_research_batch(config, mode, prompt, attachments, seen_emails_in_run, input_context, batch_size)
+        _info(f"Calling AI provider with up to {batch_size} parallel request(s).")
+        
+        stop_event = threading.Event()
+        batch_new_count = 0
+        
+        with ThreadPoolExecutor(max_workers=batch_size) as executor:
+            futures = {
+                executor.submit(
+                    _generate_research_response, 
+                    config, mode, prompt, attachments, set(seen_emails_in_run), input_context, stop_event
+                ): i 
+                for i in range(batch_size)
+            }
+            
+            for future in as_completed(futures):
+                if stop_event.is_set():
+                    continue
+                    
+                try:
+                    raw_response = future.result()
+                    if not raw_response:
+                        continue
+                        
+                    _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
+                    new_recipients = parse_recipients(raw_response, seen_emails_in_run, seen_companies_in_run, config.verbose)
+                    
+                    thread_added = 0
+                    for r in new_recipients:
+                        if len(all_recipients) >= target_count:
+                            stop_event.set()
+                            break
+                        all_recipients.append(r)
+                        seen_emails_in_run.add(r.email.lower())
+                        seen_companies_in_run.add(_normalize_company(r.company))
+                        thread_added += 1
+                        batch_new_count += 1
+                    
+                    if thread_added > 0:
+                        _info(f"Added {thread_added} new recipients from AI response. Total: {len(all_recipients)}/{target_count}.")
+                    
+                    if len(all_recipients) >= target_count:
+                        _info(f"Target of {target_count} reached. Stopping batch.")
+                        stop_event.set()
+                except Exception as e:
+                    _info(f"AI request failed in thread: {e}")
 
-        _info("Parsing and filtering AI response batch.")
-        batch_new_recipients = 0
-        for raw_response in raw_responses:
-            _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
-            new_recipients = parse_recipients(raw_response, seen_emails_in_run, seen_companies_in_run, config.verbose)
-            batch_new_recipients += len(new_recipients)
-            for r in new_recipients:
-                if len(all_recipients) >= target_count:
-                    break
-                all_recipients.append(r)
-                seen_emails_in_run.add(r.email.lower())
-                seen_companies_in_run.add(_normalize_company(r.company))
+        _info(f"New recipients found in this batch: {batch_new_count}.")
 
-        _info(f"Usable new recipients found in this batch: {batch_new_recipients}.")
-
-        if batch_new_recipients == 0:
+        if batch_new_count == 0:
             _info("No more new recipients found in this batch.")
             if batch_start == 1:
-                raise RuntimeError("Gemini returned no new usable email addresses on the first attempt.")
+                raise RuntimeError("AI provider returned no new usable email addresses on the first attempt.")
             break
 
     recipients = all_recipients
@@ -395,29 +428,6 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     return output_path, recipients
 
 
-def _generate_research_batch(
-        config: ResearchConfig,
-        mode: MailMode,
-        prompt: str,
-        attachments: list[Path],
-        existing_emails: set[str],
-        input_context: str,
-        batch_size: int,
-) -> list[str]:
-    if batch_size == 1:
-        return [_generate_research_response(config, mode, prompt, attachments, existing_emails, input_context)]
-
-    responses: list[str] = [""] * batch_size
-    with ThreadPoolExecutor(max_workers=batch_size) as executor:
-        futures = {
-            executor.submit(_generate_research_response, config, mode, prompt, attachments, set(existing_emails), input_context): index
-            for index in range(batch_size)
-        }
-        for future in as_completed(futures):
-            responses[futures[future]] = future.result()
-    return responses
-
-
 def _generate_research_response(
         config: ResearchConfig,
         mode: MailMode,
@@ -425,21 +435,37 @@ def _generate_research_response(
         attachments: list[Path],
         existing_emails: set[str],
         input_context: str,
+        stop_event: threading.Event | None = None,
 ) -> str:
+    if stop_event and stop_event.is_set():
+        return ""
+
     raw_response = generate_with_provider(
         config.provider, config.model, prompt, attachments, config.reasoning_effort, config.verbose, config.ollama_base_url
     )
+    if stop_event and stop_event.is_set():
+        return raw_response
+
     if _needs_retry(raw_response, existing_emails, config.verbose) and attachments:
         _info("AI response was not usable yet; retrying once without CV/resume uploads.")
         _verbose(config.verbose, "AI provider returned no usable CSV with attachment uploads; retrying once without attachment uploads.")
+        if stop_event and stop_event.is_set():
+            return raw_response
+
         raw_response = generate_with_provider(
             config.provider, config.model, prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
+    if stop_event and stop_event.is_set():
+        return raw_response
+
     if _needs_retry(raw_response, existing_emails, config.verbose):
         retry_prompt = build_prompt(config, mode, set(), set(), input_context)
         _info("AI response still was not usable; retrying once with a smaller exclusion prompt.")
         _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
         _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
+        if stop_event and stop_event.is_set():
+            return raw_response
+
         raw_response = generate_with_provider(
             config.provider, config.model, retry_prompt, [], config.reasoning_effort, config.verbose, config.ollama_base_url
         )
@@ -463,14 +489,22 @@ def run_self_research(
     if not result_urls:
         raise RuntimeError("Self research found no search result URLs.")
 
+    _info(f"Starting self-research crawl on {len(result_urls)} site(s) with target={target_count}.")
+    stop_event = threading.Event()
     with ThreadPoolExecutor(max_workers=min(config.parallel_threads, len(result_urls))) as executor:
-        futures = {executor.submit(crawl_self_result_url, config, url): url for url in result_urls}
+        futures = {executor.submit(crawl_self_result_url, config, url, stop_event): url for url in result_urls}
         for future in as_completed(futures):
+            if len(recipients) >= target_count:
+                stop_event.set()
+                break
+
             try:
                 candidates = future.result()
             except Exception as exc:
                 _verbose(config.verbose, f"Self research crawl failed for {futures[future]}: {exc}")
                 continue
+
+            thread_added = 0
             for candidate in candidates:
                 if len(recipients) >= target_count:
                     break
@@ -490,7 +524,13 @@ def run_self_research(
                 seen_emails.add(email_key)
                 if company_key:
                     seen_companies.add(company_key)
+                thread_added += 1
+
+            if thread_added > 0:
+                _info(f"Self-research found {thread_added} new recipients. Progress: {len(recipients)}/{target_count}.")
+
             if len(recipients) >= target_count:
+                _info(f"Self-research target of {target_count} reached.")
                 break
 
     if not recipients:
@@ -505,11 +545,19 @@ def run_ollama_web_research(
         existing_companies: set[str],
 ) -> list[Recipient]:
     candidates = run_self_research(config, mode, existing_emails, existing_companies)
+    target_count = config.send_target_count or config.max_companies
+    if len(candidates) >= target_count:
+        _info(f"Ollama web research: target reached via crawl ({len(candidates)} candidates). Skipping AI filtering.")
+        return candidates[:target_count]
+
+    _info(f"Ollama web research: filtering {len(candidates)} candidates via AI model {config.model}.")
     prompt = _self_research.build_ollama_web_research_prompt(config, mode, _self_research._recipients_to_csv_text(candidates))
     raw_response = generate_with_ollama(config.model, prompt, config.ollama_base_url, config.verbose)
     recipients = parse_recipients(raw_response, existing_emails, existing_companies, config.verbose)
-    target_count = config.send_target_count or config.max_companies
-    return (recipients or candidates)[:target_count]
+
+    final_recipients = recipients if recipients else candidates
+    _info(f"Ollama web research finished. Found {len(final_recipients)} usable recipients.")
+    return final_recipients[:target_count]
 
 
 def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) -> list[str]:
@@ -531,13 +579,15 @@ def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) 
     return urls
 
 
-def crawl_self_result_url(config: ResearchConfig, start_url: str) -> list[Recipient]:
+def crawl_self_result_url(config: ResearchConfig, start_url: str, stop_event: threading.Event | None = None) -> list[Recipient]:
     to_visit = [(start_url, 0)]
     visited: set[str] = set()
     candidates: list[Recipient] = []
     base_netloc = urllib.parse.urlparse(start_url).netloc.lower().removeprefix("www.")
 
     while to_visit and len(visited) < config.self_crawl_max_pages_per_site:
+        if stop_event and stop_event.is_set():
+            break
         url, depth = to_visit.pop(0)
         normalized = _normalize_url_for_dedupe(url)
         if normalized in visited:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 
@@ -21,17 +22,31 @@ def generate_with_ollama(
     }
     url = f"{base_url.rstrip('/')}/api/generate"
     _verbose(verbose, f"Calling Ollama local model at {url} with model={model}.")
-    try:
-        request = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=300) as response:
-            raw = response.read()
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise RuntimeError(f"Ollama request failed. Is Ollama running at {base_url}? {exc}") from exc
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            request = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=300) as response:
+                raw = response.read()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                _verbose(verbose, f"Ollama HTTP error {e.code}. Retrying in 5s (Attempt {attempt+1}/{max_retries}).")
+                time.sleep(5)
+                continue
+            raise RuntimeError(f"Ollama request failed with HTTP {e.code}: {e.reason}") from e
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            if attempt < max_retries - 1:
+                _verbose(verbose, f"Ollama connection error: {exc}. Retrying in 5s (Attempt {attempt+1}/{max_retries}).")
+                time.sleep(5)
+                continue
+            raise RuntimeError(f"Ollama request failed. Is Ollama running at {base_url}? {exc}") from exc
 
     try:
         data = json.loads(raw.decode("utf-8", errors="replace"))

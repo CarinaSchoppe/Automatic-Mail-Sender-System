@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -29,7 +30,7 @@ def generate_with_gemini(
 
     try:
         from google import genai
-        from google.genai import types
+        from google.genai import errors, types
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Install google-genai first: pip install -r requirements.txt") from exc
 
@@ -54,21 +55,40 @@ def generate_with_gemini(
         f"Gemini config: google_search enabled, tool auto mode enabled, "
         f"thinking_level={thinking_level.name}, temperature=0.3.",
     )
-    response = client.models.generate_content(
-        model=model,
-        contents=[prompt, *uploaded_files],  # type: ignore[arg-type]
-        config=types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-            tool_config=types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(
-                    mode=types.FunctionCallingConfigMode.AUTO,
+
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=[prompt, *uploaded_files],  # type: ignore[arg-type]
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    tool_config=types.ToolConfig(
+                        function_calling_config=types.FunctionCallingConfig(
+                            mode=types.FunctionCallingConfigMode.AUTO,
+                        ),
+                        include_server_side_tool_invocations=True,
+                    ),
+                    thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
+                    temperature=0.3,
                 ),
-                include_server_side_tool_invocations=True,
-            ),
-            thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
-            temperature=0.3,
-        ),
-    )
+            )
+            break
+        except (errors.APIError, errors.ClientError) as e:
+            msg = str(e).lower()
+            # If it's a rate limit error (429) or temporary server error (500, 503)
+            is_retryable = "429" in msg or "quota" in msg or "exhausted" in msg or "500" in msg or "503" in msg
+            
+            if is_retryable and attempt < max_retries - 1:
+                wait_time = (2 ** attempt) + 10.0 # Exponential backoff + fixed buffer
+                _verbose(verbose, f"Gemini API error (retryable). Retrying in {wait_time:.2f}s (Attempt {attempt+1}/{max_retries}). Error: {e}")
+                time.sleep(wait_time)
+                continue
+            
+            _verbose(verbose, f"Gemini API error (non-retryable or max retries). Error: {e}")
+            raise
+
     _verbose(verbose, "Gemini response received.")
     response_text = extract_gemini_response_text(response)
     _verbose(verbose, f"Gemini response.text raw: {response_text!r}")
