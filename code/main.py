@@ -5,12 +5,13 @@ import tomllib
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 
 from mail_sender.cli import main as mail_main
 from mail_sender.sent_log import read_known_output_emails, read_logged_rows
-from research.research_leads import main as research_main
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
+from research.research_leads import main as research_main
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
@@ -26,46 +27,46 @@ def _load_settings() -> dict:
 SETTINGS = _load_settings()
 
 
-def _setting(name: str, default):
+def _setting(name: str, default: Any) -> Any:
     return globals().get(name, SETTINGS.get(name, default))
 
 
-RUN_AI_RESEARCH = _setting("RUN_AI_RESEARCH", True)
-MODE = _setting("MODE", "Freelance_German")
-RESEARCH_AI_PROVIDER = _setting("RESEARCH_AI_PROVIDER", "gemini")
-RESEARCH_MIN_COMPANIES = _setting("RESEARCH_MIN_COMPANIES", 25)
-RESEARCH_MAX_COMPANIES = _setting("RESEARCH_MAX_COMPANIES", 50)
-RESEARCH_PERSON_EMAILS_PER_COMPANY = _setting("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3)
-RESEARCH_WRITE_OUTPUT = _setting("RESEARCH_WRITE_OUTPUT", True)
-RESEARCH_UPLOAD_ATTACHMENTS = _setting("RESEARCH_UPLOAD_ATTACHMENTS", True)
-GEMINI_MODEL = _setting("GEMINI_MODEL", "gemini-3-flash-preview")
-OPENAI_MODEL = _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
-OLLAMA_MODEL = _setting("OLLAMA_MODEL", "llama3.1:8b")
-OLLAMA_BASE_URL = _setting("OLLAMA_BASE_URL", "http://localhost:11434")
-RESEARCH_REASONING_EFFORT = _setting("RESEARCH_REASONING_EFFORT", "middle")
-SELF_SEARCH_KEYWORDS = _setting("SELF_SEARCH_KEYWORDS", [])
-SELF_SEARCH_PAGES = _setting("SELF_SEARCH_PAGES", 1)
-SELF_RESULTS_PER_PAGE = _setting("SELF_RESULTS_PER_PAGE", 10)
-SELF_CRAWL_MAX_PAGES_PER_SITE = _setting("SELF_CRAWL_MAX_PAGES_PER_SITE", 8)
-SELF_CRAWL_DEPTH = _setting("SELF_CRAWL_DEPTH", 2)
-SELF_REQUEST_TIMEOUT = _setting("SELF_REQUEST_TIMEOUT", 10)
-SELF_VERIFY_EMAIL_SMTP = _setting("SELF_VERIFY_EMAIL_SMTP", False)
-SEND = _setting("SEND", False)
-SEND_TARGET_COUNT = _setting("SEND_TARGET_COUNT", 0)
-SEND_TARGET_MAX_ROUNDS = _setting("SEND_TARGET_MAX_ROUNDS", 0)
-PARALLEL_THREADS = _setting("PARALLEL_THREADS", 5)
-VERIFY_EMAIL_SMTP = _setting("VERIFY_EMAIL_SMTP", False)
-VERIFY_EMAIL_SMTP_TIMEOUT = _setting("VERIFY_EMAIL_SMTP_TIMEOUT", 8)
-VERBOSE = _setting("VERBOSE", False)
-SAVE_VERBOSE_LOG = _setting("SAVE_VERBOSE_LOG", True)
-VERBOSE_LOG_DIR = _setting("VERBOSE_LOG_DIR", "logs")
-RESEND_EXISTING = _setting("RESEND_EXISTING", False)
-SIGNATURE_LOGO = _setting("SIGNATURE_LOGO", "templates/signature-logo.png")
-SIGNATURE_LOGO_WIDTH = _setting("SIGNATURE_LOGO_WIDTH", 325)
-ALLOW_EMPTY_ATTACHMENTS = _setting("ALLOW_EMPTY_ATTACHMENTS", False)
-LOG_DRY_RUN = _setting("LOG_DRY_RUN", False)
-WRITE_SENT_LOG = _setting("WRITE_SENT_LOG", True)
-DELETE_INPUT_AFTER_SUCCESS = _setting("DELETE_INPUT_AFTER_SUCCESS", False)
+RUN_AI_RESEARCH: bool = cast(bool, _setting("RUN_AI_RESEARCH", True))
+MODE: str = cast(str, _setting("MODE", "Freelance_German"))
+RESEARCH_AI_PROVIDER: str = cast(str, _setting("RESEARCH_AI_PROVIDER", "gemini"))
+RESEARCH_MIN_COMPANIES: int = cast(int, _setting("RESEARCH_MIN_COMPANIES", 25))
+RESEARCH_MAX_COMPANIES: int = cast(int, _setting("RESEARCH_MAX_COMPANIES", 50))
+RESEARCH_PERSON_EMAILS_PER_COMPANY: int = cast(int, _setting("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3))
+RESEARCH_WRITE_OUTPUT: bool = cast(bool, _setting("RESEARCH_WRITE_OUTPUT", True))
+RESEARCH_UPLOAD_ATTACHMENTS: bool = cast(bool, _setting("RESEARCH_UPLOAD_ATTACHMENTS", True))
+GEMINI_MODEL: str = cast(str, _setting("GEMINI_MODEL", "gemini-3-flash-preview"))
+OPENAI_MODEL: str = cast(str, _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17"))
+OLLAMA_MODEL: str = cast(str, _setting("OLLAMA_MODEL", "llama3.1:8b"))
+OLLAMA_BASE_URL: str = cast(str, _setting("OLLAMA_BASE_URL", "http://localhost:11434"))
+RESEARCH_REASONING_EFFORT: str = cast(str, _setting("RESEARCH_REASONING_EFFORT", "middle"))
+SELF_SEARCH_KEYWORDS: list[str] = cast(list[str], _setting("SELF_SEARCH_KEYWORDS", []))
+SELF_SEARCH_PAGES: int = cast(int, _setting("SELF_SEARCH_PAGES", 1))
+SELF_RESULTS_PER_PAGE: int = cast(int, _setting("SELF_RESULTS_PER_PAGE", 10))
+SELF_CRAWL_MAX_PAGES_PER_SITE: int = cast(int, _setting("SELF_CRAWL_MAX_PAGES_PER_SITE", 8))
+SELF_CRAWL_DEPTH: int = cast(int, _setting("SELF_CRAWL_DEPTH", 2))
+SELF_REQUEST_TIMEOUT: int = cast(int, _setting("SELF_REQUEST_TIMEOUT", 10))
+SELF_VERIFY_EMAIL_SMTP: bool = cast(bool, _setting("SELF_VERIFY_EMAIL_SMTP", False))
+SEND: bool = cast(bool, _setting("SEND", False))
+SEND_TARGET_COUNT: int = cast(int, _setting("SEND_TARGET_COUNT", 0))
+SEND_TARGET_MAX_ROUNDS: int = cast(int, _setting("SEND_TARGET_MAX_ROUNDS", 0))
+PARALLEL_THREADS: int = cast(int, _setting("PARALLEL_THREADS", 5))
+VERIFY_EMAIL_SMTP: bool = cast(bool, _setting("VERIFY_EMAIL_SMTP", False))
+VERIFY_EMAIL_SMTP_TIMEOUT: int = cast(int, _setting("VERIFY_EMAIL_SMTP_TIMEOUT", 8))
+VERBOSE: bool = cast(bool, _setting("VERBOSE", False))
+SAVE_VERBOSE_LOG: bool = cast(bool, _setting("SAVE_VERBOSE_LOG", True))
+VERBOSE_LOG_DIR: str = cast(str, _setting("VERBOSE_LOG_DIR", "logs"))
+RESEND_EXISTING: bool = cast(bool, _setting("RESEND_EXISTING", False))
+SIGNATURE_LOGO: str = cast(str, _setting("SIGNATURE_LOGO", "templates/signature-logo.png"))
+SIGNATURE_LOGO_WIDTH: int = cast(int, _setting("SIGNATURE_LOGO_WIDTH", 325))
+ALLOW_EMPTY_ATTACHMENTS: bool = cast(bool, _setting("ALLOW_EMPTY_ATTACHMENTS", False))
+LOG_DRY_RUN: bool = cast(bool, _setting("LOG_DRY_RUN", False))
+WRITE_SENT_LOG: bool = cast(bool, _setting("WRITE_SENT_LOG", True))
+DELETE_INPUT_AFTER_SUCCESS: bool = cast(bool, _setting("DELETE_INPUT_AFTER_SUCCESS", False))
 
 
 def _add_value(args: list[str], flag: str, value) -> None:

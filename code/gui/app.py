@@ -248,8 +248,16 @@ class MailSenderWorkbench:
         return button
 
     def _attach_hover(self, widget: tk.Widget, text: str) -> None:
-        widget.bind("<Enter>", lambda _event: self.status_var.set(text) if hasattr(self, "status_var") else None)
-        widget.bind("<Leave>", lambda _event: self.status_var.set("Ready.") if hasattr(self, "status_var") else None)
+        def on_enter(_event):
+            if hasattr(self, "status_var"):
+                self.status_var.set(text)
+
+        def on_leave(_event):
+            if hasattr(self, "status_var"):
+                self.status_var.set("Ready.")
+
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
 
     def _build_settings_tab(self) -> None:
         top = ttk.Frame(self.settings_tab)
@@ -499,43 +507,38 @@ class MailSenderWorkbench:
         self._style_text_widget(self.console)
         self.console.pack(fill="both", expand=True)
 
+    @staticmethod
+    def _load_values(schema: list[SettingSpec], source: dict[str, Any], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> None:
+        for spec in schema:
+            value = source.get(spec.key, spec.default)
+            if spec.kind == "list" and spec.key in text_widgets:
+                text_widgets[spec.key].delete("1.0", "end")
+                text_widgets[spec.key].insert("1.0", "\n".join(value or []))
+            elif spec.key in variables:
+                variables[spec.key].set(value)
+
     def _load_form_values(self) -> None:
-        for spec in SETTINGS_SCHEMA:
-            value = self.values.get(spec.key, spec.default)
-            if spec.kind == "list" and spec.key in self.text_widgets:
-                self.text_widgets[spec.key].delete("1.0", "end")
-                self.text_widgets[spec.key].insert("1.0", "\n".join(value or []))
-            elif spec.key in self.variables:
-                self.variables[spec.key].set(value)
+        self._load_values(SETTINGS_SCHEMA, self.values, self.variables, self.text_widgets)
 
     def _load_env_values(self) -> None:
-        for spec in ENV_SCHEMA:
-            value = self.env_values.get(spec.key, spec.default)
-            if spec.kind == "list" and spec.key in self.env_text_widgets:
-                self.env_text_widgets[spec.key].delete("1.0", "end")
-                self.env_text_widgets[spec.key].insert("1.0", "\n".join(value or []))
-            elif spec.key in self.env_variables:
-                self.env_variables[spec.key].set(value)
+        self._load_values(ENV_SCHEMA, self.env_values, self.env_variables, self.env_text_widgets)
+
+    @staticmethod
+    def _collect_values(schema: list[SettingSpec], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> dict[str, Any]:
+        values: dict[str, Any] = {}
+        for spec in schema:
+            if spec.kind == "list" and spec.key in text_widgets:
+                raw_value = text_widgets[spec.key].get("1.0", "end")
+            else:
+                raw_value = variables[spec.key].get()
+            values[spec.key] = coerce_value(spec, raw_value)
+        return values
 
     def collect_form_values(self) -> dict[str, Any]:
-        values: dict[str, Any] = {}
-        for spec in SETTINGS_SCHEMA:
-            if spec.kind == "list" and spec.key in self.text_widgets:
-                raw_value = self.text_widgets[spec.key].get("1.0", "end")
-            else:
-                raw_value = self.variables[spec.key].get()
-            values[spec.key] = coerce_value(spec, raw_value)
-        return values
+        return self._collect_values(SETTINGS_SCHEMA, self.variables, self.text_widgets)
 
     def collect_env_values(self) -> dict[str, Any]:
-        values: dict[str, Any] = {}
-        for spec in ENV_SCHEMA:
-            if spec.kind == "list" and spec.key in self.env_text_widgets:
-                raw_value = self.env_text_widgets[spec.key].get("1.0", "end")
-            else:
-                raw_value = self.env_variables[spec.key].get()
-            values[spec.key] = coerce_value(spec, raw_value)
-        return values
+        return self._collect_values(ENV_SCHEMA, self.env_variables, self.env_text_widgets)
 
     def save_all(self) -> None:
         self.save_settings()
@@ -549,7 +552,7 @@ class MailSenderWorkbench:
 
         try:
             save_prompts(self.prompts, self.project_root / "prompts.toml")
-        except Exception as exc:
+        except OSError as exc:
             messagebox.showerror("Save failed", f"Failed to save prompts: {exc}")
             return
 
@@ -569,7 +572,7 @@ class MailSenderWorkbench:
     def save_settings(self) -> None:
         try:
             write_settings(self.settings_path, self.collect_form_values(), omit_defaults=self.compact_save.get())
-        except Exception as exc:
+        except OSError as exc:
             messagebox.showerror("Save failed", str(exc))
             return
         self._append_console(f"[INFO] Saved settings to {self.settings_path}\n")
@@ -577,7 +580,7 @@ class MailSenderWorkbench:
     def save_env(self) -> None:
         try:
             write_env(self.env_path, self.collect_env_values())
-        except Exception as exc:
+        except OSError as exc:
             messagebox.showerror("Save failed", str(exc))
             return
         self._append_console(f"[INFO] Saved .env to {self.env_path}\n")

@@ -47,6 +47,7 @@ def _domain_accepts_mail(domain: str) -> bool:
 def _mail_exchange_hosts(domain: str) -> list[str]:
     try:
         import dns.resolver
+        import dns.exception
     except ImportError:
         return []
 
@@ -62,7 +63,7 @@ def _mail_exchange_hosts(domain: str) -> list[str]:
             if str(answer.exchange).strip(".")
         ]
         return [host for host in hosts if host != "."]
-    except Exception:
+    except dns.exception.DNSException:
         return []
 
 

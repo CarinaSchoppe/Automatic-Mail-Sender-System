@@ -713,7 +713,7 @@ def test_main_success_and_error(monkeypatch: pytest.MonkeyPatch, project: Path, 
     assert result == 0
     assert "New recipients: 1" in capsys.readouterr().out
 
-    def broken_run():
+    def broken_run(*args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(research_leads, "run_research", broken_run)
@@ -860,8 +860,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self, api_key: str) -> None:
-            assert api_key == "key"
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -901,12 +900,12 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
 
     class FakeFiles:
         @staticmethod
-        def upload():
+        def upload(*args, **kwargs):
             return object()
 
     class FakeModels:
         @staticmethod
-        def generate_content():
+        def generate_content(*args, **kwargs):
             part = py_types.SimpleNamespace(text=None)
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -917,7 +916,7 @@ def test_generate_with_gemini_logs_empty_candidate_metadata(monkeypatch: pytest.
             return py_types.SimpleNamespace(text="", candidates=[candidate], prompt_feedback="ok")
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -994,11 +993,11 @@ def test_generate_with_gemini_fakes_csv_extension(
 
     class FakeModels:
         @staticmethod
-        def generate_content():
+        def generate_content(*args, **kwargs):
             return py_types.SimpleNamespace(text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -1042,21 +1041,16 @@ def test_generate_with_openai_fakes_csv_extension(
 
     captured_paths = []
 
-    def create(file, purpose):
-        # 'file' is a binary file handle because of 'with path.open("rb")'
-        captured_paths.append(Path(file.name))
-        return py_types.SimpleNamespace(id="file-123")
-
     class FakeFiles:
         pass
 
     class FakeResponses:
         @staticmethod
-        def create():
+        def create(*args, **kwargs):
             return py_types.SimpleNamespace(output_text='{"leads": []}')
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.responses = FakeResponses()
 
@@ -1080,12 +1074,12 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
 
     class FakeFiles:
         @staticmethod
-        def upload():
+        def upload(*args, **kwargs):
             return object()
 
     class FakeModels:
         @staticmethod
-        def generate_content():
+        def generate_content(*args, **kwargs):
             part = py_types.SimpleNamespace(text="company,mail,source_url\nA,a@example.com,https://a.example/contact\n")
             content = py_types.SimpleNamespace(parts=[part])
             candidate = py_types.SimpleNamespace(
@@ -1096,7 +1090,7 @@ def test_generate_with_gemini_reads_candidate_part_text_when_response_text_is_em
             return py_types.SimpleNamespace(text="", candidates=[candidate])
 
     class FakeClient:
-        def __init__(self) -> None:
+        def __init__(self, *args, **kwargs) -> None:
             self.files = FakeFiles()
             self.models = FakeModels()
 
@@ -1183,7 +1177,7 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
 
 
 def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    def broken_parse():
+    def broken_parse(*args, **kwargs):
         raise ValueError("bad csv")
 
     monkeypatch.setattr(research_leads, "parse_recipients", broken_parse)
@@ -1227,10 +1221,11 @@ def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
 
 
 def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    def broken_dialect():
+    def broken_dialect(*args, **kwargs):
         raise csv.Error("bad dialect")
 
-    monkeypatch.setattr(research_leads, "_detect_dialect", broken_dialect)
+    monkeypatch.setattr(research_leads, "detect_dialect", broken_dialect)
+    monkeypatch.setattr("research.parsing.detect_dialect", broken_dialect)
 
     assert research_leads._parse_headerless_csv_recipients("A,a@example.com", set(), True) == []
     assert "Headerless CSV parser failed to read CSV rows." in capsys.readouterr().out

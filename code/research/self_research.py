@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +16,7 @@ from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
 from research.parsing import normalize_company, parse_recipients
 from research.providers import generate_with_ollama
+from research.types import RecipientSink, ResearchConfig
 
 EMAIL_EXTRACT_PATTERN = re.compile(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 HTML_TITLE_PATTERN = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
@@ -138,7 +140,7 @@ def build_ollama_web_research_prompt(config, mode: MailMode, candidate_csv: str)
     """.strip()
 
 
-def collect_self_search_result_urls(config, queries: list[str]) -> list[str]:
+def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) -> list[str]:
     urls: list[str] = []
     seen: set[str] = set()
     for query in queries:
@@ -157,13 +159,22 @@ def collect_self_search_result_urls(config, queries: list[str]) -> list[str]:
     return urls
 
 
-def crawl_self_result_url(config, start_url: str) -> list[Recipient]:
+def crawl_self_result_url(
+        config: ResearchConfig,
+        start_url: str,
+        stop_event: threading.Event | None = None,
+        sink: RecipientSink | None = None,
+) -> list[Recipient]:
     to_visit = [(start_url, 0)]
     visited: set[str] = set()
     candidates: list[Recipient] = []
     base_netloc = urllib.parse.urlparse(start_url).netloc.lower().removeprefix("www.")
 
     while to_visit and len(visited) < config.self_crawl_max_pages_per_site:
+        if stop_event and stop_event.is_set():
+            break
+        if sink and sink.is_full():
+            break
         url, depth = to_visit.pop(0)
         normalized = _normalize_url_for_dedupe(url)
         if normalized in visited:
@@ -176,7 +187,12 @@ def crawl_self_result_url(config, start_url: str) -> list[Recipient]:
 
         company = _company_from_page(url, page_text)
         for email in _extract_emails_from_text(page_text):
-            candidates.append(Recipient(email=email, company=company))
+            rec = Recipient(email=email, company=company)
+            if sink:
+                if sink.add_recipient(rec):
+                    candidates.append(rec)
+            else:
+                candidates.append(rec)
 
         if depth >= config.self_crawl_depth:
             continue
@@ -189,7 +205,7 @@ def crawl_self_result_url(config, start_url: str) -> list[Recipient]:
     return candidates
 
 
-def _self_search_queries(config, mode: MailMode) -> list[str]:
+def _self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
     keywords = [keyword.strip() for keyword in config.self_search_keywords if keyword.strip()]
     if not keywords:
         keywords = list(default_self_keywords(mode.label))

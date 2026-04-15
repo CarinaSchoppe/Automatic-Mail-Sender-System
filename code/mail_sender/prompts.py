@@ -198,7 +198,7 @@ def load_prompts(path: Path = PROMPTS_PATH) -> dict[str, str]:
                     for key, value in data["prompts"].items():
                         if key in prompts:
                             prompts[key] = value
-        except Exception:
+        except (OSError, tomllib.TOMLDecodeError):
             # Fallback to defaults on error
             pass
     return prompts

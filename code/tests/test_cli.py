@@ -164,9 +164,6 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def send(recipient, subject, text_body, html_body, attachments, inline_images) -> None:
-        sent.append((recipient.email, subject, len(attachments), len(inline_images)))
-
     class FakeMailer:
         def __init__(self, config) -> None:
             self.config = config
@@ -176,6 +173,9 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, recipient, subject, text, html, attachments, inline_images):
+            sent.append((recipient.email, subject, len(attachments), len(inline_images)))
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -197,9 +197,6 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def send(recipient, subject, text_body, html_body, attachments, inline_images) -> None:
-        sent.append(recipient.email)
-
     class FakeMailer:
         def __init__(self, config) -> None:
             self.config = config
@@ -209,6 +206,9 @@ def test_cli_send_path_respects_max_send_count(monkeypatch, project: Path, capsy
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, recipient, *args, **kwargs):
+            sent.append(recipient.email)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -231,10 +231,6 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
     sent = []
     lock = threading.Lock()
 
-    def send(recipient, subject, text_body, html_body, attachments, inline_images) -> None:
-        with lock:
-            sent.append(recipient.email)
-
     class FakeMailer:
         def __init__(self, config) -> None:
             self.config = config
@@ -244,6 +240,10 @@ def test_cli_parallel_send_logs_each_recipient_once(monkeypatch, project: Path) 
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, recipient, *args, **kwargs):
+            with lock:
+                sent.append(recipient.email)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -268,9 +268,6 @@ def test_cli_can_disable_sent_csv_logging(monkeypatch, project: Path) -> None:
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
 
-    def send(recipient, subject, text_body, html_body, attachments, inline_images) -> None:
-        return None
-
     class FakeMailer:
         def __init__(self, config) -> None:
             self.config = config
@@ -280,6 +277,9 @@ def test_cli_can_disable_sent_csv_logging(monkeypatch, project: Path) -> None:
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, *args, **kwargs):
+            pass
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
@@ -295,9 +295,6 @@ def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project
     write_recipient(input_file, "PhD Co", "phd@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
 
-    def send(recipient, subject, text_body, html_body, attachments, inline_images) -> None:
-        return None
-
     class FakeMailer:
         def __init__(self, config) -> None:
             self.config = config
@@ -307,6 +304,9 @@ def test_cli_deletes_input_files_after_successful_real_send(monkeypatch, project
 
         def __exit__(self, exc_type, exc, traceback) -> None:
             return None
+
+        def send(self, *args, **kwargs):
+            pass
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)

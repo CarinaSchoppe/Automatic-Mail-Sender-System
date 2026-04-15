@@ -13,13 +13,10 @@ import re
 import sys
 import threading
 import tomllib
-import urllib.parse
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import cast
 
 from dotenv import load_dotenv
 
@@ -33,20 +30,22 @@ from mail_sender.modes import MODE_NAMES, MailMode, get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients
 from mail_sender.sent_log import read_logged_emails, read_logged_rows, read_known_output_emails
 from research import parsing as _parsing
+from research.providers import (
+    generate_with_gemini as _gemini_generate,
+    generate_with_ollama as _ollama_generate,
+    generate_with_openai as _openai_generate,
+    generate_with_provider,
+)
 from research import providers as _providers
 from research import self_research as _self_research
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
 from research.parsing import parse_recipients, normalize_company as _normalize_company
+from research.types import RecipientSink, ResearchConfig
 from research.self_research import (
-    _company_from_page,
-    _extract_emails_from_text,
-    _extract_google_result_urls,
-    _extract_relevant_same_site_links,
-    _fetch_text,
-    _is_blocked_result_url,
-    _normalize_url_for_dedupe,
     default_self_keywords as _default_self_keywords,
+    collect_self_search_result_urls,
+    crawl_self_result_url,
 )
 
 # Late import for prompts to avoid circular issues
@@ -63,90 +62,29 @@ EMAIL_KEYS = {"mail", "email", "recipient", "recipients", "target", "empfänger"
 COMPANY_KEYS = {"company", "firma", "organisation", "organization", "name"}
 
 
-def generate_with_provider(
-        provider: str,
-        model: str,
-        prompt: str,
-        attachment_paths: list[Path],
-        reasoning_effort: str = "middle",
-        verbose: bool = False,
-        ollama_base_url: str | None = None,
-) -> str:
-    p = provider.strip().lower()
-    if p == "gemini":
-        return generate_with_gemini(model, prompt, attachment_paths, reasoning_effort, verbose)
-    if p == "openai":
-        return generate_with_openai(model, prompt, attachment_paths, reasoning_effort, verbose)
-    if p == "ollama":
-        return generate_with_ollama(model, prompt, ollama_base_url or "http://localhost:11434", verbose)
-    raise ValueError(f"Unknown research provider: {provider}")
-
-
 def generate_with_gemini(*args, **kwargs):
-    return _providers.generate_with_gemini(*args, **kwargs)
+    return _gemini_generate(*args, **kwargs)
 
 
 def generate_with_openai(*args, **kwargs):
-    return _providers.generate_with_openai(*args, **kwargs)
+    return _openai_generate(*args, **kwargs)
 
 
 def generate_with_ollama(*args, **kwargs):
-    return _providers.generate_with_ollama(*args, **kwargs)
+    return _ollama_generate(*args, **kwargs)
 
 
-_fake_txt_extensions = _providers._fake_txt_extensions
-_verbose_gemini_candidates = _providers._verbose_gemini_candidates
-_verbose_openai_output = _providers._verbose_openai_output
-_parse_json_recipients = _parsing._parse_json_recipients
-_detect_dialect = _parsing._detect_dialect
-_find_field = _parsing._find_field
-_strip_csv_fence = _parsing._strip_csv_fence
-_strip_json_fence = _parsing._strip_json_fence
+_fake_txt_extensions = _providers.fake_txt_extensions
+_verbose_gemini_candidates = _providers.verbose_gemini_candidates
+_verbose_openai_output = _providers.verbose_openai_output
+_parse_json_recipients = _parsing.parse_json_recipients
+_detect_dialect = _parsing.detect_dialect
+detect_dialect = _parsing.detect_dialect
+_find_field = _parsing.find_field
+_strip_csv_fence = _parsing.strip_csv_fence
+_strip_json_fence = _parsing.strip_json_fence
+_parse_headerless_csv_recipients = _parsing.parse_headerless_csv_recipients
 DefaultCsvDialect = _parsing.DefaultCsvDialect
-
-
-@dataclass(frozen=True)
-class ResearchConfig:
-    provider: str
-    mode_name: str
-    model: str
-    min_companies: int
-    max_companies: int
-    person_emails_per_company: int
-    base_dir: Path
-    write_output: bool
-    verbose: bool
-    upload_attachments: bool
-    gemini_model: str
-    openai_model: str
-    ollama_model: str = "llama3.1:8b"
-    ollama_base_url: str = "http://localhost:11434"
-    reasoning_effort: str = "middle"
-    send_target_count: int = 0
-    max_iterations: int = 5
-    parallel_threads: int = 1
-    self_search_keywords: tuple[str, ...] = ()
-    self_search_pages: int = 1
-    self_results_per_page: int = 10
-    self_crawl_max_pages_per_site: int = 8
-    self_crawl_depth: int = 2
-    self_request_timeout: float = 10.0
-    self_verify_email_smtp: bool = False
-
-
-@runtime_checkable
-class RecipientSink(Protocol):
-    def add_recipient(self, recipient: Recipient) -> bool:
-        """Add recipient and return True if it was accepted (new and within target)."""
-        ...
-
-    def is_full(self) -> bool:
-        """Return True if target reached."""
-        ...
-
-    def is_seen(self, email: str, company: str | None = None) -> bool:
-        """Return True if email or company already seen in this run."""
-        ...
 
 
 class ThreadSafeRecipientSink:
@@ -226,7 +164,7 @@ def _load_settings() -> dict:
     try:
         with settings_path.open("rb") as handle:
             return tomllib.load(handle)
-    except Exception:
+    except (OSError, tomllib.TOMLDecodeError):
         return {}
 
 
@@ -248,16 +186,16 @@ def default_config() -> ResearchConfig:
             return val
         return settings.get(key, default)
 
-    provider = _get("RESEARCH_AI_PROVIDER", "gemini")
-    gemini_model = _get("GEMINI_MODEL", "gemini-3-flash-preview")
-    openai_model = _get("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
-    ollama_model = _get("OLLAMA_MODEL", "llama3.1:8b")
-    ollama_base_url = _get("OLLAMA_BASE_URL", "http://localhost:11434")
+    provider = cast(str, _get("RESEARCH_AI_PROVIDER", "gemini"))
+    gemini_model = cast(str, _get("GEMINI_MODEL", "gemini-3-flash-preview"))
+    openai_model = cast(str, _get("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17"))
+    ollama_model = cast(str, _get("OLLAMA_MODEL", "llama3.1:8b"))
+    ollama_base_url = cast(str, _get("OLLAMA_BASE_URL", "http://localhost:11434"))
 
     # Mode name: check RESEARCH_MODE (env) then MODE (env or toml)
     mode_name = os.getenv("RESEARCH_MODE")
     if mode_name is None:
-        mode_name = _get("MODE", "PhD")
+        mode_name = cast(str, _get("MODE", "PhD"))
 
     return ResearchConfig(
         provider=provider,
@@ -267,31 +205,30 @@ def default_config() -> ResearchConfig:
         ollama_model=ollama_model,
         ollama_base_url=ollama_base_url,
         model=_model_for_provider(provider, gemini_model, openai_model, ollama_model),
-        min_companies=_get("RESEARCH_MIN_COMPANIES", 15),
-        max_companies=_get("RESEARCH_MAX_COMPANIES", 25),
-        person_emails_per_company=_get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3),
+        min_companies=cast(int, _get("RESEARCH_MIN_COMPANIES", 15)),
+        max_companies=cast(int, _get("RESEARCH_MAX_COMPANIES", 25)),
+        person_emails_per_company=cast(int, _get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3)),
         base_dir=CODE_DIR.parent,
-        write_output=_get("RESEARCH_WRITE_OUTPUT", True),
-        verbose=_get("RESEARCH_VERBOSE", False),
-        upload_attachments=_get("RESEARCH_UPLOAD_ATTACHMENTS", True),
-        reasoning_effort=_get("RESEARCH_REASONING_EFFORT", "middle"),
-        send_target_count=_get("SEND_TARGET_COUNT", 0),
-        max_iterations=_get("SEND_TARGET_MAX_ROUNDS", 5),
-        parallel_threads=_get("PARALLEL_THREADS", 3),
-        self_search_keywords=tuple(_get("SELF_SEARCH_KEYWORDS", _default_self_keywords(mode_name))),
-        self_search_pages=_get("SELF_SEARCH_PAGES", 1),
-        self_results_per_page=_get("SELF_RESULTS_PER_PAGE", 10),
-        self_crawl_max_pages_per_site=_get("SELF_CRAWL_MAX_PAGES_PER_SITE", 8),
-        self_crawl_depth=_get("SELF_CRAWL_DEPTH", 2),
-        self_request_timeout=float(_get("SELF_REQUEST_TIMEOUT", 10.0)),
-        self_verify_email_smtp=_get("SELF_VERIFY_EMAIL_SMTP", False),
+        write_output=cast(bool, _get("RESEARCH_WRITE_OUTPUT", True)),
+        verbose=cast(bool, _get("RESEARCH_VERBOSE", False)),
+        upload_attachments=cast(bool, _get("RESEARCH_UPLOAD_ATTACHMENTS", True)),
+        reasoning_effort=cast(str, _get("RESEARCH_REASONING_EFFORT", "middle")),
+        send_target_count=cast(int, _get("SEND_TARGET_COUNT", 0)),
+        max_iterations=cast(int, _get("SEND_TARGET_MAX_ROUNDS", 5)),
+        parallel_threads=cast(int, _get("PARALLEL_THREADS", 3)),
+        self_search_keywords=cast(tuple[str, ...], tuple(cast(list[str], _get("SELF_SEARCH_KEYWORDS", list(_default_self_keywords(mode_name)))))),
+        self_search_pages=cast(int, _get("SELF_SEARCH_PAGES", 1)),
+        self_results_per_page=cast(int, _get("SELF_RESULTS_PER_PAGE", 10)),
+        self_crawl_max_pages_per_site=cast(int, _get("SELF_CRAWL_MAX_PAGES_PER_SITE", 8)),
+        self_crawl_depth=cast(int, _get("SELF_CRAWL_DEPTH", 2)),
+        self_request_timeout=float(cast(float, _get("SELF_REQUEST_TIMEOUT", 10.0))),
+        self_verify_email_smtp=cast(bool, _get("SELF_VERIFY_EMAIL_SMTP", False)),
     )
 
 
 def main(argv: list[str] | None = None) -> int:
-    if argv is None:
-        argv = sys.argv[1:]
-    config = parse_args(argv)
+    args_list = argv if argv is not None else sys.argv[1:]
+    config = parse_args(args_list)
     try:
         output_path, recipients = run_research(config)
     except (RuntimeError, ValueError, FileNotFoundError, NotADirectoryError) as exc:
@@ -452,7 +389,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     all_recipients: list[Recipient] = []
     seen_emails_in_run: set[str] = {email.lower() for email in existing_emails}
     seen_companies_in_run: set[str] = {company for company in existing_companies or set() if company}
-    
+
     # We aim for roughly max_companies as the total target for this run,
     # or the global send_target_count if provided.
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
@@ -468,40 +405,40 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         batch_size = config.parallel_threads
         if max_iterations > 0:
             batch_size = min(batch_size, max_iterations - iteration)
-        
+
         batch_start = iteration + 1
         iteration += batch_size
-        
+
         _info(f"Progress: {len(all_recipients)}/{target_count} recipients found. {remaining_target} missing.")
 
         prompt = build_prompt(config, mode, seen_emails_in_run, seen_companies_in_run, input_context)
         _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
 
         _info(f"Calling AI provider with up to {batch_size} parallel request(s).")
-        
+
         stop_event = threading.Event()
         batch_new_count = 0
         sink = ThreadSafeRecipientSink(target_count, seen_emails_in_run, seen_companies_in_run, config)
-        
+
         with ThreadPoolExecutor(max_workers=batch_size) as executor:
             futures = {
                 executor.submit(
-                    _generate_and_process_response, 
+                    _generate_and_process_response,
                     config, mode, prompt, attachments, sink, input_context, stop_event
-                ): i 
+                ): i
                 for i in range(batch_size)
             }
-            
+
             for future in as_completed(futures):
                 if stop_event.is_set():
                     continue
-                    
+
                 try:
                     thread_added = future.result()
                     batch_new_count += thread_added
                     if thread_added > 0:
                         _info(f"Added {thread_added} new recipients from AI response. Total found in run: {len(all_recipients) + len(sink.recipients)}/{target_count}.")
-                    
+
                     if sink.is_full():
                         _info(f"Target of {target_count} reached. Stopping batch.")
                         stop_event.set()
@@ -563,13 +500,13 @@ def _generate_and_process_response(
     raw_response = _generate_research_response(config, mode, prompt, attachments, set(), input_context, stop_event)
     if not raw_response:
         return 0
-    
+
     _verbose(config.verbose, f"Raw AI response characters: {len(raw_response)}")
-    
+
     # We parse without filters first, then let the sink decide.
     # To do this, we pass empty sets to parse_recipients.
     candidates = parse_recipients(raw_response, set(), set(), config.verbose)
-    
+
     added_count = 0
     for cand in candidates:
         if stop_event and stop_event.is_set():
@@ -635,7 +572,7 @@ def run_self_research(
 ) -> list[Recipient]:
     """Compatibility wrapper around the self research base workflow."""
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
-    
+
     queries = _self_search_queries(config, mode)
     result_urls = collect_self_search_result_urls(config, queries)
     if not result_urls:
@@ -653,7 +590,7 @@ def run_self_research(
             try:
                 return crawl_self_result_url(config, u, stop_event, sink)
             except TypeError:
-                return crawl_self_result_url(config, u, stop_event) # type: ignore
+                return crawl_self_result_url(config, u, stop_event)  # type: ignore
 
         futures = {executor.submit(_crawl_task, url): url for url in result_urls}
         for future in as_completed(futures):
@@ -708,66 +645,6 @@ def run_ollama_web_research(
     final_recipients = recipients if recipients else candidates
     _info(f"Ollama web research finished. Found {len(final_recipients)} usable recipients.")
     return final_recipients[:target_count]
-
-
-def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) -> list[str]:
-    urls: list[str] = []
-    seen: set[str] = set()
-    for query in queries:
-        for page in range(config.self_search_pages):
-            start = page * config.self_results_per_page
-            search_url = _self_research._google_search_url(query, start)
-            html_text = _fetch_text(search_url, config.self_request_timeout, config.verbose)
-            if not html_text:
-                continue
-            for result_url in _extract_google_result_urls(html_text):
-                normalized = _normalize_url_for_dedupe(result_url)
-                if normalized in seen or _is_blocked_result_url(result_url):
-                    continue
-                seen.add(normalized)
-                urls.append(result_url)
-    return urls
-
-
-def crawl_self_result_url(
-        config: ResearchConfig,
-        start_url: str,
-        stop_event: threading.Event | None = None,
-        sink: RecipientSink | None = None,
-) -> list[Recipient]:
-    to_visit = [(start_url, 0)]
-    visited: set[str] = set()
-    candidates: list[Recipient] = []
-    base_netloc = urllib.parse.urlparse(start_url).netloc.lower().removeprefix("www.")
-
-    while to_visit and len(visited) < config.self_crawl_max_pages_per_site:
-        if stop_event and stop_event.is_set():
-            break
-        if sink and sink.is_full():
-            break
-        url, depth = to_visit.pop(0)
-        normalized = _normalize_url_for_dedupe(url)
-        if normalized in visited:
-            continue
-        visited.add(normalized)
-        page_text = _fetch_text(url, config.self_request_timeout, config.verbose)
-        if not page_text:
-            continue
-        company = _company_from_page(url, page_text)
-        for email in _extract_emails_from_text(page_text):
-            rec = Recipient(email=email, company=company)
-            if sink:
-                if sink.add_recipient(rec):
-                    candidates.append(rec)
-            else:
-                candidates.append(rec)
-        if depth >= config.self_crawl_depth:
-            continue
-        queued_urls = {queued_url for queued_url, _ in to_visit}
-        for link in _extract_relevant_same_site_links(url, page_text, base_netloc):
-            if _normalize_url_for_dedupe(link) not in visited and link not in queued_urls:
-                to_visit.append((link, depth + 1))
-    return candidates
 
 
 def _self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
@@ -831,7 +708,7 @@ def _is_model_error(raw_response: str, verbose: bool = False) -> bool:
 def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     emails: set[str] = set()
     output_dir = base_dir / "output"
-    
+
     # Load all emails from output logs (excluding invalid_mails.csv)
     logged = read_known_output_emails(output_dir)
     emails.update(logged)
@@ -906,11 +783,11 @@ def build_prompt(
     if isinstance(existing_companies, str) and not input_context:
         input_context = existing_companies
         existing_companies = None
-    
+
     excluded = "\n".join(sorted(existing_emails)) or "(none)"
     excluded_companies = "\n".join(sorted(existing_companies or set())) or "(none)"
     input_reference = input_context.strip() or "(no mode-specific input files found)"
-    
+
     contact_requirement = (
         f"- For PhD, include the general company contact email plus up to {config.person_emails_per_company} "
         "decision-maker work emails per company when public sources support them."
@@ -942,7 +819,7 @@ def _parse_headerless_csv_recipients(
         existing_companies: set[str] | None = None,
         verbose: bool = False,
 ) -> list[Recipient]:
-    return _parsing._parse_headerless_csv_recipients(raw_text, existing_emails, existing_companies, verbose)
+    return _parsing.parse_headerless_csv_recipients(raw_text, existing_emails, existing_companies, verbose)
 
 
 def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Recipient]) -> Path:
@@ -972,5 +849,3 @@ def _model_for_provider(provider: str, gemini_model: str, openai_model: str, oll
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-
-

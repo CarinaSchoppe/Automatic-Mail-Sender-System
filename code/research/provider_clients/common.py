@@ -4,6 +4,7 @@ import contextlib
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from research.logging_utils import verbose as _verbose
 
@@ -31,13 +32,13 @@ def fake_txt_extensions(attachment_paths: list[Path], verbose: bool = False):
         for temp_file in temp_files:
             try:
                 temp_file.unlink(missing_ok=True)
-            except Exception:  # pragma: no cover
+            except OSError:  # pragma: no cover
                 pass
         for temp_dir in temp_dirs:
             temp_dir.cleanup()
 
 
-def extract_gemini_response_text(response) -> str:
+def extract_gemini_response_text(response) -> str | None | Any:
     direct_text = getattr(response, "text", None)
     if direct_text:
         return direct_text
@@ -52,7 +53,7 @@ def extract_gemini_response_text(response) -> str:
     return "\n".join(texts)
 
 
-def extract_openai_response_text(response) -> str:
+def extract_openai_response_text(response) -> str | None | Any:
     output_text = getattr(response, "output_text", None)
     if output_text:
         return output_text

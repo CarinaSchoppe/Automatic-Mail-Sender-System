@@ -87,7 +87,7 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
 
                 rows.append({"company": company, "mail": email})
             return rows
-    except Exception:
+    except (OSError, csv.Error):
         return []
 
 

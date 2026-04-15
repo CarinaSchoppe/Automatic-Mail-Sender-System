@@ -12,6 +12,7 @@ try:
 
     load_dotenv = _dotenv_load
 except ImportError:  # pragma: no cover - optional until requirements are installed
+    _dotenv_load = None
     load_dotenv = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -39,7 +40,7 @@ def _load_settings() -> dict:
     try:
         with SETTINGS_PATH.open("rb") as handle:
             return tomllib.load(handle)
-    except Exception:
+    except (OSError, tomllib.TOMLDecodeError):
         return {}
 
 

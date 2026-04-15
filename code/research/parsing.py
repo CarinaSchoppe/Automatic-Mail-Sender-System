@@ -31,27 +31,27 @@ def parse_recipients(
         verbose = existing_companies
         existing_companies = None
     _verbose(verbose, f"Parsing AI response with {len(raw_response)} character(s).")
-    csv_text = _strip_csv_fence(raw_response)
+    csv_text = strip_csv_fence(raw_response)
     _verbose(verbose, f"CSV candidate text length after fence stripping: {len(csv_text)}.")
-    rows = list(csv.DictReader(csv_text.splitlines(), dialect=_detect_dialect(csv_text))) if csv_text.strip() else []
+    rows = list(csv.DictReader(csv_text.splitlines(), dialect=detect_dialect(csv_text))) if csv_text.strip() else []
     _verbose(verbose, f"CSV DictReader row count: {len(rows)}.")
     if rows:
-        company_field = _find_field(rows[0], COMPANY_KEYS)
-        email_field = _find_field(rows[0], EMAIL_KEYS)
+        company_field = find_field(rows[0], COMPANY_KEYS)
+        email_field = find_field(rows[0], EMAIL_KEYS)
         _verbose(verbose, f"Detected CSV fields: company={company_field!r}, email={email_field!r}.")
         if company_field and email_field:
-            source_field = _find_field(rows[0], SOURCE_KEYS)
+            source_field = find_field(rows[0], SOURCE_KEYS)
             _verbose(verbose, f"Detected CSV source field: {source_field!r}.")
             recipients = _extract_from_rows(rows, company_field, email_field, existing_emails, existing_companies, source_field, verbose)
             _verbose(verbose, f"Parsed CSV recipients: {len(recipients)}")
             return recipients
 
-    recipients = _parse_headerless_csv_recipients(csv_text, existing_emails, existing_companies, verbose)
+    recipients = parse_headerless_csv_recipients(csv_text, existing_emails, existing_companies, verbose)
     if recipients:
         _verbose(verbose, f"Parsed headerless CSV recipients: {len(recipients)}")
         return recipients
 
-    recipients = _parse_json_recipients(raw_response, existing_emails, existing_companies, verbose)
+    recipients = parse_json_recipients(raw_response, existing_emails, existing_companies, verbose)
     if recipients:
         _verbose(verbose, f"Parsed JSON recipients: {len(recipients)}")
         return recipients
@@ -64,7 +64,7 @@ def normalize_company(company: str) -> str:
     return COMPANY_NORMALIZE_PATTERN.sub("", company.strip().lower())
 
 
-def _parse_headerless_csv_recipients(
+def parse_headerless_csv_recipients(
         raw_text: str,
         existing_emails: set[str],
         existing_companies: set[str] | None = None,
@@ -79,7 +79,7 @@ def _parse_headerless_csv_recipients(
         return []
 
     try:
-        rows = list(csv.reader(text.splitlines(), dialect=_detect_dialect(text)))
+        rows = list(csv.reader(text.splitlines(), dialect=detect_dialect(text)))
     except csv.Error:
         _verbose(verbose, "Headerless CSV parser failed to read CSV rows.")
         return []
@@ -98,7 +98,7 @@ def _parse_headerless_csv_recipients(
     return _extract_from_rows(parsed_rows, "company", "mail", existing_emails, existing_companies, verbose=verbose)
 
 
-def _parse_json_recipients(
+def parse_json_recipients(
         raw_response: str,
         existing_emails: set[str],
         existing_companies: set[str] | None = None,
@@ -107,7 +107,7 @@ def _parse_json_recipients(
     if isinstance(existing_companies, bool):
         verbose = existing_companies
         existing_companies = None
-    payload_text = _strip_json_fence(raw_response)
+    payload_text = strip_json_fence(raw_response)
     try:
         payload = json.loads(payload_text)
     except json.JSONDecodeError:
@@ -178,7 +178,7 @@ def _extract_from_rows(
     return recipients
 
 
-def _strip_csv_fence(text: str) -> str:
+def strip_csv_fence(text: str) -> str:
     stripped = text.strip()
     matches = re.findall(r"```csv\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
     for match in matches:
@@ -194,7 +194,7 @@ def _strip_csv_fence(text: str) -> str:
     return stripped
 
 
-def _strip_json_fence(text: str) -> str:
+def strip_json_fence(text: str) -> str:
     stripped = text.strip()
     matches = re.findall(r"```json\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
     if matches:
@@ -205,14 +205,14 @@ def _strip_json_fence(text: str) -> str:
     return stripped
 
 
-def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
+def detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
         return DefaultCsvDialect
 
 
-def _find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
+def find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
     for field in row:
         if field and normalize_key(field) in allowed_keys:
             return field

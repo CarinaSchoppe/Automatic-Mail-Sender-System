@@ -81,16 +81,6 @@ def test_validate_email_address_can_probe_mailbox_rejects(monkeypatch) -> None:
 
 
 def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
-    def rcpt(email):
-        assert email == "missing@example.com"
-        return 550, b"user unknown"
-
-    def mail(from_email):
-        assert from_email == "sender@example.com"
-
-    def ehlo_or_helo_if_needed():
-        return None
-
     class FakeSmtp:
         def __init__(self, host, port, timeout):
             assert (host, port, timeout) == ("mx.example.com", 25, 3)
