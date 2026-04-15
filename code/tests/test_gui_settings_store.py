@@ -3,7 +3,8 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from gui.settings_store import SETTINGS_SCHEMA, coerce_value, default_settings, load_settings, write_settings
+from gui.settings_store import ENV_SCHEMA, SETTINGS_SCHEMA
+from gui.settings_store import coerce_value, default_env, default_settings, load_env, load_settings, write_env, write_settings
 
 
 def test_settings_store_writes_and_loads_full_settings(tmp_path: Path) -> None:
@@ -48,3 +49,16 @@ def test_setting_coercion_matches_widget_value_types() -> None:
     assert coerce_value(specs["SELF_REQUEST_TIMEOUT"], "3.5") == 3.5
     assert coerce_value(specs["SELF_SEARCH_KEYWORDS"], "a\n\n b ") == ["a", "b"]
 
+
+def test_env_store_writes_and_loads_all_env_values(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    values = default_env()
+    values.update({"SMTP_USERNAME": "user", "SMTP_PASSWORD": "secret", "RESEARCH_VERBOSE": True})
+
+    write_env(path, values)
+    loaded = load_env(path)
+
+    assert loaded["SMTP_USERNAME"] == "user"
+    assert loaded["SMTP_PASSWORD"] == "secret"
+    assert loaded["RESEARCH_VERBOSE"] == "true"
+    assert {spec.key for spec in ENV_SCHEMA}.issuperset(loaded.keys())
