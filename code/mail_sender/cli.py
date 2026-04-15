@@ -265,14 +265,17 @@ def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[
 def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails: set[str], invalid_log_path: Path):
     """
     Filtert die geladenen Empfänger basierend auf Duplikaten, Ausschlusslisten und E-Mail-Validierung.
+    Parallele Validierung mittels ThreadPoolExecutor.
     """
     _info("Validating and filtering recipients.")
-    recipients_to_process = []
+
+    # 1. Vorab-Filterung (Duplikate und bereits bekannte Logs)
+    to_validate = []
     skipped_before_send = 0
     seen_in_this_run = set()
+
     for recipient in recipients:
         email_key = recipient.email.lower()
-        _verbose(args.verbose, f"Checking recipient {recipient.email} ({recipient.company}).")
         if email_key in logged_emails:
             skipped_before_send += 1
             print(f"[SKIP] {recipient.email} is already present in an output CSV log; no mail will be created or sent.")
@@ -286,27 +289,57 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
             print(f"[SKIP] {recipient.email} appears more than once in this CSV run; duplicate skipped.")
             continue
 
-        validation_kwargs = {"skip_dns_check": args.skip_email_dns_check}
-        if args.verify_email_smtp:
-            validation_kwargs.update(
-                verify_mailbox=True,
-                smtp_timeout=args.verify_email_smtp_timeout,
-            )
+        seen_in_this_run.add(email_key)
+        to_validate.append(recipient)
+
+    if not to_validate:
+        return [], skipped_before_send
+
+    # 2. Parallele Validierung
+    validation_kwargs = {"skip_dns_check": args.skip_email_dns_check}
+    if args.verify_email_smtp:
+        validation_kwargs.update(
+            verify_mailbox=True,
+            smtp_timeout=args.verify_email_smtp_timeout,
+        )
+
+    def validate_one(rec):
+        _verbose(args.verbose, f"Checking recipient {rec.email} ({rec.company}).")
         try:
-            validation = validate_email_address(recipient.email, **validation_kwargs)
+            val = validate_email_address(rec.email, **validation_kwargs)
         except TypeError as exc:
             if "unexpected keyword" not in str(exc):
                 raise
-            validation = validate_email_address(recipient.email)
-        _verbose(args.verbose, f"Validation result for {recipient.email}: {validation.is_valid} {validation.reason}")
+            val = validate_email_address(rec.email)
+        return rec, val
+
+    max_workers = args.parallel_threads
+    _info(f"Validating {len(to_validate)} recipients using {max_workers} threads...")
+
+    recipients_to_process = []
+    # Wir sammeln die Ergebnisse in der ursprünglichen Reihenfolge
+    results = [None] * len(to_validate)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_index = {executor.submit(validate_one, rec): i for i, rec in enumerate(to_validate)}
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            rec, validation = future.result()
+            results[index] = (rec, validation)
+            # Sofortiges Feedback für Verbose-User
+            _verbose(args.verbose, f"Validation result for {rec.email}: {validation.is_valid} {validation.reason}")
+
+    # 3. Ergebnisse konsolidieren (in ursprünglicher Reihenfolge)
+    for res in results:
+        if res is None: continue
+        recipient, validation = res
         if not validation.is_valid:
             skipped_before_send += 1
-            invalid_emails.add(email_key)
+            invalid_emails.add(recipient.email.lower())
             append_invalid_email(invalid_log_path, recipient, validation.reason)
             print(f"[INVALID] {recipient.email} | {validation.reason}; logged to {invalid_log_path.name}.")
             continue
 
-        seen_in_this_run.add(email_key)
         recipients_to_process.append(recipient)
         _verbose(args.verbose, f"Recipient accepted for processing: {recipient.email}")
 
