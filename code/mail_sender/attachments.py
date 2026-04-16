@@ -1,5 +1,5 @@
 """
-Hilfsmodul zum Auflisten von Dateianhängen in einem Verzeichnis.
+Utility module for listing file attachments in a directory.
 """
 
 from __future__ import annotations
@@ -9,14 +9,14 @@ from pathlib import Path
 
 def list_attachments(directory: Path) -> list[Path]:
     """
-    Sammelt alle Dateien in einem Verzeichnis (rekursiv) für den Versand.
-    Ignoriert .gitkeep-Dateien.
+    Collects all files in a directory (recursively) for sending.
+    Ignores .gitkeep files.
 
     Args:
-        directory (Path): Der Pfad zum Ordner mit den Anhängen.
+        directory (Path): The path to the folder containing the attachments.
 
     Returns:
-        list[Path]: Eine Liste der gefundenen Dateien.
+        list[Path]: A list of found files.
     """
     if not directory.exists():
         raise FileNotFoundError(f"Attachment directory not found: {directory}")

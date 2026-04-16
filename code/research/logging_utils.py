@@ -1,31 +1,31 @@
 """
-Hilfsfunktionen für das Logging innerhalb der Recherche-Pipeline.
-Ermöglicht einheitliche Ausgaben für Info- und Verbose-Level.
+Utility functions for logging within the research pipeline.
+Provides unified output for info and verbose levels.
 """
 
 from __future__ import annotations
 
 import threading
 
-# Lokaler Speicher für thread-spezifische Informationen (z. B. eine Thread-ID).
+# Local storage for thread-specific information (e.g., a thread ID).
 _thread_context = threading.local()
 
 
 def set_thread_id(thread_id: int | str | None) -> None:
-    """Setzt die Thread-ID für den aktuellen Thread."""
+    """Sets the thread ID for the current thread."""
     _thread_context.thread_id = thread_id
 
 
 def get_thread_id() -> str:
-    """Liefert die aktuelle Thread-ID als String-Präfix, falls vorhanden."""
+    """Returns the current thread ID as a string prefix, if available."""
     tid = getattr(_thread_context, "thread_id", None)
     return f"[Thread-{tid}] " if tid is not None else ""
 
 
 def verbose(enabled: bool, message: str) -> None:
     """
-    Gibt eine detaillierte Protokollnachricht aus, falls das Verbose-Logging aktiviert ist.
-    Inkludiert automatisch die Thread-ID, falls im aktuellen Thread gesetzt.
+    Prints a detailed log message if verbose logging is enabled.
+    Automatically includes the thread ID if set in the current thread.
     """
     if enabled:
         print(f"{get_thread_id()}[VERBOSE] {message}")
@@ -33,7 +33,7 @@ def verbose(enabled: bool, message: str) -> None:
 
 def info(message: str) -> None:
     """
-    Gibt eine allgemeine Informationsnachricht aus.
-    Inkludiert automatisch die Thread-ID, falls im aktuellen Thread gesetzt.
+    Prints a general information message.
+    Automatically includes the thread ID if set in the current thread.
     """
     print(f"{get_thread_id()}[INFO] {message}")

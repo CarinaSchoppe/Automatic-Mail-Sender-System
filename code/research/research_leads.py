@@ -1,7 +1,7 @@
 """
-Haupt-Pipeline für die KI-gestützte Lead-Recherche.
-Verwaltet den Ablauf von der Prompt-Erstellung über den KI-Aufruf bis hin zum Parsen und Speichern der Ergebnisse.
-Unterstützt Multi-Threading für parallele Anfragen.
+Main pipeline for AI-powered lead research.
+Manages the process from prompt creation and AI calls to parsing and saving results.
+Supports multi-threading for parallel requests.
 """
 
 # Local imports intentionally come after the direct-script path bootstrap below.
@@ -60,41 +60,41 @@ RESUME_ATTACHMENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-EMAIL_KEYS = {"mail", "email", "recipient", "recipients", "target", "empfänger", "empfaenger"}
-COMPANY_KEYS = {"company", "firma", "organisation", "organization", "name"}
+EMAIL_KEYS = {"mail", "email", "recipient", "recipients", "target", "recipient", "receiver"}
+COMPANY_KEYS = {"company", "firm", "organization", "organization", "name"}
 
 
 def generate_with_provider(*args, **kwargs):
     """
-    Delegiert den Aufruf zur Generierung von Leads an den entsprechenden Provider-Client.
+    Delegates the call to generate leads to the corresponding provider client.
 
     Args:
-        *args: Variable Positionsargumente.
-        **kwargs: Variable Schlüsselwortargumente.
+        *args: Variable positional arguments.
+        **kwargs: Variable keyword arguments.
 
     Returns:
-        Das Ergebnis der Lead-Generierung (meist ein CSV-String).
+        The lead generation result (usually a CSV string).
     """
     return _providers.generate_with_provider(*args, **kwargs)
 
 
 def generate_with_gemini(*args, **kwargs):
     """
-    Delegiert den Aufruf zur Generierung von Leads spezifisch an Google Gemini.
+    Delegates the call to generate leads specifically to Google Gemini.
     """
     return _gemini_generate(*args, **kwargs)
 
 
 def generate_with_openai(*args, **kwargs):
     """
-    Delegiert den Aufruf zur Generierung von Leads spezifisch an OpenAI.
+    Delegates the call to generate leads specifically to OpenAI.
     """
     return _openai_generate(*args, **kwargs)
 
 
 def generate_with_ollama(*args, **kwargs):
     """
-    Delegiert den Aufruf zur Generierung von Leads spezifisch an eine lokale Ollama-Instanz.
+    Delegates the call to generate leads specifically to a local Ollama instance.
     """
     return _ollama_generate(*args, **kwargs)
 
@@ -114,20 +114,20 @@ DefaultCsvDialect = _parsing.DefaultCsvDialect
 
 class ThreadSafeRecipientSink:
     """
-    Ein thread-sicherer Container zum Sammeln von validierten Leads (Empfängern).
-    Verhindert doppelte Einträge und bricht die Suche ab, sobald das Ziel erreicht ist.
+    A thread-safe container for collecting validated leads (recipients).
+    Prevents duplicate entries and stops the search once the target is reached.
     """
 
     def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig, mode: MailMode):
         """
-        Initialisiert den Sink mit Zielvorgaben und bereits bekannten Daten.
+        Initializes the sink with targets and already known data.
 
         Args:
-            target_count (int): Anzahl der insgesamt gewünschten E-Mail-Adressen.
-            seen_emails (set[str]): Menge der bereits kontaktierten E-Mails (Deduplizierung).
-            seen_companies (set[str]): Menge der bereits recherchierten Firmen.
-            config (ResearchConfig): Die aktuelle Recherche-Konfiguration.
-            mode (MailMode): Der aktuelle E-Mail-Modus (für Speicherpfade).
+            target_count (int): Total number of desired email addresses.
+            seen_emails (set[str]): Set of already contacted emails (deduplication).
+            seen_companies (set[str]): Set of already researched companies.
+            config (ResearchConfig): The current research configuration.
+            mode (MailMode): The current email mode (for storage paths).
         """
         self.target_count = target_count
         self.seen_emails = {email.lower() for email in seen_emails}
@@ -140,8 +140,8 @@ class ThreadSafeRecipientSink:
 
     def _get_thread_file(self, thread_id: int | None) -> Path | None:
         """
-        Liefert den Pfad zur CSV-Datei für einen bestimmten Thread. 
-        Erstellt die Datei und den Header, falls noch nicht geschehen.
+        Returns the path to the CSV file for a specific thread.
+        Creates the file and header if not already done.
         """
         if not self.config.write_output:
             return None
@@ -176,15 +176,15 @@ class ThreadSafeRecipientSink:
 
     def add_recipient(self, recipient: Recipient, thread_id: int | None = None) -> bool:
         """
-        Versucht einen neuen Empfänger hinzuzufügen. Prüft auf Duplikate und Zielerreichung.
-        Schreibt den Empfänger bei Erfolg sofort in eine thread-spezifische CSV-Datei.
+        Attempts to add a new recipient. Checks for duplicates and target achievement.
+        Writes the recipient immediately to a thread-specific CSV file upon success.
 
         Args:
-            recipient (Recipient): Der gefundene Lead.
-            thread_id (int, optional): Die ID des aufrufenden Threads für separate Dateien.
+            recipient (Recipient): The found lead.
+            thread_id (int, optional): The ID of the calling thread for separate files.
 
         Returns:
-            bool: True, wenn das Gesamtziel (target_count) erreicht wurde, andernfalls False.
+            bool: True if the total target (target_count) has been reached, otherwise False.
         """
         email_key = recipient.email.lower()
         company_key = _normalize_company(recipient.company)
@@ -270,7 +270,7 @@ class ThreadSafeRecipientSink:
 
 def _load_settings() -> dict:
     """
-    Lädt die allgemeinen Einstellungen aus der settings.toml im Projekt-Wurzelverzeichnis.
+    Loads general settings from settings.toml in the project root directory.
     """
     settings_path = CODE_DIR.parent / "settings.toml"
     if not settings_path.exists():
@@ -284,13 +284,13 @@ def _load_settings() -> dict:
 
 def default_config() -> ResearchConfig:
     """
-    Erstellt eine Standard-Konfiguration basierend auf Umgebungsvariablen und der settings.toml Datei.
+    Creates a standard configuration based on environment variables and the settings.toml file.
     """
     load_dotenv()
     settings = _load_settings()
 
     def _get(key: str, default):
-        """Ermittelt Daten."""
+        """Retrieves data."""
         val = os.getenv(key)
         if val is not None:
             if isinstance(default, bool):
@@ -346,8 +346,8 @@ def default_config() -> ResearchConfig:
 
 def main(argv: list[str] | None = None) -> int:
     """
-    Haupteinstiegspunkt für das Recherche-Skript.
-    Parst Argumente, führt die Recherche aus und gibt eine Zusammenfassung aus.
+    Main entry point for the research script.
+    Parses arguments, executes research, and prints a summary.
     """
     args_list = argv if argv is not None else sys.argv[1:]
     config = parse_args(args_list)
@@ -366,8 +366,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def parse_args(argv: list[str]) -> ResearchConfig:
     """
-    Parst die Kommandozeilenargumente und erstellt ein ResearchConfig-Objekt.
-    Kombiniert Standardwerte, Umgebungsvariablen und explizite CLI-Flags.
+    Parses command-line arguments and creates a ResearchConfig object.
+    Combines default values, environment variables, and explicit CLI flags.
     """
     env_config = default_config()
     parser = argparse.ArgumentParser(description="research new lead CSV files with AI providers or self-hosted web scraping.")
@@ -428,15 +428,15 @@ def parse_args(argv: list[str]) -> ResearchConfig:
 
 def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     """
-    Führt einen kompletten Recherche-Durchlauf aus.
-    Wählt zwischen KI-Providern (Gemini, OpenAI) und lokaler Recherche (self, Ollama).
-    Verwaltet das Sammeln und Speichern der Ergebnisse.
+    Executes a complete research run.
+    Chooses between AI providers (Gemini, OpenAI) and local research (self, Ollama).
+    Manages collection and storage of results.
     
     Args:
-        config (ResearchConfig): Die Konfiguration für diesen Lauf.
+        config (ResearchConfig): The configuration for this run.
         
     Returns:
-        tuple[Path | None, list[Recipient]]: Pfad zur erstellten Datei und Liste der neuen Leads.
+        tuple[Path | None, list[Recipient]]: Path to the created file and list of new leads.
     """
     if config.min_companies < 1 or config.max_companies < config.min_companies:
         raise ValueError("Company limits must satisfy 1 <= min_companies <= max_companies.")
@@ -637,8 +637,8 @@ def _generate_and_process_response(
         thread_id: int | None = None,
 ) -> int:
     """
-    Interne Worker-Methode: Generiert eine KI-Antwort und verarbeitet die darin 
-    enthaltenen Leads sofort parallel im selben Thread.
+    Internal worker method: Generates an AI response and processes the contained 
+    leads immediately in parallel in the same thread.
     """
     if stop_event and stop_event.is_set():
         return 0
@@ -646,7 +646,7 @@ def _generate_and_process_response(
         return 0
 
     _set_thread_id(thread_id if thread_id is not None else "X")
-    _info("Starte neue Suchanalyse...")
+    _info("Starting new search analysis...")
     # We use a placeholder for existing_emails because the sink handles the actual checking.
     # However, _needs_retry needs it for a quick heuristic.
     raw_response = _generate_research_response(config, mode, prompt, attachments, set(), input_context, stop_event)
@@ -689,7 +689,7 @@ def _generate_research_response(
         stop_event: threading.Event | None = None,
 ) -> str | None | Any:
     """
-    Kümmert sich um den eigentlichen KI-Aufruf inklusive Fehlerbehandlung und Retries.
+    Handles the actual AI call including error handling and retries.
     """
     if stop_event and stop_event.is_set():
         return ""
@@ -776,13 +776,13 @@ def _fetch_text(*args, **kwargs):
 
 
 def normalize_company(company: str) -> str:
-    """Normalisiert Unternehmen."""
+    """Normalizes company names."""
     return _parsing.normalize_company(company)
 
 
 def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path]:
     """
-    Listet alle Dateien in einem Verzeichnis auf, die nach Lebensläufen aussehen (CV, Resume).
+    Lists all files in a directory that look like resumes (CV, Resume).
     """
     all_attachments = list_attachments(directory)
     _verbose(verbose, f"Attachment files found before CV/resume filter: {len(all_attachments)}")
@@ -798,7 +798,7 @@ def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path
 
 def list_research_context_files(mode: MailMode, verbose: bool = False) -> list[Path]:
     """
-    Sammelt Dateien, die der KI als Kontext mitgegeben werden sollen (CVs, Sent-Logs).
+    Collects files that should be provided to the AI as context (CVs, sent logs).
     """
     context_files = list_resume_attachments(mode.attachments_dir, verbose)
     if mode.log_path.exists():
@@ -811,7 +811,7 @@ def list_research_context_files(mode: MailMode, verbose: bool = False) -> list[P
 
 def _needs_retry(raw_response: str, existing_emails: set[str], verbose: bool = False) -> bool:
     """
-    Prüft, ob die KI-Antwort unzureichend war und ein erneuter Versuch (Retry) sinnvoll ist.
+    Checks if the AI response was insufficient and if a retry makes sense.
     """
     if _is_model_error(raw_response, verbose):
         return True
@@ -825,7 +825,7 @@ def _needs_retry(raw_response: str, existing_emails: set[str], verbose: bool = F
 
 
 def _is_model_error(raw_response: str, verbose: bool = False) -> bool:
-    """Prueft model error."""
+    """Checks for model error."""
     if not raw_response or raw_response == "":
         return True
 
@@ -844,8 +844,8 @@ def _is_model_error(raw_response: str, verbose: bool = False) -> bool:
 
 def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     """
-    Sammelt alle bereits bekannten E-Mail-Adressen aus dem Output-Verzeichnis 
-    und allen Input-Dateien aller Modi.
+    Collects all already known email addresses from the output directory
+    and all input files of all modes.
     """
     emails: set[str] = set()
     output_dir = base_dir / "output"
@@ -874,7 +874,7 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
 
 def collect_mode_existing_companies(mode: MailMode, verbose: bool = False) -> set[str]:
     """
-    Sammelt alle bereits kontaktierten Firmennamen für einen spezifischen Modus.
+    Collects all already contacted company names for a specific mode.
     """
     companies = {
         _normalize_company(row["company"])

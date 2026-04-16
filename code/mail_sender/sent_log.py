@@ -1,6 +1,6 @@
 """
-Modul zur Protokollierung von versendeten und ungültigen E-Mails in CSV-Dateien.
-Stellt thread-sichere Schreiboperationen und Funktionen zum Auslesen der Historie bereit.
+Module for logging sent and invalid emails to CSV files.
+Provides thread-safe write operations and functions to read the history.
 """
 
 from __future__ import annotations
@@ -38,11 +38,11 @@ def append_log(
         recipient: Recipient,
 ) -> None:
     """
-    Protokolliert einen erfolgreichen E-Mail-Versand.
+    Logs a successful email sending.
 
     Args:
-        log_path (Path): Pfad zur Log-Datei des aktuellen Modus.
-        recipient (Recipient): Der Empfänger, an den gesendet wurde.
+        log_path (Path): Path to the log file of the current mode.
+        recipient (Recipient): The recipient to whom the mail was sent.
     """
     _append_csv_row(log_path, HEADERS, [
         recipient.company,
@@ -53,7 +53,7 @@ def append_log(
 
 def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> None:
     """
-    Protokolliert eine ungültige E-Mail-Adresse inklusive Fehlergrund.
+    Logs an invalid email address including the reason for failure.
     """
     _append_csv_row(log_path, INVALID_HEADERS, [
         recipient.company,
@@ -65,7 +65,7 @@ def append_invalid_email(log_path: Path, recipient: Recipient, reason: str) -> N
 
 def read_logged_emails(log_path: Path) -> set[str]:
     """
-    Extrahiert alle E-Mail-Adressen aus einer Log-Datei als Menge (für schnellen Check).
+    Extracts all email addresses from a log file as a set (for fast checking).
     """
     rows = read_logged_rows(log_path)
     return {row["mail"] for row in rows if row["mail"]}
@@ -73,7 +73,7 @@ def read_logged_emails(log_path: Path) -> set[str]:
 
 def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
     """
-    Liest normalisierte Firmen- und E-Mail-Daten aus einer CSV-Log-Datei.
+    Reads normalized company and email data from a CSV log file.
     """
     if not log_path.exists():
         return []
@@ -110,13 +110,13 @@ def read_logged_rows(log_path: Path) -> list[dict[str, str]]:
 
 
 def read_invalid_emails(log_path: Path) -> set[str]:
-    """Liest ungueltige Eintraege E-Mails."""
+    """Reads invalid email entries."""
     return read_logged_emails(log_path)
 
 
 def read_known_output_emails(output_dir: Path) -> set[str]:
     """
-    Sammelt alle bereits kontaktierten E-Mails aus allen CSV-Dateien im Output-Ordner.
+    Collects all already contacted emails from all CSV files in the output folder.
     """
     if not output_dir.exists() or not output_dir.is_dir():
         return set()
@@ -131,8 +131,8 @@ def read_known_output_emails(output_dir: Path) -> set[str]:
 
 def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index: int | None = None) -> None:
     """
-    Interne Hilfsfunktion zum thread-sicheren Anhängen einer Zeile an eine CSV-Datei.
-    Prüft optional auf Duplikate anhand eines Indexes (unique_index).
+    Internal helper function for thread-safe appending of a row to a CSV file.
+    Optionally checks for duplicates based on an index (unique_index).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with _CSV_WRITE_LOCK:
@@ -166,7 +166,7 @@ def _append_csv_row(path: Path, headers: list[str], row: list[str], unique_index
 
 
 def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
-    """Findet Kopfzeile index."""
+    """Finds header row index."""
     for index, value in enumerate(header, start=1):
         if normalize_key(value) in allowed_keys:
             return index
@@ -174,5 +174,5 @@ def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
 
 
 def _unique_csv_value(value: str) -> str:
-    """Normalisiert CSV-Werte fuer robuste Duplikatpruefungen."""
+    """Normalizes CSV values for robust duplicate checks."""
     return normalize_email(value).lower()

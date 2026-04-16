@@ -1,6 +1,6 @@
 """
-Verwaltet das Laden und Validieren der SMTP-Konfiguration.
-Kombiniert Werte aus Umgebungsvariablen (.env) und der settings.toml Datei.
+Manages loading and validation of the SMTP configuration.
+Combines values from environment variables (.env) and the settings.toml file.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ try:
 
 except ImportError:  # pragma: no cover
     def _dotenv_load_stub():
-        """Ersetzt python-dotenv, wenn das Paket in einer Minimalumgebung fehlt."""
+        """Replaces python-dotenv if the package is missing in a minimal environment."""
         return False
 
 
@@ -29,14 +29,14 @@ SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
 
 class ConfigError(RuntimeError):
     """
-    Wird ausgelöst, wenn erforderliche SMTP-Einstellungen fehlen oder ungültig sind.
+    Raised when required SMTP settings are missing or invalid.
     """
 
 
 @dataclass(frozen=True)
 class SmtpConfig:
     """
-    Datentransferobjekt für SMTP-Verbindungsdaten.
+    Data transfer object for SMTP connection data.
     """
     host: str
     port: int
@@ -49,7 +49,7 @@ class SmtpConfig:
 
 def _load_settings() -> dict:
     """
-    Lädt die Einstellungen aus der settings.toml.
+    Loads settings from settings.toml.
     """
     if not SETTINGS_PATH.exists():
         return {}
@@ -62,14 +62,14 @@ def _load_settings() -> dict:
 
 def load_smtp_config(require_password: bool) -> SmtpConfig:
     """
-    Lädt die vollständige SMTP-Konfiguration und prüft auf Vollständigkeit.
+    Loads the complete SMTP configuration and checks for completeness.
 
     Args:
-        require_password (bool): Ob das Passwort zwingend vorhanden sein muss
-                                 (wird bei Dry-Runs oft nicht benötigt).
+        require_password (bool): Whether the password must be present
+                                 (often not needed for dry-runs).
 
     Returns:
-        SmtpConfig: Die validierte Konfiguration.
+        SmtpConfig: The validated configuration.
     """
     if load_dotenv is not None:
         load_dotenv()
@@ -80,7 +80,7 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         # 1. OS Env
         # 2. settings.toml
         # 3. default
-        """Ermittelt die benoetigten Werte."""
+        """Retrieves the required values."""
         val = os.getenv(key)
         if val is not None:
             return val.strip()

@@ -1,6 +1,6 @@
 """
-Modul für die lokale Webrecherche ohne externe KI-Provider (außer optional Ollama).
-Beinhaltet Google-Suche-Scraper, Web-Crawler und E-Mail-Extraktion.
+Module for local web research without external AI providers (except optional Ollama).
+Includes Google search scraper, web crawler, and email extraction.
 """
 
 from __future__ import annotations
@@ -42,8 +42,8 @@ def run_self_research(
         sink: RecipientSink | None = None,
 ) -> list[Recipient]:
     """
-    Führt eine lokale Recherche durch: Sucht bei Google nach Keywords, crawlt die Ergebnisse
-    und extrahiert E-Mail-Adressen direkt aus dem HTML.
+    Executes a local research: Searches Google for keywords, crawls the results,
+    and extracts email addresses directly from the HTML.
     """
     target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
     seen_emails = {email.lower() for email in existing_emails}
@@ -136,8 +136,8 @@ def run_ollama_web_research(
         sink: RecipientSink | None = None,
 ) -> list[Recipient]:
     """
-    Kombiniert lokales Crawling mit einer Filterung durch ein lokales Ollama-Modell.
-    Crawlt erst die Webseiten und lässt Ollama dann entscheiden, welche Leads relevant sind.
+    Combines local crawling with filtering by a local Ollama model.
+    First crawls the websites and then lets Ollama decide which leads are relevant.
     """
     candidates = run_self_research(config, mode, existing_emails, existing_companies, sink=sink)
     prompt = build_ollama_web_research_prompt(config, mode, _recipients_to_csv_text(candidates))
@@ -158,7 +158,7 @@ def run_ollama_web_research(
 
 def build_ollama_web_research_prompt(config, mode: MailMode, candidate_csv: str) -> str:
     """
-    Erstellt den Prompt für Ollama, um die lokal gecrawlten Leads zu filtern.
+    Creates the prompt for Ollama to filter the locally crawled leads.
     """
     return f"""
     You are filtering web-researched email leads for mode {mode.label}.
@@ -182,7 +182,7 @@ def build_ollama_web_research_prompt(config, mode: MailMode, candidate_csv: str)
 
 def collect_self_search_result_urls(config: ResearchConfig, queries: list[str]) -> list[str]:
     """
-    Sammelt URLs von der Google-Suche für die angegebenen Suchanfragen.
+    Collects URLs from Google search for the specified queries.
     """
     urls: list[str] = []
     seen: set[str] = set()
@@ -209,8 +209,8 @@ def crawl_self_result_url(
         sink: RecipientSink | None = None,
 ) -> list[Recipient]:
     """
-    Crawlt eine einzelne Webseite (und verlinkte Unterseiten bis zu einer gewissen Tiefe),
-    um E-Mail-Adressen und Firmennamen zu extrahieren.
+    Crawls a single website (and linked subpages up to a certain depth)
+    to extract email addresses and company names.
     """
     _set_thread_id(urllib.parse.urlparse(start_url).netloc or start_url[:20])
     to_visit = [(start_url, 0)]
@@ -255,7 +255,7 @@ def crawl_self_result_url(
 
 def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
     """
-    Ermittelt die Suchanfragen für Google (entweder aus der Config oder Standardwerte).
+    Determines the search queries for Google (either from config or default values).
     """
     keywords = [keyword.strip() for keyword in config.self_search_keywords if keyword.strip()]
     if not keywords:
@@ -265,7 +265,7 @@ def self_search_queries(config: ResearchConfig, mode: MailMode) -> list[str]:
 
 def default_self_keywords(mode_name: str) -> tuple[str, ...]:
     """
-    Gibt Standard-Suchbegriffe für die verschiedenen Modi zurück.
+    Returns default search terms for the various modes.
     """
     normalized = mode_name.strip().lower()
     if normalized == "phd":
@@ -289,7 +289,7 @@ def default_self_keywords(mode_name: str) -> tuple[str, ...]:
 
 def google_search_url(query: str, start: int) -> str:
     """
-    Erstellt eine Google-Such-URL für eine Query und eine bestimmte Ergebnisseite.
+    Creates a Google search URL for a query and a specific results page.
     """
     params = urllib.parse.urlencode({"q": query, "num": "10", "start": str(start), "hl": "en"})
     return f"https://www.google.com/search?{params}"
@@ -300,7 +300,7 @@ _google_search_url = google_search_url
 
 def fetch_text(url: str, timeout: float, verbose: bool) -> str:
     """
-    Lädt den HTML-Inhalt einer URL herunter.
+    Downloads the HTML content of a URL.
     """
     try:
         request = urllib.request.Request(url, headers=HTTP_HEADERS)
@@ -319,7 +319,7 @@ def fetch_text(url: str, timeout: float, verbose: bool) -> str:
 
 def extract_google_result_urls(html_text: str) -> list[str]:
     """
-    Extrahiert die tatsächlichen Ziel-URLs aus einer Google-Suchergebnisseite.
+    Extracts the actual target URLs from a Google search results page.
     """
     urls: list[str] = []
     for href in HTML_LINK_PATTERN.findall(html_text):
@@ -342,7 +342,7 @@ def extract_google_result_urls(html_text: str) -> list[str]:
 
 def _extract_relevant_same_site_links(current_url: str, html_text: str, base_netloc: str) -> list[str]:
     """
-    Findet interne Links auf einer Seite, die für die Suche nach Kontaktinformationen relevant sein könnten.
+    Finds internal links on a page that might be relevant for finding contact information.
     """
     hinted_links: list[str] = []
     other_links: list[str] = []
@@ -371,8 +371,8 @@ def _extract_relevant_same_site_links(current_url: str, html_text: str, base_net
 
 def _extract_emails_from_text(text: str) -> list[str]:
     """
-    Sucht mittels Regex nach E-Mail-Adressen im Text.
-    Versucht auch Verschleierungen wie [at] zu erkennen.
+    Searches for email addresses in the text using regex.
+    Also attempts to detect obfuscations like [at].
     """
     emails = []
     seen = set()
@@ -388,7 +388,7 @@ def _extract_emails_from_text(text: str) -> list[str]:
 
 def _company_from_page(url: str, page_text: str) -> str:
     """
-    Versucht den Firmennamen aus dem <title> Tag oder der URL zu extrahieren.
+    Attempts to extract the company name from the <title> tag or the URL.
     """
     title_match = HTML_TITLE_PATTERN.search(page_text)
     if title_match:
@@ -400,7 +400,7 @@ def _company_from_page(url: str, page_text: str) -> str:
 
 def _normalize_url_for_dedupe(url: str) -> str:
     """
-    Normalisiert eine URL für die Deduplizierung (z.B. trailing slashes entfernen).
+    Normalizes a URL for deduplication (e.g., removing trailing slashes).
     """
     parsed = urllib.parse.urlparse(url)
     return urllib.parse.urlunparse((
@@ -415,7 +415,7 @@ def _normalize_url_for_dedupe(url: str) -> str:
 
 def _looks_like_asset_url(path: str) -> bool:
     """
-    Prüft, ob eine URL wahrscheinlich auf eine Datei (Bild, PDF etc.) statt auf eine HTML-Seite verweist.
+    Checks if a URL probably points to a file (image, PDF, etc.) instead of an HTML page.
     """
     return path.lower().endswith((
         ".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
@@ -425,7 +425,7 @@ def _looks_like_asset_url(path: str) -> bool:
 
 def _is_blocked_result_url(url: str) -> bool:
     """
-    Filtert bekannte große Portale aus den Suchergebnissen aus, die meist keine direkten Firmen-E-Mails liefern.
+    Filters out known large portals from search results that usually don't provide direct company emails.
     """
     netloc = urllib.parse.urlparse(url).netloc.lower()
     blocked = ("google.", "youtube.", "facebook.", "instagram.", "linkedin.", "twitter.", "x.com")
@@ -434,7 +434,7 @@ def _is_blocked_result_url(url: str) -> bool:
 
 def recipients_to_csv_text(recipients: list[Recipient]) -> str:
     """
-    Wandelt eine Liste von Empfängern in einen CSV-String um.
+    Converts a list of recipients into a CSV string.
     """
     lines = ["company,mail,source_url"]
     for recipient in recipients:
@@ -447,7 +447,7 @@ _recipients_to_csv_text = recipients_to_csv_text
 
 def _csv_cell(value: str) -> str:
     """
-    Hilfsfunktion zum Escaping von CSV-Zellen.
+    Helper function for escaping CSV cells.
     """
     if any(char in value for char in [",", '"', "\n", "\r"]):
         return '"' + value.replace('"', '""') + '"'

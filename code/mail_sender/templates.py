@@ -1,6 +1,6 @@
 """
-Modul zum Rendern von E-Mail-Vorlagen.
-Unterstützt Platzhalter (z.B. {company}), HTML-Umwandlung und das Einbetten von Signatur-Logos.
+Module for rendering email templates.
+Supports placeholders (e.g., {company}), HTML conversion, and embedding signature logos.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from mail_sender.recipients import Recipient
 @dataclass(frozen=True)
 class InlineImage:
     """
-    Repräsentiert ein Bild, das direkt in den HTML-Body einer E-Mail eingebettet wird (via CID).
+    Represents an image that is embedded directly into the HTML body of an email (via CID).
     """
     path: Path
     cid: str
@@ -28,7 +28,7 @@ class InlineImage:
 @dataclass(frozen=True)
 class RenderedMail:
     """
-    Hält das Ergebnis des Rendering-Prozesses bereit zum Versand.
+    Holds the result of the rendering process ready for sending.
     """
     subject: str
     text_body: str
@@ -45,19 +45,19 @@ def render_mail(
         signature_image_width: int = 180,
 ) -> RenderedMail:
     """
-    Erstellt den Betreff, den Text-Body und den HTML-Body für eine E-Mail.
-    Ersetzt Platzhalter durch Empfänger-Daten und fügt die Signatur hinzu.
+    Creates the subject, plain text body, and HTML body for an email.
+    Replaces placeholders with recipient data and adds the signature.
 
     Args:
-        template_path (Path): Pfad zur .txt Vorlage des Modus.
-        signature_path (Path): Pfad zur Signatur-Datei.
-        recipient (Recipient): Daten des aktuellen Empfängers.
-        subject_override (str | None): Optionaler Betreff, der die Vorlage überschreibt.
-        signature_image_path (Path | None): Pfad zum Logo-Bild.
-        signature_image_width (int): Breite des Logos im HTML.
+        template_path (Path): Path to the mode's .txt template.
+        signature_path (Path): Path to the signature file.
+        recipient (Recipient): Data of the current recipient.
+        subject_override (str | None): Optional subject override.
+        signature_image_path (Path | None): Path to the logo image.
+        signature_image_width (int): Width of the logo in HTML.
 
     Returns:
-        RenderedMail: Das fertige E-Mail-Objekt.
+        RenderedMail: The finished email object.
     """
     if not template_path.exists():
         raise FileNotFoundError(f"Mail template not found: {template_path}")
@@ -102,7 +102,7 @@ def render_mail(
 
 def _split_subject(text: str) -> tuple[str, str]:
     """
-    Trennt den Betreff vom restlichen Body einer Vorlage, falls vorhanden (Subject: ...).
+    Splits the subject from the rest of the template body, if present (Subject: ...).
     """
     lines = text.splitlines()
     if lines and lines[0].lower().startswith("subject:"):
@@ -116,18 +116,18 @@ def _split_subject(text: str) -> tuple[str, str]:
 
 
 def _render_text_signature(signature: str) -> str:
-    """Rendert Text Signatur."""
+    """Renders text signature."""
     return signature.replace("{IMAGE}", "[Logo]").strip()
 
 
 def _text_to_html(text: str) -> str:
-    """Escaped Klartext und erhält Zeilenumbrüche als HTML-Breaks."""
+    """Escapes plain text and preserves line breaks as HTML breaks."""
     escaped = html.escape(text).replace("\n", "<br>\n")
     return f"<html><body>{escaped}</body></html>"
 
 
 def _render_html_with_signature_image(body: str, signature: str, cid: str, width: int) -> str:
-    """Rendert HTML-Inhalt mit eingebundenem Signaturbild."""
+    """Renders HTML content with embedded signature image."""
     safe_body = html.escape(body.strip()).replace("\n", "<br>\n")
     image_html = (
         f'<img src="cid:{cid}" width="{width}" '

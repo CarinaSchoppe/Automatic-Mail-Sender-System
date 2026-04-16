@@ -1,7 +1,7 @@
 """
-Modul zur Verwaltung der Anwendungseinstellungen und Umgebungsvariablen.
-Definiert das Schema für alle konfigurierbaren Optionen der GUI und
-kümmert sich um das Laden und Speichern in settings.toml und .env Dateien.
+Module for managing application settings and environment variables.
+Defines the schema for all configurable options of the GUI and
+handles loading and saving in settings.toml and .env files.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ SettingKind = Literal["bool", "int", "float", "str", "choice", "list"]
 @dataclass(frozen=True)
 class SettingSpec:
     """
-    Spezifikation für einen einzelnen Einstellungswert.
-    Beinhaltet Metadaten für die Darstellung in der GUI (Label, Hilfe-Text, Typ).
+    Specification for a single setting value.
+    Includes metadata for representation in the GUI (label, help text, type).
     """
     key: str
     label: str
@@ -95,24 +95,24 @@ ENV_SCHEMA: tuple[SettingSpec, ...] = (
 
 def schema_by_key() -> dict[str, SettingSpec]:
     """
-    Gibt ein Mapping von Einstellungs-Keys auf deren Spezifikation zurück.
+    Returns a mapping from setting keys to their specifications.
     """
     return {spec.key: spec for spec in SETTINGS_SCHEMA}
 
 
 def default_settings() -> dict[str, Any]:
-    """Erzeugt Standardwerte fuer Einstellungen."""
+    """Generates default values for settings."""
     return {spec.key: spec.default for spec in SETTINGS_SCHEMA}
 
 
 def default_env() -> dict[str, Any]:
-    """Erzeugt Standardwerte fuer Umgebungswerte."""
+    """Generates default values for environment variables."""
     return {spec.key: spec.default for spec in ENV_SCHEMA}
 
 
 def load_settings(path: Path = SETTINGS_PATH) -> dict[str, Any]:
     """
-    Lädt die Einstellungen aus der TOML-Datei und füllt fehlende Werte mit Defaults auf.
+    Loads settings from the TOML file and fills missing values with defaults.
     """
     values = default_settings()
     if path.exists():
@@ -123,7 +123,7 @@ def load_settings(path: Path = SETTINGS_PATH) -> dict[str, Any]:
 
 def load_env(path: Path | None = None) -> dict[str, Any]:
     """
-    Liest die .env Datei manuell aus (ohne externe Abhängigkeit).
+    Reads the .env file manually (without external dependency).
     """
     env_path = path or (PROJECT_ROOT / ".env")
     values = default_env()
@@ -142,7 +142,7 @@ def load_env(path: Path | None = None) -> dict[str, Any]:
 
 def coerce_value(spec: SettingSpec, value: Any) -> Any:
     """
-    Konvertiert einen Wert in den im Schema definierten Ziel-Datentyp.
+    Converts a value into the target data type defined in the schema.
     """
     if spec.kind == "bool":
         if isinstance(value, str):
@@ -161,7 +161,7 @@ def coerce_value(spec: SettingSpec, value: Any) -> Any:
 
 def write_settings(path: Path, values: dict[str, Any], *, omit_defaults: bool = False) -> None:
     """
-    Schreibt die Einstellungen formatiert und kommentiert in die settings.toml.
+    Writes the settings formatted and commented to settings.toml.
     """
     specs = SETTINGS_SCHEMA
     defaults = default_settings()
@@ -186,7 +186,7 @@ def write_settings(path: Path, values: dict[str, Any], *, omit_defaults: bool = 
 
 def write_env(path: Path, values: dict[str, Any]) -> None:
     """
-    Schreibt die Geheimnisse (Keys, Passwörter) in die .env Datei.
+    Writes the secrets (keys, passwords) to the .env file.
     """
     lines = [
         "# MailSenderSystem .env",
@@ -206,7 +206,7 @@ def write_env(path: Path, values: dict[str, Any]) -> None:
 
 
 def _format_toml_value(value: Any) -> str:
-    """Formatiert toml Wert."""
+    """Formats TOML value."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int | float):
@@ -222,14 +222,14 @@ def _format_toml_value(value: Any) -> str:
 
 
 def _format_env_value(value: Any) -> str:
-    """Formatiert Umgebungswerte Wert."""
+    """Formats environment value."""
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value).replace("\n", " ").strip()
 
 
 def _unquote_env_value(value: str) -> str:
-    """Entfernt einfache oder doppelte Anführungszeichen aus .env-Werten."""
+    """Removes single or double quotes from .env values."""
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
         return value[1:-1]
     return value

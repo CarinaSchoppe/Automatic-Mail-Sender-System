@@ -1,6 +1,6 @@
 """
-Modul für den E-Mail-Versand über SMTP (SSL/TLS).
-Kapselt die Verbindung zum Mail-Server und die Erstellung von MIME-Nachrichten (Text, HTML, Anhänge, Bilder).
+Module for sending emails via SMTP (SSL/TLS).
+Encapsulates the connection to the mail server and the creation of MIME messages (text, HTML, attachments, images).
 """
 
 from __future__ import annotations
@@ -20,17 +20,17 @@ from mail_sender.templates import InlineImage
 
 class SmtpMailer:
     """
-    Verwaltet eine SMTPS-Sitzung. Kann als Context Manager genutzt werden,
-    um die Verbindung automatisch zu öffnen und zu schließen.
+    Manages an SMTPS session. Can be used as a context manager
+    to automatically open and close the connection.
     """
 
     def __init__(self, config: SmtpConfig) -> None:
-        """Initialisiert die Instanz und ihre benoetigten Zustandswerte."""
+        """Initializes the instance and its required state values."""
         self._config = config
         self._server: smtplib.SMTP_SSL | None = None
 
     def __enter__(self) -> "SmtpMailer":
-        """Oeffnet die Ressource fuer die Nutzung im Context Manager."""
+        """Opens the resource for use in the context manager."""
         context = ssl.create_default_context()
         server = smtplib.SMTP_SSL(self._config.host, self._config.port, context=context)
         server.login(self._config.username, self._config.password)
@@ -38,7 +38,7 @@ class SmtpMailer:
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
-        """Schliesst die Ressource beim Verlassen des Context Managers."""
+        """Closes the resource upon exiting the context manager."""
         if self._server is not None:
             self._server.quit()
             self._server = None
@@ -53,15 +53,15 @@ class SmtpMailer:
             inline_images: list[InlineImage],
     ) -> None:
         """
-        Erstellt und versendet eine E-Mail an einen Empfänger.
+        Creates and sends an email to a recipient.
 
         Args:
-            recipient (Recipient): Der Empfänger der Mail.
-            subject (str): Der Betreff.
-            text_body (str): Der reine Text-Inhalt.
-            html_body (str): Der HTML-Inhalt.
-            attachments (list[Path]): Liste von Dateianhängen.
-            inline_images (list[InlineImage]): Liste von eingebetteten Bildern (CIDs).
+            recipient (Recipient): The recipient of the mail.
+            subject (str): The subject.
+            text_body (str): The plain text content.
+            html_body (str): The HTML content.
+            attachments (list[Path]): List of file attachments.
+            inline_images (list[InlineImage]): List of embedded images (CIDs).
         """
         if self._server is None:
             raise RuntimeError("SMTP connection is not open.")
@@ -100,7 +100,7 @@ class SmtpMailer:
 
 def guess_content_type(path: Path, fallback: tuple[str, str]) -> tuple[str, str]:
     """
-    Versucht den MIME-Typ einer Datei basierend auf ihrer Endung zu ermitteln.
+    Attempts to determine the MIME type of a file based on its extension.
     """
     content_type, encoding = mimetypes.guess_type(path)
     if content_type is None or encoding is not None:

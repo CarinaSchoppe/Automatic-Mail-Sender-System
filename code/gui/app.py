@@ -1,7 +1,7 @@
 """
-Hauptmodul für die grafische Benutzeroberfläche (GUI) des MailSenderSystems.
-Implementiert eine Tkinter-basierte Workbench zur Verwaltung von Einstellungen,
-Prompts, Eingabedateien und zur Steuerung der Recherche- und Versand-Prozesse.
+Main module for the graphical user interface (GUI) of the MailSenderSystem.
+Implements a Tkinter-based workbench for managing settings,
+prompts, input files, and for controlling the research and mailing processes.
 """
 
 from __future__ import annotations
@@ -52,8 +52,8 @@ SENT_MAIL_TABS = (
 
 def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
     """
-    Erstellt eine passende Tkinter-Variable (BooleanVar, IntVar, etc.) basierend
-    auf der Einstellungs-Spezifikation.
+    Creates an appropriate Tkinter variable (BooleanVar, IntVar, etc.) based
+    on the setting specification.
     """
     value = source.get(spec.key, spec.default)
     if spec.kind == "bool":
@@ -81,7 +81,7 @@ def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
 
 def _make_tree(parent: tk.Widget, columns: tuple[str, ...]) -> ttk.Treeview:
     """
-    Hilfsfunktion zum Erstellen einer konfigurierten Tabellenansicht (Treeview).
+    Helper function to create a configured table view (Treeview).
     """
     tree = ttk.Treeview(parent, columns=columns, show="headings")
     for column in columns:
@@ -93,9 +93,9 @@ def _make_tree(parent: tk.Widget, columns: tuple[str, ...]) -> ttk.Treeview:
 
 class MailSenderWorkbench:
     """
-    Die Hauptklasse der Anwendung, die das Fenster und alle Reiter (Tabs) verwaltet.
-    Bietet Funktionen zum Laden/Speichern von Konfigurationen, Anzeigen von Logs
-    und Ausführen von Hintergrundprozessen.
+    The main class of the application, managing the window and all tabs.
+    Provides functions for loading/saving configurations, displaying logs,
+    and executing background processes.
     """
 
     PALETTE = {
@@ -115,11 +115,11 @@ class MailSenderWorkbench:
 
     def __init__(self, root: tk.Tk | None = None, *, project_root: Path = PROJECT_ROOT) -> None:
         """
-        Initialisiert das Hauptfenster, lädt die Einstellungen und baut die UI auf.
+        Initializes the main window, loads settings, and builds the UI.
 
         Args:
-            root (tk.Tk | None): Optionales Root-Fenster.
-            project_root (Path): Das Wurzelverzeichnis des Projekts.
+            root (tk.Tk | None): Optional root window.
+            project_root (Path): The project root directory.
         """
         self.root = root or tk.Tk()
         self.project_root = project_root
@@ -160,13 +160,13 @@ class MailSenderWorkbench:
 
     def run(self) -> None:
         """
-        Startet die Tkinter-Mainloop.
+        Starts the Tkinter main loop.
         """
         self.root.mainloop()
 
     def _configure_styles(self) -> None:
         """
-        Konfiguriert die visuellen Styles (Farben, Padding, Fonts) für alle ttk-Widgets.
+        Configures the visual styles (colors, padding, fonts) for all ttk widgets.
         """
         style = ttk.Style(self.root)
         try:
@@ -250,7 +250,7 @@ class MailSenderWorkbench:
 
     def _build_shell(self) -> None:
         """
-        Erstellt das Grundgerüst der UI inklusive Header, Toolbar, Tabs und Statusleiste.
+        Creates the shell of the UI including header, toolbar, tabs, and status bar.
         """
         header = ttk.Frame(self.root, padding=(18, 14, 18, 10), style="Header.TFrame")
         header.pack(fill="x")
@@ -299,7 +299,7 @@ class MailSenderWorkbench:
 
     def _toolbar_button(self, parent: ttk.Frame, text: str, command, *, style: str = "TButton") -> ttk.Button:
         """
-        Erstellt einen Button für die Toolbar mit Hover-Text.
+        Creates a button for the toolbar with hover text.
         """
         button = ttk.Button(parent, text=text, command=command, style=style)
         button.pack(side="left", padx=4)
@@ -308,28 +308,28 @@ class MailSenderWorkbench:
 
     def _on_enter(self, text: str) -> None:
         """
-        Wird aufgerufen, wenn die Maus über ein Widget fährt; aktualisiert die Statusleiste.
+        Called when the mouse enters a widget; updates the status bar.
         """
         if hasattr(self, "status_var") and self.status_var:
             self.status_var.set(text)
 
     def _on_leave(self) -> None:
         """
-        Wird aufgerufen, wenn die Maus ein Widget verlässt; setzt die Statusleiste zurück.
+        Called when the mouse leaves a widget; resets the status bar.
         """
         if hasattr(self, "status_var") and self.status_var:
             self.status_var.set("Ready.")
 
     def _attach_hover(self, widget: tk.Widget, text: str) -> None:
         """
-        Verknüpft Enter/Leave Ereignisse eines Widgets mit der Statusleisten-Anzeige.
+        Attaches enter/leave events of a widget to the status bar display.
         """
         widget.bind("<Enter>", lambda _e: self._on_enter(text))
         widget.bind("<Leave>", lambda _e: self._on_leave())
 
     def _build_settings_tab(self) -> None:
         """
-        Baut den Reiter für die allgemeinen Einstellungen (settings.toml).
+        Builds the tab for general settings (settings.toml).
         """
         top = ttk.Frame(self.settings_tab)
         top.pack(fill="x", pady=(0, 10))
@@ -343,7 +343,7 @@ class MailSenderWorkbench:
 
     def _build_env_tab(self) -> None:
         """
-        Baut den Reiter für die Geheimnisse (.env).
+        Builds the tab for secrets (.env).
         """
         top = ttk.Frame(self.env_tab)
         top.pack(fill="x", pady=(0, 10))
@@ -359,7 +359,7 @@ class MailSenderWorkbench:
             env: bool = False,
             column_count: int = 2,
     ) -> None:
-        """Ordnet Einstellungsgruppen in ausgeglichenen Spalten an."""
+        """Arranges setting groups in balanced columns."""
         sections: dict[str, list[SettingSpec]] = {}
         for spec in schema:
             sections.setdefault(spec.section, []).append(spec)
@@ -382,7 +382,7 @@ class MailSenderWorkbench:
 
     def _scrollable_body(self, parent: ttk.Frame) -> ttk.Frame:
         """
-        Erstellt einen scrollbaren Bereich innerhalb eines Frames.
+        Creates a scrollable area within a frame.
         """
         canvas = tk.Canvas(parent, borderwidth=0, highlightthickness=0, background=self.PALETTE["window_bg"])
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
@@ -396,8 +396,8 @@ class MailSenderWorkbench:
 
     def _add_setting_row(self, parent: tk.Widget, row: int, spec: SettingSpec, *, env: bool = False) -> None:
         """
-        Fügt eine einzelne Einstellungszeile (Label + Widget) zur UI hinzu.
-        Unterstützt Checkboxen, Schieberegler, Auswahlmenüs und Textfelder.
+        Adds a single setting row (label + widget) to the UI.
+        Supports checkboxes, sliders, choice menus, and text fields.
         """
         ttk.Label(parent, text=spec.label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
         var = _create_variable(spec, self.env_values if env else self.values)
@@ -415,7 +415,7 @@ class MailSenderWorkbench:
             updating = {"active": False}
 
             def sync_entry(*_args, source_var=var, target_var=entry_var, integer=spec.kind == "int") -> None:
-                """Spiegelt Slider-Änderungen in das danebenliegende Texteingabefeld."""
+                """Mirrors slider changes into the adjacent text entry field."""
                 if updating["active"]:
                     return
                 updating["active"] = True
@@ -425,7 +425,7 @@ class MailSenderWorkbench:
                 updating["active"] = False
 
             def sync_slider(*_args, source_var=entry_var, target_var=var, setting=spec) -> None:
-                """Übernimmt manuelle Eingaben aus dem Textfeld in den Slider-Wert."""
+                """Applies manual entries from the text field to the slider value."""
                 if updating["active"]:
                     return
                 raw = source_var.get().strip()
@@ -478,7 +478,7 @@ class MailSenderWorkbench:
             autosave_target = "env" if env else "settings"
 
             def schedule_text_autosave(_event: tk.Event) -> None:
-                """Plant Autosave für mehrzeilige Eingabefelder."""
+                """Schedules autosave for multi-line entry fields."""
                 self._schedule_autosave(autosave_target)
 
             text.bind("<KeyRelease>", schedule_text_autosave)
@@ -496,8 +496,8 @@ class MailSenderWorkbench:
 
     def _build_prompts_tab(self) -> None:
         """
-        Baut den Reiter zur Bearbeitung der KI-Prompts.
-        Inklusive Modus-Auswahl und Texteditor für die Vorlagen.
+        Builds the tab for editing AI prompts.
+        Includes mode selection and text editor for templates.
         """
         top = ttk.Frame(self.prompts_tab)
         top.pack(fill="x", pady=(0, 10))
@@ -532,8 +532,8 @@ class MailSenderWorkbench:
 
     def _on_prompt_mode_change(self, _event=None) -> None:
         """
-        Wird aufgerufen, wenn ein anderer Prompt-Modus ausgewählt wird.
-        Speichert den aktuellen Text zwischen und lädt den neuen Inhalt.
+        Called when a different prompt mode is selected.
+        Caches the current text and loads the new content.
         """
         if hasattr(self, "_last_prompt_mode") and self._last_prompt_mode:
             self.prompts[self._last_prompt_mode] = self.prompt_text.get("1.0", tk.END).strip()
@@ -557,8 +557,8 @@ class MailSenderWorkbench:
 
     def _build_inputs_tab(self) -> None:
         """
-        Baut den Reiter für die Eingabedateien (Leads).
-        Ermöglicht das Anzeigen, Bearbeiten und Löschen von CSV/TXT Dateien.
+        Builds the tab for input files (leads).
+        Allows viewing, editing, and deleting CSV/TXT files.
         """
         toolbar = ttk.Frame(self.inputs_tab)
         toolbar.pack(fill="x", pady=(0, 8))
@@ -595,8 +595,8 @@ class MailSenderWorkbench:
 
     def _build_found_tab(self) -> None:
         """
-        Baut den Reiter für die gefundenen Leads (output/Found).
-        Zeigt eine tabellarische Übersicht der Recherche-Ergebnisse.
+        Builds the tab for found leads (output/Found).
+        Shows a tabular overview of research results.
         """
         toolbar = ttk.Frame(self.found_tab)
         toolbar.pack(fill="x", pady=(0, 8))
@@ -606,8 +606,8 @@ class MailSenderWorkbench:
 
     def _build_sent_tab(self) -> None:
         """
-        Baut den Reiter für die bereits versendeten Mails.
-        Unterteilt in PhD-, Freelance- und Invalid-Reiter.
+        Builds the tab for already sent emails.
+        Subdivided into PhD, Freelance, and Invalid tabs.
         """
         toolbar = ttk.Frame(self.sent_tab)
         toolbar.pack(fill="x", pady=(0, 8))
@@ -621,7 +621,7 @@ class MailSenderWorkbench:
             tree = _make_tree(frame, ("file", "company", "mail", "detail"))
 
             def show_sent_file(_event: tk.Event, selected_tree: ttk.Treeview = tree) -> None:
-                """Öffnet die zur aktuell gewählten Versandzeile gehörende CSV-Datei."""
+                """Opens the CSV file associated with the currently selected sending row."""
                 self._show_selected_file(selected_tree, "sent")
 
             tree.bind("<<TreeviewSelect>>", show_sent_file)
@@ -630,7 +630,7 @@ class MailSenderWorkbench:
 
     def _build_logs_tab(self) -> None:
         """
-        Baut den Reiter für die Run-Logs (Historie der Konsolenausgaben).
+        Builds the tab for run logs (history of console outputs).
         """
         toolbar = ttk.Frame(self.logs_tab)
         toolbar.pack(fill="x", pady=(0, 8))
@@ -641,7 +641,7 @@ class MailSenderWorkbench:
 
     def _build_console_tab(self) -> None:
         """
-        Baut den Reiter für die Live-Konsole des aktuellen Prozesses.
+        Builds the tab for the live console of the current process.
         """
         toolbar = ttk.Frame(self.console_tab)
         toolbar.pack(fill="x", pady=(0, 8))
@@ -655,7 +655,7 @@ class MailSenderWorkbench:
     @staticmethod
     def _load_values(schema: Sequence[SettingSpec], source: dict[str, Any], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> None:
         """
-        Überträgt Werte aus einem Dictionary in die entsprechenden UI-Variablen und Text-Widgets.
+        Transfers values from a dictionary into the corresponding UI variables and text widgets.
         """
         for spec in schema:
             value = source.get(spec.key, spec.default)
@@ -667,19 +667,19 @@ class MailSenderWorkbench:
 
     def _load_form_values(self) -> None:
         """
-        Lädt die Werte der settings.toml in das Formular.
+        Loads settings.toml values into the form.
         """
         self._load_values(SETTINGS_SCHEMA, self.values, self.variables, self.text_widgets)
 
     def _load_env_values(self) -> None:
         """
-        Lädt die Werte der .env in das Formular.
+        Loads .env values into the form.
         """
         self._load_values(ENV_SCHEMA, self.env_values, self.env_variables, self.env_text_widgets)
 
     @staticmethod
     def _collect_values(schema: Sequence[SettingSpec], variables: dict[str, tk.Variable], text_widgets: dict[str, tk.Text]) -> dict[str, Any]:
-        """Sammelt Werte."""
+        """Collects values."""
         values: dict[str, Any] = {}
         for spec in schema:
             if spec.kind == "list" and spec.key in text_widgets:
@@ -690,16 +690,16 @@ class MailSenderWorkbench:
         return values
 
     def collect_form_values(self) -> dict[str, Any]:
-        """Sammelt Formular Werte."""
+        """Collects form values."""
         return self._collect_values(SETTINGS_SCHEMA, self.variables, self.text_widgets)
 
     def collect_env_values(self) -> dict[str, Any]:
-        """Sammelt Umgebungswerte Werte."""
+        """Collects environment values."""
         return self._collect_values(ENV_SCHEMA, self.env_variables, self.env_text_widgets)
 
     def save_all(self) -> None:
         """
-        Speichert sowohl settings.toml als auch .env Dateien sofort.
+        Saves both settings.toml and .env files immediately.
         """
         self.save_settings()
         self.save_env()
@@ -707,7 +707,7 @@ class MailSenderWorkbench:
 
     def save_all_prompts(self) -> None:
         """
-        Speichert den aktuell bearbeiteten Prompt und schreibt alle Prompts in die Datei.
+        Saves the currently edited prompt and writes all prompts to the file.
         """
         mode = self.prompt_mode_var.get()
         if mode:
@@ -724,7 +724,7 @@ class MailSenderWorkbench:
             self.status_var.set("Prompts saved successfully.")
 
     def _reset_current_prompt(self) -> None:
-        """Setzt den aktuell ausgewählten Prompt auf den eingebauten Standard zurück."""
+        """Resets the currently selected prompt to the built-in default."""
         from mail_sender.prompts import DEFAULT_PROMPTS
 
         mode = self.prompt_mode_var.get()
@@ -736,7 +736,7 @@ class MailSenderWorkbench:
                     self.status_var.set(f"Reset prompt for {mode} to default.")
 
     def save_settings(self) -> None:
-        """Speichert Einstellungen."""
+        """Saves settings."""
         try:
             write_settings(self.settings_path, self.collect_form_values(), omit_defaults=self.compact_save.get())
         except OSError as exc:
@@ -745,7 +745,7 @@ class MailSenderWorkbench:
         self._append_console(f"[INFO] Saved settings to {self.settings_path}\n")
 
     def save_env(self) -> None:
-        """Speichert Umgebungswerte."""
+        """Saves environment values."""
         try:
             write_env(self.env_path, self.collect_env_values())
         except OSError as exc:
@@ -754,7 +754,7 @@ class MailSenderWorkbench:
         self._append_console(f"[INFO] Saved .env to {self.env_path}\n")
 
     def reload_settings(self) -> None:
-        """Lädt settings.toml, .env und Promptdaten neu von der Festplatte."""
+        """Reloads settings.toml, .env, and prompt data from disk."""
         self._loading = True
         self.values = load_settings(self.settings_path)
         self.env_values = load_env(self.env_path)
@@ -767,7 +767,7 @@ class MailSenderWorkbench:
 
     def load_config_file(self) -> None:
         """
-        Öffnet einen Dialog zum Laden einer externen TOML-Konfigurationsdatei.
+        Opens a dialog to load an external TOML configuration file.
         """
         selected = filedialog.askopenfilename(
             title="Load settings TOML",
@@ -783,7 +783,7 @@ class MailSenderWorkbench:
 
     def save_config_file(self) -> None:
         """
-        Öffnet einen Dialog zum Speichern der aktuellen Einstellungen in einer neuen Datei.
+        Opens a dialog to save the current settings to a new file.
         """
         selected = filedialog.asksaveasfilename(
             title="Save settings TOML",
@@ -798,7 +798,7 @@ class MailSenderWorkbench:
 
     def refresh_tables(self) -> None:
         """
-        Aktualisiert alle Listenansichten (Dateien, Mails, Logs) durch erneutes Einlesen der Verzeichnisse.
+        Updates all list views (files, mails, logs) by re-reading the directories.
         """
         if hasattr(self, "found_tree"):
             self._refresh_found_mails()
@@ -810,7 +810,7 @@ class MailSenderWorkbench:
             self._refresh_logs()
 
     def _refresh_sent_mails(self) -> None:
-        """Aktualisiert versendete Eintraege mails."""
+        """Updates sent entries mails."""
         for tree in self.sent_trees.values():
             tree.delete(*tree.get_children())
         output_dir = self.project_root / "output"
@@ -830,7 +830,7 @@ class MailSenderWorkbench:
                 continue
 
     def _refresh_found_mails(self) -> None:
-        """Aktualisiert found mails."""
+        """Updates found mails."""
         self.found_tree.delete(*self.found_tree.get_children())
         input_dir = self.project_root / "input"
         for path in sorted(input_dir.glob("*/*.csv")) if input_dir.exists() else []:
@@ -848,7 +848,7 @@ class MailSenderWorkbench:
                 continue
 
     def _refresh_input_files(self) -> None:
-        """Aktualisiert Eingabe Dateien."""
+        """Updates input files."""
         self.input_tree.delete(*self.input_tree.get_children())
         input_dir = self.project_root / "input"
         selected_mode = self.input_mode_var.get()
@@ -860,7 +860,7 @@ class MailSenderWorkbench:
                     self.input_tree.insert("", "end", values=(path.name, mode, path.stat().st_size), tags=(str(path),))
 
     def import_input_file(self) -> None:
-        """Importiert Eingabe Datei."""
+        """Imports input file."""
         selected = filedialog.askopenfilename(
             title="Import lead CSV/TXT",
             initialdir=str(self.project_root),
@@ -877,7 +877,7 @@ class MailSenderWorkbench:
         self.refresh_tables()
 
     def _show_selected_file(self, tree: ttk.Treeview, kind: str) -> None:
-        """Zeigt die Datei der aktuell ausgewählten Tabellenzeile im Editor an."""
+        """Displays the file of the currently selected table row in the editor."""
         selection = tree.selection()
         if not selection:
             return
@@ -904,13 +904,13 @@ class MailSenderWorkbench:
             self.file_viewer.config(state="normal")
 
     def _on_input_edit(self, _event=None) -> None:
-        """Reagiert auf das Ereignis fuer Eingabe edit."""
+        """Reacts to the event for input edit."""
         if self._save_after_id:
             self.root.after_cancel(self._save_after_id)
         self._save_after_id = self.root.after(500, self._perform_input_save, None)
 
     def _perform_input_save(self, _=None) -> None:
-        """Speichert den aktuellen Inhalt des Eingabedatei-Editors."""
+        """Saves the current content of the input file editor."""
         self._save_after_id = None
         if self.current_view_kind != "input" or not self.current_view_path:
             return
@@ -925,7 +925,7 @@ class MailSenderWorkbench:
             self._append_console(f"[ERROR] Auto-save failed for {self.current_view_path.name}: {exc}\n")
 
     def _delete_selected_input(self) -> None:
-        """Loescht selected Eingabe."""
+        """Deletes selected input."""
         selection = self.input_tree.selection()
         if not selection:
             messagebox.showinfo("No Selection", "Please select an input file to delete.")
@@ -957,7 +957,7 @@ class MailSenderWorkbench:
                 messagebox.showerror("Error", f"Could not delete file: {exc}")
 
     def _path_for_tree_row(self, kind: str, values: list[Any]) -> Path | None:
-        """Ermittelt den Dateipfad, der zur ausgewählten Tabellenzeile gehört."""
+        """Determines the file path belonging to the selected table row."""
         if not values:
             return None
         filename = str(values[0])
@@ -974,7 +974,7 @@ class MailSenderWorkbench:
         return None
 
     def open_selected_log_tab(self) -> None:
-        """Oeffnet selected Logdaten Registerkarte."""
+        """Opens selected log data tab."""
         selection = self.log_tree.selection()
         if not selection:
             return
@@ -1004,7 +1004,7 @@ class MailSenderWorkbench:
         self.notebook.forget(tab)
 
     def _refresh_logs(self) -> None:
-        """Aktualisiert Logdaten."""
+        """Updates log data."""
         self.log_tree.delete(*self.log_tree.get_children())
         log_dir_value = self.collect_form_values().get("VERBOSE_LOG_DIR", "logs") if self.variables else "logs"
         log_dir = Path(str(log_dir_value))
@@ -1016,8 +1016,8 @@ class MailSenderWorkbench:
 
     def start_process(self, script_args: list[str]) -> None:
         """
-        Startet einen externen Python-Prozess (Recherche oder Pipeline)
-        und leitet die Ausgaben in die Konsole um.
+        Starts an external Python process (research or pipeline)
+        and redirects the output to the console.
         """
         if self.process and self.process.poll() is None:
             messagebox.showwarning("Process running", "A process is already running.")
@@ -1027,13 +1027,13 @@ class MailSenderWorkbench:
         self._start_command(command)
 
     def start_mail_only(self) -> None:
-        """Startet Mail only."""
+        """Starts mail only."""
         self.save_all()
         command = self._mail_only_command()
         self._start_command(command)
 
     def _mail_only_command(self) -> list[str]:
-        """Baut den Kommandozeilenaufruf für einen reinen Mailversandlauf."""
+        """Builds the command-line call for a pure mail sending run."""
         settings = self.collect_form_values()
         args = [
             sys.executable,
@@ -1071,7 +1071,7 @@ class MailSenderWorkbench:
         return args
 
     def _start_command(self, command: list[str]) -> None:
-        """Startet command."""
+        """Starts command."""
         if self.process and self.process.poll() is None:
             messagebox.showwarning("Process running", "A process is already running.")
             return
@@ -1089,7 +1089,7 @@ class MailSenderWorkbench:
 
     def stop_process(self) -> None:
         """
-        Beendet den aktuell laufenden Hintergrundprozess sofort (kill).
+        Terminates the currently running background process immediately (kill).
         """
         if self.process and self.process.poll() is None:
             self.process.kill()
@@ -1097,8 +1097,8 @@ class MailSenderWorkbench:
 
     def _read_process_output(self) -> None:
         """
-        Interne Thread-Methode: Liest die Standardausgabe des Hintergrundprozesses
-        zeilenweise und schiebt sie in die Queue zur Anzeige in der GUI.
+        Internal thread method: Reads the standard output of the background process
+        line by line and pushes it into the queue for display in the GUI.
         """
         assert self.process is not None
         assert self.process.stdout is not None
@@ -1109,7 +1109,7 @@ class MailSenderWorkbench:
         self.message_queue.put(("refresh", ""))
 
     def _drain_queue(self, _=None) -> None:
-        """Überträgt Ausgaben des Hintergrundprozesses in die GUI-Konsole."""
+        """Transfers output from the background process to the GUI console."""
         while True:
             try:
                 kind, payload = self.message_queue.get_nowait()
@@ -1122,13 +1122,13 @@ class MailSenderWorkbench:
         self.root.after(100, self._drain_queue, None)
 
     def _append_console(self, text: str) -> None:
-        """Schreibt Prozessausgaben an die Konsole."""
+        """Writes process output to the console."""
         if hasattr(self, "console") and self.console:
             self.console.insert("end", text)
             self.console.see("end")
 
     def _style_text_widget(self, widget: tk.Text) -> None:
-        """Wendet die einheitlichen Farben und Rahmen für Textfelder an."""
+        """Applies consistent colors and borders for text fields."""
         widget.configure(
             background=self.PALETTE["surface"],
             foreground=self.PALETTE["text"],
@@ -1141,7 +1141,7 @@ class MailSenderWorkbench:
         )
 
     def _schedule_autosave(self, target: str = "all") -> None:
-        """Plant ein verzögertes Speichern, damit Eingaben nicht pro Tastendruck schreiben."""
+        """Schedules a delayed save so that entries do not write with every keystroke."""
         if self._loading or not self.autosave.get():
             return
         self._autosave_target = target
@@ -1150,7 +1150,7 @@ class MailSenderWorkbench:
         self._autosave_after_id = self.root.after(500, self._autosave_now, None)
 
     def _autosave_now(self, _=None) -> None:
-        """Speichert die zuletzt geänderten Einstellungen sofort, falls Autosave aktiv ist."""
+        """Saves the last changed settings immediately if autosave is active."""
         self._autosave_after_id = None
         if self._autosave_target == "settings":
             self.save_settings()
@@ -1160,7 +1160,7 @@ class MailSenderWorkbench:
             self.save_all()
 
     def _auto_refresh_tick(self, _=None) -> None:
-        """Aktualisiert Tabellen regelmäßig, solange Auto-Refresh aktiviert ist."""
+        """Refreshes tables regularly as long as auto-refresh is enabled."""
         if self.auto_refresh.get():
             self.refresh_tables()
         self.root.after(5000, self._auto_refresh_tick, None)
@@ -1168,7 +1168,7 @@ class MailSenderWorkbench:
 
 def _format_mtime(timestamp: float) -> str:
     """
-    Formatiert einen Datei-Zeitstempel in ein lesbares Datum/Zeit-Format.
+    Formats a file timestamp into a readable date/time format.
     """
     from datetime import datetime
 
@@ -1176,7 +1176,7 @@ def _format_mtime(timestamp: float) -> str:
 
 
 def _mode_from_output_filename(filename: str) -> str:
-    """Leitet den Versandmodus aus dem Namen einer Output-CSV-Datei ab."""
+    """Derives the mailing mode from the name of an output CSV file."""
     normalized = filename.lower()
     if "invalid" in normalized:
         return "Invalid"
@@ -1188,21 +1188,21 @@ def _mode_from_output_filename(filename: str) -> str:
 
 
 def _sent_row_detail(mode_name: str, row: dict[str, str]) -> str:
-    """Liest je nach Versandliste die relevante Detailspalte fuer die GUI."""
+    """Reads the relevant detail column for the GUI depending on the mailing list."""
     if mode_name == "Invalid":
         return row.get("invalid_reason", row.get("reason", ""))
     return row.get("source_url", row.get("source", ""))
 
 
 def _settings_section_weight(specs: Sequence[SettingSpec]) -> int:
-    """Schaetzt die sichtbare Hoehe einer Einstellungsgruppe fuer das Spaltenlayout."""
+    """Estimates the visible height of a setting group for the column layout."""
     return sum(4 if spec.kind == "list" else 1 for spec in specs)
 
 
 def main() -> int:
     """
-    Haupteinstiegspunkt für die GUI-Anwendung.
-    Initialisiert Tkinter und startet die Workbench.
+    Main entry point for the GUI application.
+    Initializes Tkinter and starts the workbench.
     """
     root = tk.Tk()
     app = MailSenderWorkbench(root)

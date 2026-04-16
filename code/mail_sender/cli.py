@@ -1,7 +1,7 @@
 """
-Kommandozeilen-Schnittstelle für den E-Mail-Versand.
-Verarbeitet Empfängerlisten, validiert E-Mails, rendert Vorlagen und versendet Nachrichten über SMTP.
-Unterstützt Dry-Runs, parallele Verarbeitung und detaillierte Protokollierung.
+Command-line interface for email sending.
+Processes recipient lists, validates emails, renders templates, and sends messages via SMTP.
+Supports dry-runs, parallel processing, and detailed logging.
 """
 
 from __future__ import annotations
@@ -22,25 +22,25 @@ from mail_sender.templates import render_mail
 
 
 def _verbose(enabled: bool, message: str) -> None:
-    """Gibt eine Verbose-Meldung aus, wenn Verbose aktiv ist."""
+    """Prints a verbose message if verbose mode is active."""
     if enabled:
         print(f"[VERBOSE] {message}")
 
 
 def _info(message: str) -> None:
-    """Gibt eine normale Info-Meldung aus."""
+    """Prints a normal info message."""
     print(f"[INFO] {message}")
 
 
 def main(argv: list[str] | None = None) -> int:
     """
-    Hauptfunktion des Mail-Senders. Parst Argumente und startet den Versandprozess für die gewählten Modi.
+    Main function of the mail sender. Parses arguments and starts the sending process for the chosen modes.
 
     Args:
-        argv (list[str] | None): Liste der Kommandozeilenargumente.
+        argv (list[str] | None): List of command-line arguments.
 
     Returns:
-        int: Exit-Code (0 für Erfolg, 1 bei Fehlern).
+        int: Exit code (0 for success, 1 for errors).
     """
     parser = argparse.ArgumentParser(description="Send PhD or Freelance mail batches via SMTPS.")
     parser.add_argument("--mode", required=True, choices=["Auto", "auto", "PhD", "phd", "Freelance_German", "freelance_german", "Freelance_English", "freelance_english"], help="Mail mode.")
@@ -111,8 +111,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def _select_modes(mode_name: str, base_dir: Path):
     """
-    Wählt basierend auf dem Modus-Namen die entsprechenden Mail-Modi aus.
-    Bei "Auto" werden alle Modi mit vorhandenen Input-Dateien gewählt.
+    Selects the corresponding mail modes based on the mode name.
+    In "Auto" mode, all modes with existing input files are selected.
     """
     normalized = mode_name.strip().lower()
     if normalized != "auto":
@@ -124,17 +124,17 @@ def _select_modes(mode_name: str, base_dir: Path):
 
 def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
     """
-    Führt den Versandprozess für einen spezifischen Modus (z.B. PhD) aus.
+    Executes the sending process for a specific mode (e.g., PhD).
 
     Args:
-        args: Die parsierten Kommandozeilenargumente.
-        mode: Das MailMode-Objekt.
-        base_dir (Path): Das Projekt-Basisverzeichnis.
-        signature_path (Path): Pfad zur Signatur-Vorlage.
-        signature_logo_path (Path): Pfad zum Logo für die Signatur.
+        args: The parsed command-line arguments.
+        mode: The MailMode object.
+        base_dir (Path): The project base directory.
+        signature_path (Path): Path to the signature template.
+        signature_logo_path (Path): Path to the logo for the signature.
 
     Returns:
-        int: Anzahl der aufgetretenen Fehler während der Verarbeitung der Empfänger.
+        int: Number of errors encountered during recipient processing.
     """
     _info(f"Starting mode {mode.label}.")
     invalid_log_path = base_dir / "output" / "invalid_mails.csv"
@@ -192,7 +192,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
 
 
 def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:
-    """Schreibt die wichtigsten Pfade des aktuellen Versandmodus ins Verbose-Log."""
+    """Writes the most important paths of the current mailing mode to the verbose log."""
     _verbose(args.verbose, f"Base directory: {base_dir}")
     _verbose(args.verbose, f"Recipient input directory: {mode.recipients_dir}")
     _verbose(args.verbose, f"Mode template: {mode.template_path}")
@@ -206,7 +206,7 @@ def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_
 
 def _scan_recipient_files(args, mode) -> list[Path]:
     """
-    Durchsucht das Eingabeverzeichnis des Modus nach CSV- oder TXT-Dateien.
+    Scans the mode's input directory for CSV or TXT files.
     """
     _info("Scanning recipient input files.")
     recipient_files = list_recipient_files(mode.recipients_dir)
@@ -222,7 +222,7 @@ def _scan_recipient_files(args, mode) -> list[Path]:
 
 def _load_attachments(args, mode) -> list[Path]:
     """
-    Lädt alle Dateien aus dem Attachment-Verzeichnis des aktuellen Modus.
+    Loads all files from the attachment directory of the current mode.
     """
     _info("Scanning attachment files for mail sending.")
     attachments = list_attachments(mode.attachments_dir)
@@ -244,7 +244,7 @@ def _load_attachments(args, mode) -> list[Path]:
 
 def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[set[str], set[str]]:
     """
-    Lädt die Mengen bereits verarbeiteter (sent) und ungültiger (invalid) E-Mails.
+    Loads the sets of already processed (sent) and invalid email addresses.
     """
     _info("Loading sent and invalid email logs.")
     logged_emails = set() if args.resend_existing else read_known_output_emails(base_dir / "output")
@@ -264,12 +264,12 @@ def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[
 
 def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails: set[str], invalid_log_path: Path):
     """
-    Filtert die geladenen Empfänger basierend auf Duplikaten, Ausschlusslisten und E-Mail-Validierung.
-    Parallele Validierung mittels ThreadPoolExecutor.
+    Filters the loaded recipients based on duplicates, exclusion lists, and email validation.
+    Parallel validation using ThreadPoolExecutor.
     """
     _info("Validating and filtering recipients.")
 
-    # 1. Vorab-Filterung (Duplikate und bereits bekannte Logs)
+    # 1. Pre-filtering (duplicates and already known logs)
     to_validate = []
     skipped_before_send = 0
     seen_in_this_run = set()
@@ -317,7 +317,7 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
     _info(f"Validating {len(to_validate)} recipients using {max_workers} threads...")
 
     recipients_to_process = []
-    # Wir sammeln die Ergebnisse in der ursprünglichen Reihenfolge
+    # We collect the results in the original order
     results: list[tuple[Recipient, EmailValidationResult] | None] = [None] * len(to_validate)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -326,10 +326,10 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
             index = future_to_index[future]
             rec, validation = future.result()
             results[index] = (rec, validation)
-            # Sofortiges Feedback für Verbose-User
+            # Instant feedback for verbose users
             _verbose(args.verbose, f"Validation result for {rec.email}: {validation.is_valid} {validation.reason}")
 
-    # 3. Ergebnisse konsolidieren (in ursprünglicher Reihenfolge)
+    # 3. Consolidate results (in original order)
     for res in results:
         if res is None: continue
         recipient, validation = res
@@ -348,7 +348,7 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
 
 def _apply_max_send_count(args, recipients_to_process):
     """
-    Begrenzt die Anzahl der zu verarbeitenden Empfänger auf den Wert von --max-send-count.
+    Limits the number of recipients to be processed to the value of --max-send-count.
     """
     if args.max_send_count is None or len(recipients_to_process) <= args.max_send_count:
         return recipients_to_process
@@ -361,7 +361,7 @@ def _apply_max_send_count(args, recipients_to_process):
 
 
 def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send: int, attachments: list[Path], invalid_log_path: Path) -> None:
-    """Gibt die Zusammenfassung des aktuellen Versandmodus aus."""
+    """Prints the summary of the current mailing mode."""
     print(f"Mode: {mode.label}")
     print(f"Recipients loaded: {len(recipients)}")
     print(f"Recipients skipped before sending: {skipped_before_send}")
@@ -381,7 +381,7 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
 
 def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config) -> int:
     """
-    Entscheidet basierend auf dem --send Flag, ob ein Dry-Run oder ein echter Versand erfolgt.
+    Decides based on the --send flag whether a dry-run or a real mailing occurs.
     """
     if not args.send:
         _info("Running dry-run rendering; no real emails will be sent.")

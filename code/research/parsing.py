@@ -1,6 +1,6 @@
 """
-Modul zum Parsen von KI-Antworten in verschiedenen Formaten (CSV, JSON, Headerless).
-Beinhaltet Logik zur Bereinigung von Markdown-Codeblöcken und zur Normalisierung von Daten.
+Module for parsing AI responses in various formats (CSV, JSON, headerless).
+Includes logic for cleaning Markdown code blocks and normalizing data.
 """
 
 from __future__ import annotations
@@ -18,8 +18,7 @@ COMPANY_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 
 class DefaultCsvDialect(csv.Dialect):
     """
-    Ein robuster Standard-CSV-Dialekt, der verwendet wird, wenn die automatische
-    Erkennung (Sniffer) fehlschlägt.
+    A robust default CSV dialect used when automatic detection (sniffer) fails.
     """
     delimiter = ","
     quotechar = '"'
@@ -36,17 +35,17 @@ def parse_recipients(
         verbose: bool = False,
 ) -> list[Recipient]:
     """
-    Versucht, Empfänger-Informationen aus einem rohen Text (KI-Antwort) zu extrahieren.
-    Probiert nacheinander CSV mit Header, Headerless CSV und JSON.
+    Attempts to extract recipient information from a raw text (AI response).
+    Tries CSV with header, headerless CSV, and JSON in sequence.
 
     Args:
-        raw_response (str): Der rohe Text von der KI.
-        existing_emails (set[str]): Menge bereits bekannter E-Mails zur Duplikatprüfung.
-        existing_companies (set[str] | None): Menge bereits bekannter Firmen.
-        verbose (bool): Aktiviert detaillierte Protokollierung.
+        raw_response (str): The raw text from the AI.
+        existing_emails (set[str]): Set of already known emails for duplicate checking.
+        existing_companies (set[str] | None): Set of already known companies.
+        verbose (bool): Enables detailed logging.
 
     Returns:
-        list[Recipient]: Eine Liste der erfolgreich parsierten und validierten Empfänger.
+        list[Recipient]: A list of successfully parsed and validated recipients.
     """
     if isinstance(existing_companies, bool):
         verbose = existing_companies
@@ -83,13 +82,13 @@ def parse_recipients(
 
 def normalize_company(company: str) -> str:
     """
-    Normalisiert einen Firmennamen für einen robusten Vergleich (Kleinschreibung, keine Sonderzeichen).
+    Normalizes a company name for robust comparison (lowercase, no special characters).
 
     Args:
-        company (str): Der zu normalisierende Name.
+        company (str): The name to normalize.
 
     Returns:
-        str: Der normalisierte Name.
+        str: The normalized name.
     """
     return COMPANY_NORMALIZE_PATTERN.sub("", company.strip().lower())
 
@@ -101,8 +100,8 @@ def parse_headerless_csv_recipients(
         verbose: bool = False,
 ) -> list[Recipient]:
     """
-    Parst CSV-Daten, die keinen Header besitzen.
-    Nimmt an, dass die letzte Spalte die E-Mail ist und davor der Firmenname steht.
+    Parses CSV data that has no header.
+    Assumes that the last column is the email and the company name is before it.
     """
     if isinstance(existing_companies, bool):
         verbose = existing_companies
@@ -139,8 +138,8 @@ def parse_json_recipients(
         verbose: bool = False,
 ) -> list[Recipient]:
     """
-    Versucht, Empfänger aus einer JSON-Struktur zu extrahieren.
-    Unterstützt Listen von Objekten oder ein Objekt mit einem "leads"-Key.
+    Attempts to extract recipients from a JSON structure.
+    Supports lists of objects or an object with a "leads" key.
     """
     if isinstance(existing_companies, bool):
         verbose = existing_companies
@@ -187,8 +186,8 @@ def _extract_from_rows(
         verbose: bool = False,
 ) -> list[Recipient]:
     """
-    Interne Hilfsfunktion zum Umwandeln von Dictionary-Zeilen in Recipient-Objekte
-    inklusive Validierung und Duplikatprüfung.
+    Internal helper function to convert dictionary rows into Recipient objects
+    including validation and duplicate checking.
     """
     recipients: list[Recipient] = []
     seen_emails = {email.lower() for email in existing_emails}
@@ -222,7 +221,7 @@ def _extract_from_rows(
 
 def strip_csv_fence(text: str) -> str:
     """
-    Entfernt Markdown-Code-Fences (```csv ... ```) um einen CSV-String.
+    Removes Markdown code fences (```csv ... ```) around a CSV string.
     """
     stripped = text.strip()
     matches = re.findall(r"```csv\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
@@ -241,7 +240,7 @@ def strip_csv_fence(text: str) -> str:
 
 def strip_json_fence(text: str) -> str:
     """
-    Entfernt Markdown-Code-Fences (```json ... ```) um einen JSON-String.
+    Removes Markdown code fences (```json ... ```) around a JSON string.
     """
     stripped = text.strip()
     matches = re.findall(r"```json\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
@@ -255,7 +254,7 @@ def strip_json_fence(text: str) -> str:
 
 def detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
     """
-    Versucht den CSV-Dialekt (Trennzeichen etc.) automatisch zu erkennen.
+    Attempts to automatically detect the CSV dialect (separator, etc.).
     """
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
@@ -265,7 +264,7 @@ def detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
 
 def find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
     """
-    Sucht in einem Dictionary nach einem Key, der (normalisiert) in der Menge der erlaubten Keys vorkommt.
+    Searches a dictionary for a key that (normalized) occurs in the set of allowed keys.
     """
     for field in row:
         if field and normalize_key(field) in allowed_keys:

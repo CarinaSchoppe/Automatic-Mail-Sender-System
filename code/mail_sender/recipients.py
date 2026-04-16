@@ -1,6 +1,6 @@
 """
-Modul zum Laden, Normalisieren und Verwalten von Empfängerlisten.
-Unterstützt das Lesen von CSV- und Textdateien aus Verzeichnissen.
+Module for loading, normalizing, and managing recipient lists.
+Supports reading CSV and text files from directories.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ RECIPIENT_FILE_SUFFIXES = {".csv", ".txt"}
 @dataclass(frozen=True)
 class Recipient:
     """
-    Repräsentiert einen einzelnen E-Mail-Empfänger mit seinen Metadaten.
-    Stellt Methoden zur Verfügung, um Kontext für E-Mail-Vorlagen zu generieren.
+    Represents a single email recipient with their metadata.
+    Provides methods to generate context for email templates.
     """
     email: str
     company: str = ""
@@ -26,16 +26,16 @@ class Recipient:
 
     @property
     def greeting(self) -> str:
-        """Gibt die aktuell verwendete Standardbegrüßung zurück."""
+        """Returns the currently used default greeting."""
         return "Hello"
 
     @property
     def company_or_email(self) -> str:
-        """Nutzt den Firmennamen als Anzeigeziel und fällt sonst auf die E-Mail zurück."""
+        """Uses the company name as the display target, falling back to email otherwise."""
         return self.company or self.email
 
     def template_context(self) -> dict[str, str]:
-        """Erstellt die Platzhalterwerte für Mailvorlagen."""
+        """Creates the placeholder values for email templates."""
         context = {
             "email": self.email,
             "mail": self.email,
@@ -48,13 +48,13 @@ class Recipient:
 
 def read_recipients(path: Path) -> list[Recipient]:
     """
-    Liest Empfänger aus einer einzelnen Datei (CSV oder TXT).
+    Reads recipients from a single file (CSV or TXT).
 
     Args:
-        path (Path): Pfad zur Datei.
+        path (Path): Path to the file.
 
     Returns:
-        list[Recipient]: Liste der extrahierten Empfänger.
+        list[Recipient]: List of extracted recipients.
     """
     if not path.exists():
         raise FileNotFoundError(f"Recipient file not found: {path}")
@@ -74,7 +74,7 @@ def read_recipients(path: Path) -> list[Recipient]:
 
 def read_recipients_from_dir(directory: Path) -> list[Recipient]:
     """
-    Liest alle Empfänger aus allen unterstützten Dateien in einem Verzeichnis.
+    Reads all recipients from all supported files in a directory.
     """
     if not directory.exists():
         raise FileNotFoundError(f"Recipient input directory not found: {directory}")
@@ -97,7 +97,7 @@ def read_recipients_from_dir(directory: Path) -> list[Recipient]:
 
 def list_recipient_files(directory: Path) -> list[Path]:
     """
-    Gibt eine Liste aller Empfänger-Dateien in einem Verzeichnis zurück.
+    Returns a list of all recipient files in a directory.
     """
     if not directory.exists() or not directory.is_dir():
         return []
@@ -121,7 +121,7 @@ class DefaultCsvDialect(csv.Dialect):
 
 def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
     """
-    Erkennt den CSV-Dialekt der Daten.
+    Detects the CSV dialect of the data.
     """
     try:
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
@@ -130,7 +130,7 @@ def _detect_dialect(text: str) -> csv.Dialect | type[csv.Dialect]:
 
 
 def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
-    """Liest Empfaengerdaten aus einer Datei mit Kopfzeile."""
+    """Reads recipient data from a file with a header row."""
     header = [normalize_key(value) for value in rows[0]]
     if not set(header) & EMAIL_KEYS:
         raise ValueError("recipients.csv must have a mail column.")
@@ -158,7 +158,7 @@ def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
 
 
 def _first_value(values: dict[str, str], keys: set[str]) -> str:
-    """Liefert den ersten nicht-leeren Wert aus einer Menge möglicher Spaltennamen."""
+    """Returns the first non-empty value from a set of possible column names."""
     for key in keys:
         value = values.get(key, "").strip()
         if value:
@@ -168,14 +168,14 @@ def _first_value(values: dict[str, str], keys: set[str]) -> str:
 
 def normalize_key(value: str) -> str:
     """
-    Normalisiert einen Spaltennamen für einen robusten Vergleich.
+    Normalizes a column name for robust comparison.
     """
     return value.strip().lower().replace("_", "-").replace(" ", "")
 
 
 def normalize_email(value: str) -> str:
     """
-    Bereinigt eine E-Mail-Adresse (entfernt Leerzeichen und mailto: Präfixe).
+    Cleans an email address (removes spaces and mailto: prefixes).
     """
     email = value.strip()
     if email.lower().startswith("mailto:"):
@@ -184,7 +184,7 @@ def normalize_email(value: str) -> str:
 
 
 def _validate_email(email: str) -> bool:
-    """Validiert E-Mail."""
+    """Validates email format."""
     if "@" not in email or email.startswith("@") or email.endswith("@"):
         return False
     return True
