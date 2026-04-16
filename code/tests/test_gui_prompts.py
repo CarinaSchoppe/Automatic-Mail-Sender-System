@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/test_gui_prompts.py."""
+"""Tests and helpers for tests/test_gui_prompts.py."""
 
 import tkinter as tk
 
@@ -9,7 +9,7 @@ from gui.app import MailSenderWorkbench
 
 @pytest.fixture
 def workbench(tmp_path):
-    """Kapselt den Hilfsschritt workbench."""
+    """Encapsulates the helper step workbench."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -27,7 +27,7 @@ def workbench(tmp_path):
 
 
 def test_workbench_loads_prompts(workbench):
-    """Prueft das Verhalten fuer workbench loads prompts."""
+    """Checks behavior for workbench loads prompts."""
     assert hasattr(workbench, "prompts")
     assert "PhD" in workbench.prompts
 
@@ -43,7 +43,7 @@ def test_workbench_updates_prompt_on_change(workbench):
 
 
 def test_workbench_saves_prompts(workbench, tmp_path):
-    """Prueft das Verhalten fuer workbench saves prompts."""
+    """Checks behavior for workbench saves prompts."""
     workbench.prompt_text.delete("1.0", "end")
     workbench.prompt_text.insert("1.0", "My New Prompt")
 

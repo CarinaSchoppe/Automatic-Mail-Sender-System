@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/test_sent_log.py."""
+"""Tests and helpers for tests/test_sent_log.py."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from mail_sender.sent_log import (
 
 
 def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
-    """Prueft das Verhalten fuer append log creates three column output."""
+    """Checks behavior for append log creates three column output."""
     log_path = tmp_path / "output/send_phd.csv"
 
     append_log(log_path, Recipient(email="person@example.com", company="ACME"))
@@ -34,7 +34,7 @@ def test_append_log_creates_three_column_output(tmp_path: Path) -> None:
 
 
 def test_read_logged_emails_normalizes_mailto_and_handles_missing_headers(tmp_path: Path) -> None:
-    """Prueft das Verhalten fuer read logged emails normalizes mailto and handles missing headers."""
+    """Checks behavior for read logged emails normalizes mailto and handles missing headers."""
     assert read_logged_emails(tmp_path / "missing.csv") == set()
 
     log_path = tmp_path / "send.csv"
@@ -54,7 +54,7 @@ def test_read_logged_emails_normalizes_mailto_and_handles_missing_headers(tmp_pa
 
 
 def test_append_log_uses_correct_headers_even_if_file_empty(tmp_path: Path) -> None:
-    """Prueft das Verhalten fuer append log uses correct headers even if file empty."""
+    """Checks behavior for append log uses correct headers even if file empty."""
     log_path = tmp_path / "send.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.touch()
@@ -68,7 +68,7 @@ def test_append_log_uses_correct_headers_even_if_file_empty(tmp_path: Path) -> N
 
 
 def test_append_log_keeps_email_entries_unique_after_normalization(tmp_path: Path) -> None:
-    """Prueft, dass Log-Dateien keine normalisierten Mail-Duplikate bekommen."""
+    """Checks that log files do not get normalized mail duplicates."""
     log_path = tmp_path / "send.csv"
     with log_path.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)

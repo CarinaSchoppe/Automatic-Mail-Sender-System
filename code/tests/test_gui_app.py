@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/test_gui_app.py."""
+"""Tests and helpers for tests/test_gui_app.py."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from gui.app import MailSenderWorkbench
 
 
 def test_mail_sender_workbench_collects_and_saves_settings(tmp_path: Path) -> None:
-    """Prueft das Verhalten fuer mail sender workbench collects and saves settings."""
+    """Checks behavior for mail sender workbench collects and saves settings."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -41,7 +41,7 @@ def test_mail_sender_workbench_collects_and_saves_settings(tmp_path: Path) -> No
 
 
 def test_mail_sender_workbench_refreshes_output_and_log_tables(tmp_path: Path) -> None:
-    """Prueft das Verhalten fuer mail sender workbench refreshes output and log tables."""
+    """Checks behavior for mail sender workbench refreshes output and log tables."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
@@ -80,7 +80,7 @@ def test_mail_sender_workbench_refreshes_output_and_log_tables(tmp_path: Path) -
 
 
 def test_mail_sender_workbench_routes_sent_tabs_by_mail_file(tmp_path: Path) -> None:
-    """Prueft die PhD-, Freelance- und Invalid-Zuordnung der Versandlisten."""
+    """Checks the PhD, Freelance, and Invalid assignment of mailing lists."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability

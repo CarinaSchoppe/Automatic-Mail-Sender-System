@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/test_research_leads.py."""
+"""Tests and helpers for tests/test_research_leads.py."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from research.research_leads import ResearchConfig
 
 
 def setup_fake_genai(monkeypatch: pytest.MonkeyPatch, fake_client_class: type) -> None:
-    """Konfiguriert die Fake-Module fuer google.genai."""
+    """Configures the fake modules for google.genai."""
     fake_types = py_types.SimpleNamespace(
         GenerateContentConfig=lambda **kwargs: py_types.SimpleNamespace(**kwargs),
         Tool=lambda google_search: py_types.SimpleNamespace(google_search=google_search),
@@ -70,7 +70,7 @@ def config(
         self_search_keywords: tuple[str, ...] = ("query",),
         self_crawl_depth: int = 2,
 ) -> ResearchConfig:
-    """Kapselt den Hilfsschritt config."""
+    """Encapsulates the helper step config."""
     return ResearchConfig(
         provider=provider,
         mode_name=mode,
@@ -95,7 +95,7 @@ def config(
 
 
 def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
-    """Prueft das Verhalten fuer default config and parse args."""
+    """Checks behavior for default config and parse args."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setattr(research_leads, "_load_settings", lambda: {})
     for key in [
@@ -162,7 +162,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
 
 
 def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
-    """Prueft das Verhalten fuer default config reads env."""
+    """Checks behavior for default config reads env."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setattr(research_leads, "_load_settings", lambda: {})
     monkeypatch.setenv("RESEARCH_AI_PROVIDER", "openai")
@@ -194,7 +194,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
 
 
 def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Prueft das Verhalten fuer default config ignores empty base dir env."""
+    """Checks behavior for default config ignores empty base dir env."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
     monkeypatch.setenv("RESEARCH_BASE_DIR", "")
 
@@ -203,7 +203,7 @@ def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPat
 
 
 def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
-    """Prueft das Verhalten fuer collect existing emails reads output and input."""
+    """Checks behavior for collect existing emails reads output and input."""
     append_log(project / "output/send_phd.csv", Recipient(email="logged@example.com", company="Logged"))
     (project / "input/Freelance_German/existing.csv").write_text(
         "company,mail\nInput,mailto:input@example.com\n",
@@ -214,7 +214,7 @@ def test_collect_existing_emails_reads_output_and_input(project: Path) -> None:
 
 
 def test_collect_mode_existing_companies_reads_mode_log_and_input(project: Path) -> None:
-    """Prueft das Verhalten fuer collect mode existing companies reads mode log and input."""
+    """Checks behavior for collect mode existing companies reads mode log and input."""
     mode = research_leads.get_mode("PhD", project)
     append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old Company GmbH"))
     (project / "input/PhD/existing.csv").write_text(
@@ -226,7 +226,7 @@ def test_collect_mode_existing_companies_reads_mode_log_and_input(project: Path)
 
 
 def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
-    """Prueft das Verhalten fuer build prompt uses mode specific instructions."""
+    """Checks behavior for build prompt uses mode specific instructions."""
     phd_prompt = research_leads.build_prompt(
         config(project),
         research_leads.get_mode("PhD", project),
@@ -256,7 +256,7 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
 
 
 def test_build_prompt_accepts_legacy_input_context_position(project: Path) -> None:
-    """Prueft das Verhalten fuer build prompt accepts legacy input context position."""
+    """Checks behavior for build prompt accepts legacy input context position."""
     prompt = research_leads.build_prompt(
         config(project),
         research_leads.get_mode("PhD", project),
@@ -269,7 +269,7 @@ def test_build_prompt_accepts_legacy_input_context_position(project: Path) -> No
 
 
 def test_read_input_context_reads_mode_files_and_truncates(project: Path) -> None:
-    """Prueft das Verhalten fuer read input context reads mode files and truncates."""
+    """Checks behavior for read input context reads mode files and truncates."""
     (project / "input/PhD/example.csv").write_text("company,mail\nA,a@example.com\n", encoding="utf-8")
     (project / "input/PhD/notes.txt").write_text("lead style note", encoding="utf-8")
 
@@ -281,7 +281,7 @@ def test_read_input_context_reads_mode_files_and_truncates(project: Path) -> Non
 
 
 def test_read_input_context_replaces_invalid_bytes(project: Path) -> None:
-    """Prueft das Verhalten fuer read input context replaces invalid bytes."""
+    """Checks behavior for read input context replaces invalid bytes."""
     (project / "input/PhD/broken.csv").write_bytes(b"\xffcompany,mail\nA,a@example.com\n")
 
     context = research_leads.read_input_context(project / "input/PhD")
@@ -291,7 +291,7 @@ def test_read_input_context_replaces_invalid_bytes(project: Path) -> None:
 
 
 def test_list_resume_attachments_only_returns_cv_resume_files(project: Path) -> None:
-    """Prueft das Verhalten fuer list resume attachments only returns cv resume files."""
+    """Checks behavior for list resume attachments only returns cv resume files."""
     attachment_dir = project / "attachments/Freelance_German"
     cv = attachment_dir / "Lebenslauf Carina Sophie Schoppe.pdf"
     cert = attachment_dir / "Master Certificate.pdf"
@@ -306,7 +306,7 @@ def test_list_resume_attachments_only_returns_cv_resume_files(project: Path) -> 
 
 
 def test_list_research_context_files_adds_matching_sent_log(project: Path) -> None:
-    """Prueft das Verhalten fuer list research context files adds matching sent log."""
+    """Checks behavior for list research context files adds matching sent log."""
     cv = project / "attachments/PhD/CV.pdf"
     other = project / "attachments/PhD/certificate.pdf"
     cv.write_text("cv", encoding="utf-8")
@@ -318,7 +318,7 @@ def test_list_research_context_files_adds_matching_sent_log(project: Path) -> No
 
 
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
-    """Prueft das Verhalten fuer parse recipients filters duplicates existing bad email and company limit."""
+    """Checks behavior for parse recipients filters duplicates existing bad email and company limit."""
     raw = """
 ```csv
 company,mail,source_url
@@ -343,7 +343,7 @@ D,d@example.com,
 
 
 def test_parse_recipients_filters_existing_company_but_allows_multiple_new_company_emails() -> None:
-    """Prueft das Verhalten fuer parse recipients filters existing company but allows multiple new company emails."""
+    """Checks behavior for parse recipients filters existing company but allows multiple new company emails."""
     raw = """company,mail,source_url
 Old Company,old-new@example.com,https://old.example/contact
 New Company,one@example.com,https://new.example/contact
@@ -360,7 +360,7 @@ New Company,two@example.com,https://new.example/team
 
 def test_parse_recipients_no_longer_requires_headers() -> None:
     # Previously it required headers, now it should handle headerless data if it looks like company,email
-    """Prueft das Verhalten fuer parse recipients no longer requires headers."""
+    """Checks behavior for parse recipients no longer requires headers."""
     assert research_leads.parse_recipients("A,a@example.com", set()) == [
         Recipient(email="a@example.com", company="A")
     ]
@@ -369,7 +369,7 @@ def test_parse_recipients_no_longer_requires_headers() -> None:
 
 
 def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:
-    """Prueft das Verhalten fuer parse recipients handles gemini dump and company commas."""
+    """Checks behavior for parse recipients handles gemini dump and company commas."""
     raw = (
         "'com.au\\n"
         "AI Engineers, Inc.,info@aiengineers.com\\n"
@@ -387,7 +387,7 @@ def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:
 
 
 def test_parse_recipients_prefers_csv_block_from_mixed_gemini_output() -> None:
-    """Prueft das Verhalten fuer parse recipients prefers csv block from mixed gemini output."""
+    """Checks behavior for parse recipients prefers csv block from mixed gemini output."""
     raw = """```json
 [
   {"company": "Wrong", "mail": "wrong@example.com"}
@@ -410,7 +410,7 @@ The University of Queensland,enquire@uq.edu.au,https://uq.edu.au/contact
 def test_parse_recipients_from_example_raw() -> None:
     # This test verifies that parse_recipients can handle the full example.raw file
     # and extract the expected data correctly.
-    """Prueft das Verhalten fuer parse recipients from example raw."""
+    """Checks behavior for parse recipients from example raw."""
     raw_path = Path("example.raw")
     if not raw_path.exists():
         pytest.skip("example.raw not found in project root")
@@ -1293,7 +1293,7 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
         project: Path,
         capsys,
 ) -> None:
-    """Prueft das Verhalten fuer research main uses sys argv when no args are passed."""
+    """Checks behavior for research main uses sys argv when no args are passed."""
     monkeypatch.setattr("sys.argv", ["research_leads.py", "--mode", "PhD", "--base-dir", str(project)])
     monkeypatch.setattr(
         research_leads,
@@ -1306,10 +1306,10 @@ def test_research_main_uses_sys_argv_when_no_args_are_passed(
 
 
 def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    """Prueft das Verhalten fuer retry handles parse errors."""
+    """Checks behavior for retry handles parse errors."""
 
     def broken_parse(*_args, **_kwargs):
-        """Kapselt den Hilfsschritt broken_parse."""
+        """Encapsulates the helper step broken_parse."""
         raise ValueError("bad csv")
 
     monkeypatch.setattr(research_leads, "parse_recipients", broken_parse)
@@ -1321,7 +1321,7 @@ def test_retry_handles_parse_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> 
 
 
 def test_read_input_context_logs_empty_files(project: Path, capsys) -> None:
-    """Prueft das Verhalten fuer read input context logs empty files."""
+    """Checks behavior for read input context logs empty files."""
     empty_file = project / "input/PhD/empty.csv"
     empty_file.write_text("   ", encoding="utf-8")
 
@@ -1330,7 +1330,7 @@ def test_read_input_context_logs_empty_files(project: Path, capsys) -> None:
 
 
 def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
-    """Prueft das Verhalten fuer parse recipients handles json and fence fallbacks."""
+    """Checks behavior for parse recipients handles json and fence fallbacks."""
     json_text = """
 ```json
 {"leads": [{"company": "A", "emails": ["a@example.com"], "source_urls": ["https://a.example/contact"]}]}
@@ -1355,10 +1355,10 @@ def test_parse_recipients_handles_json_and_fence_fallbacks(capsys) -> None:
 
 
 def test_headerless_csv_parser_handles_csv_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    """Prueft das Verhalten fuer headerless csv parser handles csv errors."""
+    """Checks behavior for headerless csv parser handles csv errors."""
 
     def broken_dialect(*_args, **_kwargs):
-        """Kapselt den Hilfsschritt broken_dialect."""
+        """Encapsulates the helper step broken_dialect."""
         raise csv.Error("bad dialect")
 
     monkeypatch.setattr(research_leads, "detect_dialect", broken_dialect)

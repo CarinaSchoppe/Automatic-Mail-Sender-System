@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/test_provider_clients.py."""
+"""Tests and helpers for tests/test_provider_clients.py."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from research.providers import generate_with_provider
 
 
 def test_provider_router_dispatches_to_provider_clients(monkeypatch) -> None:
-    """Prueft das Verhalten fuer provider router dispatches to provider clients."""
+    """Checks behavior for provider router dispatches to provider clients."""
     calls = []
     monkeypatch.setattr(
         "research.providers.generate_with_gemini",
@@ -31,7 +31,7 @@ def test_provider_router_dispatches_to_provider_clients(monkeypatch) -> None:
 
 
 def test_provider_common_extracts_nested_response_text() -> None:
-    """Prueft das Verhalten fuer provider common extracts nested response text."""
+    """Checks behavior for provider common extracts nested response text."""
     gemini_response = types.SimpleNamespace(
         text="",
         candidates=[

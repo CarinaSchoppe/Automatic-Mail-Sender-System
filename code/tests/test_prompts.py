@@ -1,18 +1,17 @@
-"""Tests und Hilfen fuer tests/test_prompts.py."""
+"""Tests and helpers for tests/test_prompts.py."""
 
 from mail_sender.prompts import load_prompts, save_prompts, DEFAULT_PROMPTS
 
 
 def test_load_defaults(tmp_path):
-    # If file doesn't exist, should return defaults
-    """Prueft das Verhalten fuer load defaults."""
+    """Checks behavior for load defaults."""
     path = tmp_path / "nonexistent.toml"
     prompts = load_prompts(path)
     assert prompts == DEFAULT_PROMPTS
 
 
 def test_save_and_load(tmp_path):
-    """Prueft das Verhalten fuer save and load."""
+    """Checks behavior for save and load."""
     path = tmp_path / "test_prompts.toml"
     custom_prompts = {
         "PhD": "Custom PhD Prompt",
@@ -31,7 +30,7 @@ def test_save_and_load(tmp_path):
 
 
 def test_partial_load(tmp_path):
-    """Prueft das Verhalten fuer partial load."""
+    """Checks behavior for partial load."""
     path = tmp_path / "partial.toml"
     # Create a TOML with only one prompt
     content = '[prompts]\nPhD = "Only PhD"\n'
@@ -43,7 +42,7 @@ def test_partial_load(tmp_path):
 
 
 def test_multiline_save(tmp_path):
-    """Prueft das Verhalten fuer multiline save."""
+    """Checks behavior for multiline save."""
     path = tmp_path / "multiline.toml"
     custom = DEFAULT_PROMPTS.copy()
     custom["PhD"] = "Line 1\nLine 2\nLine 3"

@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/test_email_validation.py."""
+"""Tests and helpers for tests/test_email_validation.py."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from mail_sender import email_validation
 
 
 def test_validate_email_address_rejects_bad_syntax() -> None:
-    """Prueft das Verhalten fuer validate email address rejects bad syntax."""
+    """Checks behavior for validate email address rejects bad syntax."""
     result = email_validation.validate_email_address("not-an-email")
 
     assert result.is_valid is False
@@ -19,7 +19,7 @@ def test_validate_email_address_rejects_bad_syntax() -> None:
 
 
 def test_validate_email_address_rejects_bad_domain_syntax() -> None:
-    """Prueft das Verhalten fuer validate email address rejects bad domain syntax."""
+    """Checks behavior for validate email address rejects bad domain syntax."""
     result = email_validation.validate_email_address("person@bad..example.com")
 
     assert result.is_valid is False
@@ -27,7 +27,7 @@ def test_validate_email_address_rejects_bad_domain_syntax() -> None:
 
 
 def test_validate_email_address_accepts_domain_with_dns(monkeypatch) -> None:
-    """Prueft das Verhalten fuer validate email address accepts domain with dns."""
+    """Checks behavior for validate email address accepts domain with dns."""
     monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: ["mx.example.com"] if domain == "example.com" else [])
 
     result = email_validation.validate_email_address("Person@Example.com")
@@ -37,7 +37,7 @@ def test_validate_email_address_accepts_domain_with_dns(monkeypatch) -> None:
 
 
 def test_validate_email_address_rejects_domain_without_dns(monkeypatch) -> None:
-    """Prueft das Verhalten fuer validate email address rejects domain without dns."""
+    """Checks behavior for validate email address rejects domain without dns."""
     monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: [])
     monkeypatch.setattr(email_validation, "_domain_has_a_record", lambda domain: False)
 

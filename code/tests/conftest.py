@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/conftest.py."""
+"""Tests and helpers for tests/conftest.py."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ PNG_BYTES = base64.b64decode(
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    """Kapselt den Hilfsschritt project."""
+    """Encapsulates the helper step project."""
     for directory in [
         "input/PhD",
         "input/Freelance_German",

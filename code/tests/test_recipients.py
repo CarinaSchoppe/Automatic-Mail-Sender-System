@@ -1,4 +1,4 @@
-"""Tests und Hilfen fuer tests/test_recipients.py."""
+"""Tests and helpers for tests/test_recipients.py."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from mail_sender.recipients import (
 
 
 def test_recipient_context_and_normalizers() -> None:
-    """Prueft das Verhalten fuer recipient context and normalizers."""
+    """Checks behavior for recipient context and normalizers."""
     recipient = Recipient(email="a@example.com", company="ACME")
 
     assert recipient.greeting == "Hello"
@@ -30,7 +30,7 @@ def test_recipient_context_and_normalizers() -> None:
 
 
 def test_reads_csv_and_txt_from_directory(tmp_path: Path) -> None:
-    """Prueft das Verhalten fuer reads csv and txt from directory."""
+    """Checks behavior for reads csv and txt from directory."""
     (tmp_path / "one.csv").write_text("company,mail\nOne,mailto:one@example.com\n", encoding="utf-8")
     (tmp_path / "two.txt").write_text("company;mail\nTwo;two@example.com\n", encoding="utf-8")
     (tmp_path / "ignore.md").write_text("company,mail\nNo,no@example.com\n", encoding="utf-8")
@@ -54,7 +54,7 @@ def test_reads_csv_and_txt_from_directory(tmp_path: Path) -> None:
     ],
 )
 def test_recipient_validation_errors(tmp_path: Path, content: str, message: str) -> None:
-    """Prueft das Verhalten fuer recipient validation errors."""
+    """Checks behavior for recipient validation errors."""
     path = tmp_path / "recipients.csv"
     path.write_text(content, encoding="utf-8")
 
@@ -63,7 +63,7 @@ def test_recipient_validation_errors(tmp_path: Path, content: str, message: str)
 
 
 def test_recipient_file_errors(tmp_path: Path) -> None:
-    """Prueft das Verhalten fuer recipient file errors."""
+    """Checks behavior for recipient file errors."""
     with pytest.raises(FileNotFoundError):
         read_recipients(tmp_path / "missing.csv")
 
