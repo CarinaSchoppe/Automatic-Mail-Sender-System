@@ -18,7 +18,7 @@ from mail_sender.modes import MailMode
 from mail_sender.recipients import Recipient, normalize_email
 from research import mode_instructions
 from research import providers
-from research.logging_utils import info as _info
+from research.logging_utils import info as _info, set_thread_id as _set_thread_id
 from research.logging_utils import verbose as _verbose
 from research.parsing import normalize_company, parse_recipients
 from research.types import RecipientSink, ResearchConfig
@@ -212,6 +212,7 @@ def crawl_self_result_url(
     Crawlt eine einzelne Webseite (und verlinkte Unterseiten bis zu einer gewissen Tiefe),
     um E-Mail-Adressen und Firmennamen zu extrahieren.
     """
+    _set_thread_id(urllib.parse.urlparse(start_url).netloc or start_url[:20])
     to_visit = [(start_url, 0)]
     visited: set[str] = set()
     candidates: list[Recipient] = []

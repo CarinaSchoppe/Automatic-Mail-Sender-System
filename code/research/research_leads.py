@@ -42,7 +42,7 @@ from research.providers import (
 )
 from research import providers as _providers
 from research import self_research as _self_research
-from research.logging_utils import info as _info
+from research.logging_utils import info as _info, set_thread_id as _set_thread_id
 from research.logging_utils import verbose as _verbose
 from research.parsing import parse_recipients, normalize_company as _normalize_company
 from research.types import RecipientSink, ResearchConfig
@@ -645,7 +645,8 @@ def _generate_and_process_response(
     if sink.is_full():
         return 0
 
-    _info(f"Thread-{thread_id if thread_id is not None else 'X'}: Starte neue Suchanalyse...")
+    _set_thread_id(thread_id if thread_id is not None else "X")
+    _info("Starte neue Suchanalyse...")
     # We use a placeholder for existing_emails because the sink handles the actual checking.
     # However, _needs_retry needs it for a quick heuristic.
     raw_response = _generate_research_response(config, mode, prompt, attachments, set(), input_context, stop_event)
@@ -674,7 +675,7 @@ def _generate_and_process_response(
         target = sink.target_count
         missing = max(0, target - current_total)
 
-    _verbose(config.verbose, f"Thread-{thread_id if thread_id is not None else 'X'}: Parsed {len(candidates)} candidates, added {added_count} new. Total: {current_total}/{target}, missing: {missing}")
+    _info(f"Parsed {len(candidates)} candidates, added {added_count} new. Total: {current_total}/{target}, missing: {missing}")
     return added_count
 
 

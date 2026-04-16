@@ -64,17 +64,17 @@ def parse_recipients(
             source_field = find_field(rows[0], SOURCE_KEYS)
             _verbose(verbose, f"Detected CSV source field: {source_field!r}.")
             recipients = _extract_from_rows(rows, company_field, email_field, existing_emails, existing_companies, source_field, verbose)
-            _verbose(verbose, f"Parsed CSV recipients: {len(recipients)}")
+            _info(f"Parsed CSV recipients: {len(recipients)}")
             return recipients
 
     recipients = parse_headerless_csv_recipients(csv_text, existing_emails, existing_companies, verbose)
     if recipients:
-        _verbose(verbose, f"Parsed headerless CSV recipients: {len(recipients)}")
+        _info(f"Parsed headerless CSV recipients: {len(recipients)}")
         return recipients
 
     recipients = parse_json_recipients(raw_response, existing_emails, existing_companies, verbose)
     if recipients:
-        _verbose(verbose, f"Parsed JSON recipients: {len(recipients)}")
+        _info(f"Parsed JSON recipients: {len(recipients)}")
         return recipients
 
     _verbose(verbose, "No recipients could be parsed from AI response.")
@@ -273,12 +273,4 @@ def find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
     return None
 
 
-def verbose_log(enabled: bool, message: str) -> None:
-    """
-    Gibt eine Nachricht auf der Konsole aus, falls Verbose-Logging aktiviert ist.
-    """
-    if enabled:
-        print(f"[VERBOSE] {message}")
-
-
-_verbose = verbose_log
+from research.logging_utils import info as _info, verbose as _verbose
