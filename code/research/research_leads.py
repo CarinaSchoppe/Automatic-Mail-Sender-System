@@ -993,8 +993,25 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
 def _model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:
     """
     Hilfsfunktion zur Auswahl des Modellnamens basierend auf dem gewählten Provider.
+    Berücksichtigt das RESEARCH_MODEL Setting, falls vorhanden.
     """
+    from gui.settings_store import load_settings
+    settings = load_settings()
+    research_model = settings.get("RESEARCH_MODEL")
+    
     normalized = provider.strip().lower()
+
+    # If RESEARCH_MODEL matches the provider type, use it as priority
+    if research_model:
+        if normalized == "openai" and research_model.startswith("gpt"):
+            return research_model
+        if normalized == "gemini" and research_model.startswith("gemini"):
+            return research_model
+        if normalized == "ollama" and research_model == "llama3.1:8b":
+            return research_model
+        if normalized == "self" and research_model == "self":
+            return "self"
+
     if normalized == "self":
         return "self"
     if normalized == "ollama":

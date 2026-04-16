@@ -25,6 +25,7 @@ from gui.settings_store import (
     coerce_value,
     load_env,
     load_settings,
+    schema_by_key,
     write_env,
     write_settings,
 )
@@ -145,6 +146,7 @@ class MailSenderWorkbench:
         self._autosave_target = "all"
         self.auto_refresh = tk.BooleanVar(value=True)
         self.prompts = load_prompts(self.project_root / "prompts.toml")
+        self._setup_model_sync()
 
         self.root.title("MailSenderSystem Workbench")
         self.root.geometry("1220x780")
@@ -163,6 +165,55 @@ class MailSenderWorkbench:
         Starts the Tkinter main loop.
         """
         self.root.mainloop()
+
+    def _setup_model_sync(self) -> None:
+        """Sets up the trace for the RESEARCH_MODEL variable to sync with provider and specific model fields."""
+        model_var = _create_variable(schema_by_key()["RESEARCH_MODEL"], self.values)
+        self.variables["RESEARCH_MODEL"] = model_var
+
+        def on_model_change(*_args):
+            if self._loading:
+                return
+            model = model_var.get()
+            provider_var = self.variables.get("RESEARCH_AI_PROVIDER")
+            gemini_var = self.variables.get("GEMINI_MODEL")
+            openai_var = self.variables.get("OPENAI_MODEL")
+            ollama_var = self.variables.get("OLLAMA_MODEL")
+
+            if model.startswith("gpt"):
+                if provider_var: provider_var.set("openai")
+                if openai_var: openai_var.set(model)
+            elif model.startswith("gemini"):
+                if provider_var: provider_var.set("gemini")
+                if gemini_var: gemini_var.set(model)
+            elif model == "llama3.1:8b":
+                if provider_var: provider_var.set("ollama")
+                if ollama_var: ollama_var.set(model)
+            elif model == "self":
+                if provider_var: provider_var.set("self")
+
+        def on_provider_change(*_args):
+            if self._loading:
+                return
+            provider = self.variables.get("RESEARCH_AI_PROVIDER").get()
+            if provider == "self":
+                model_var.set("self")
+            elif provider == "ollama":
+                model_var.set("llama3.1:8b")
+            # For openai/gemini, we might not want to force a model if it already starts with the right prefix
+            curr_model = model_var.get()
+            if provider == "openai" and not curr_model.startswith("gpt"):
+                model_var.set("gpt-5.4-mini")
+            elif provider == "gemini" and not curr_model.startswith("gemini"):
+                model_var.set("gemini-3-flash-preview")
+
+        on_model_change()  # Initial sync
+        model_var.trace_add("write", on_model_change)
+
+        # We need to wait until RESEARCH_AI_PROVIDER is created in _build_settings_tab -> _add_setting_row
+        # but _setup_model_sync is called before _load_form_values.
+        # Actually, let's just trace it after it's likely to be there or check in on_provider_change
+        self.root.after(100, lambda: self.variables.get("RESEARCH_AI_PROVIDER").trace_add("write", on_provider_change) if self.variables.get("RESEARCH_AI_PROVIDER") else None)
 
     def _configure_styles(self) -> None:
         """
@@ -400,9 +451,15 @@ class MailSenderWorkbench:
         Supports checkboxes, sliders, choice menus, and text fields.
         """
         ttk.Label(parent, text=spec.label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
-        var = _create_variable(spec, self.env_values if env else self.values)
-        variables = self.env_variables if env else self.variables
-        variables[spec.key] = var
+
+        # For RESEARCH_MODEL, we already created the variable in _setup_model_sync
+        if spec.key == "RESEARCH_MODEL":
+            var = self.variables["RESEARCH_MODEL"]
+        else:
+            var = _create_variable(spec, self.env_values if env else self.values)
+            variables = self.env_variables if env else self.variables
+            variables[spec.key] = var
+
         var.trace_add("write", lambda *_args, target="env" if env else "settings": self._schedule_autosave(target))
         widget: tk.Widget
         if spec.kind == "bool":
