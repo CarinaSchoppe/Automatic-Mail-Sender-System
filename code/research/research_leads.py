@@ -230,6 +230,11 @@ class ThreadSafeRecipientSink:
             if company_key:
                 self.seen_companies.add(company_key)
 
+            current_count = len(self.recipients)
+            missing_count = max(0, self.target_count - current_count)
+
+            _verbose(self.config.verbose, f"Accepted {recipient.email}: {current_count}/{self.target_count} found, {missing_count} missing.")
+
             # Instant save to CSV
             thread_file = self._get_thread_file(thread_id)
             if thread_file:
