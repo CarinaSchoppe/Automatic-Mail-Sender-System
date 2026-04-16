@@ -15,6 +15,7 @@ from mail_sender.cli import main as mail_main
 from mail_sender.sent_log import read_known_output_emails, read_logged_rows
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
+from research.research_leads import _provider_and_model_from_research_model
 from research.research_leads import main as research_main
 
 # Project root directory and path to configuration file
@@ -55,15 +56,28 @@ def _setting(name: str, default: Any) -> Any:
 
 RUN_AI_RESEARCH: bool = cast(bool, _setting("RUN_AI_RESEARCH", True))
 MODE: str = cast(str, _setting("MODE", "Freelance_German"))
-RESEARCH_AI_PROVIDER: str = cast(str, _setting("RESEARCH_AI_PROVIDER", "gemini"))
+_LEGACY_RESEARCH_PROVIDER = cast(str, _setting("RESEARCH_AI_PROVIDER", "gemini"))
+_RESEARCH_MODEL_SETTING = _setting("RESEARCH_MODEL", None)
+if _RESEARCH_MODEL_SETTING is None:
+    if _LEGACY_RESEARCH_PROVIDER == "openai":
+        _RESEARCH_MODEL_SETTING = _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17")
+    elif _LEGACY_RESEARCH_PROVIDER == "ollama":
+        _RESEARCH_MODEL_SETTING = _setting("OLLAMA_MODEL", "llama3.1:8b")
+    elif _LEGACY_RESEARCH_PROVIDER == "self":
+        _RESEARCH_MODEL_SETTING = "self"
+    else:
+        _RESEARCH_MODEL_SETTING = _setting("GEMINI_MODEL", "gemini-3-flash-preview")
+RESEARCH_MODEL: str = cast(str, _RESEARCH_MODEL_SETTING)
+RESEARCH_AI_PROVIDER: str
+RESEARCH_AI_PROVIDER, RESEARCH_MODEL = _provider_and_model_from_research_model(
+    RESEARCH_MODEL,
+    _LEGACY_RESEARCH_PROVIDER,
+)
 RESEARCH_MIN_COMPANIES: int = cast(int, _setting("RESEARCH_MIN_COMPANIES", 25))
 RESEARCH_MAX_COMPANIES: int = cast(int, _setting("RESEARCH_MAX_COMPANIES", 50))
 RESEARCH_PERSON_EMAILS_PER_COMPANY: int = cast(int, _setting("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3))
 RESEARCH_WRITE_OUTPUT: bool = cast(bool, _setting("RESEARCH_WRITE_OUTPUT", True))
 RESEARCH_UPLOAD_ATTACHMENTS: bool = cast(bool, _setting("RESEARCH_UPLOAD_ATTACHMENTS", True))
-GEMINI_MODEL: str = cast(str, _setting("GEMINI_MODEL", "gemini-3-flash-preview"))
-OPENAI_MODEL: str = cast(str, _setting("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17"))
-OLLAMA_MODEL: str = cast(str, _setting("OLLAMA_MODEL", "llama3.1:8b"))
 OLLAMA_BASE_URL: str = cast(str, _setting("OLLAMA_BASE_URL", "http://localhost:11434"))
 RESEARCH_REASONING_EFFORT: str = cast(str, _setting("RESEARCH_REASONING_EFFORT", "middle"))
 SELF_SEARCH_KEYWORDS: list[str] = cast(list[str], _setting("SELF_SEARCH_KEYWORDS", []))
@@ -200,7 +214,8 @@ def _print_effective_settings() -> None:
     _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
-    _verbose(VERBOSE, f"Ollama settings: model={OLLAMA_MODEL}, base_url={OLLAMA_BASE_URL}.")
+    _verbose(VERBOSE, f"Research model: {RESEARCH_MODEL}.")
+    _verbose(VERBOSE, f"Ollama base URL: {OLLAMA_BASE_URL}.")
     _verbose(VERBOSE, f"Self research settings: pages={SELF_SEARCH_PAGES}, results_per_page={SELF_RESULTS_PER_PAGE}, crawl_max_pages_per_site={SELF_CRAWL_MAX_PAGES_PER_SITE}, crawl_depth={SELF_CRAWL_DEPTH}, keywords={SELF_SEARCH_KEYWORDS}.")
     _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, skip_invalid_check={SKIP_INVALID_CHECK}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
     _verbose(VERBOSE, f"Target loop max rounds (safety gate): {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited (0)'}.")
@@ -222,12 +237,8 @@ def _build_research_args() -> list[str]:
         str(MODE),
         "--base-dir",
         str(PROJECT_ROOT),
-        "--gemini-model",
-        str(GEMINI_MODEL),
-        "--openai-model",
-        str(OPENAI_MODEL),
-        "--ollama-model",
-        str(OLLAMA_MODEL),
+        "--model",
+        str(RESEARCH_MODEL),
         "--ollama-base-url",
         str(OLLAMA_BASE_URL),
         "--reasoning-effort",

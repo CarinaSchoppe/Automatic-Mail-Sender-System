@@ -62,6 +62,24 @@ RESUME_ATTACHMENT_PATTERN = re.compile(
 
 EMAIL_KEYS = {"mail", "email", "recipient", "recipients", "target", "recipient", "receiver"}
 COMPANY_KEYS = {"company", "firm", "organization", "organization", "name"}
+PROVIDER_PREFIXES = ("gemini", "openai", "ollama", "self")
+OLLAMA_MODEL_PREFIXES = (
+    "llama",
+    "mistral",
+    "mixtral",
+    "qwen",
+    "deepseek",
+    "phi",
+    "gemma",
+    "codellama",
+    "nomic",
+    "starcoder",
+    "vicuna",
+    "orca",
+    "yi",
+    "granite",
+    "devstral",
+)
 
 
 def generate_with_provider(*args, **kwargs):
@@ -291,6 +309,45 @@ def _load_settings() -> dict:
         return {}
 
 
+def _provider_and_model_from_research_model(research_model: str, fallback_provider: str = "gemini") -> tuple[str, str]:
+    """
+    Derives the provider from one user-facing RESEARCH_MODEL value.
+    Prefixes like openai:gpt-5.4 or ollama:llama3.1:8b force the provider.
+    """
+    raw_model = str(research_model or "").strip()
+    if not raw_model:
+        return fallback_provider.strip().lower() or "gemini", raw_model
+
+    lowered = raw_model.lower()
+    prefix, separator, rest = raw_model.partition(":")
+    if separator and prefix.lower() in PROVIDER_PREFIXES:
+        provider = prefix.lower()
+        model = rest.strip()
+        return provider, "self" if provider == "self" else model
+
+    if lowered == "self":
+        return "self", "self"
+    if lowered.startswith("gemini"):
+        return "gemini", raw_model
+    if lowered.startswith(("gpt", "chatgpt", "o1", "o3", "o4", "o5")):
+        return "openai", raw_model
+    if ":" in raw_model or lowered.startswith(OLLAMA_MODEL_PREFIXES):
+        return "ollama", raw_model
+    return fallback_provider.strip().lower() or "gemini", raw_model
+
+
+def _legacy_model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:
+    """Returns the old provider-specific model value for compatibility."""
+    normalized = provider.strip().lower()
+    if normalized == "self":
+        return "self"
+    if normalized == "ollama":
+        return os.getenv("OLLAMA_MODEL", ollama_model)
+    if normalized == "openai":
+        return os.getenv("OPENAI_MODEL", openai_model)
+    return os.getenv("GEMINI_MODEL", gemini_model)
+
+
 def default_config() -> ResearchConfig:
     """
     Creates a standard configuration based on environment variables and the settings.toml file.
@@ -313,10 +370,22 @@ def default_config() -> ResearchConfig:
             return val
         return settings.get(key, default)
 
-    provider = cast(str, _get("RESEARCH_AI_PROVIDER", "gemini"))
+    legacy_provider = cast(str, _get("RESEARCH_AI_PROVIDER", "gemini"))
     gemini_model = cast(str, _get("GEMINI_MODEL", "gemini-3-flash-preview"))
     openai_model = cast(str, _get("OPENAI_MODEL", "gpt-5.4-mini-2026-03-17"))
     ollama_model = cast(str, _get("OLLAMA_MODEL", "llama3.1:8b"))
+    research_model = cast(str, _get("RESEARCH_MODEL", ""))
+    if research_model:
+        provider, model = _provider_and_model_from_research_model(research_model, legacy_provider)
+    else:
+        provider = legacy_provider
+        model = _legacy_model_for_provider(provider, gemini_model, openai_model, ollama_model)
+    if provider == "gemini":
+        gemini_model = model
+    elif provider == "openai":
+        openai_model = model
+    elif provider == "ollama":
+        ollama_model = model
     ollama_base_url = cast(str, _get("OLLAMA_BASE_URL", "http://localhost:11434"))
 
     # Mode name: check RESEARCH_MODE (env) then MODE (env or toml)
@@ -331,7 +400,7 @@ def default_config() -> ResearchConfig:
         openai_model=openai_model,
         ollama_model=ollama_model,
         ollama_base_url=ollama_base_url,
-        model=_model_for_provider(provider, gemini_model, openai_model, ollama_model),
+        model=model,
         min_companies=cast(int, _get("RESEARCH_MIN_COMPANIES", 15)),
         max_companies=cast(int, _get("RESEARCH_MAX_COMPANIES", 25)),
         person_emails_per_company=cast(int, _get("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3)),
@@ -380,8 +449,9 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     """
     env_config = default_config()
     parser = argparse.ArgumentParser(description="research new lead CSV files with AI providers or self-hosted web scraping.")
-    parser.add_argument("--provider", default=env_config.provider, choices=["gemini", "openai", "ollama", "self"], help="Research provider.")
+    parser.add_argument("--provider", default=None, choices=["gemini", "openai", "ollama", "self"], help="Research provider. Usually inferred from --model.")
     parser.add_argument("--mode", default=env_config.mode_name, choices=MODE_NAMES, help="research mode.")
+    parser.add_argument("--model", default=None, help="Research model. Provider is inferred from the model name or an optional provider: prefix.")
     parser.add_argument("--gemini-model", default=env_config.gemini_model)
     parser.add_argument("--openai-model", default=env_config.openai_model)
     parser.add_argument("--ollama-model", default=env_config.ollama_model)
@@ -406,14 +476,29 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed AI research logging.")
     args = parser.parse_args(argv)
 
+    selected_provider = args.provider or env_config.provider
+    if args.model:
+        selected_provider, selected_model = _provider_and_model_from_research_model(args.model, selected_provider)
+    elif args.provider:
+        selected_model = _legacy_model_for_provider(args.provider, args.gemini_model, args.openai_model, args.ollama_model)
+    else:
+        selected_model = env_config.model
+
+    if selected_provider == "gemini":
+        args.gemini_model = selected_model
+    elif selected_provider == "openai":
+        args.openai_model = selected_model
+    elif selected_provider == "ollama":
+        args.ollama_model = selected_model
+
     return ResearchConfig(
-        provider=args.provider,
+        provider=selected_provider,
         mode_name=args.mode,
         gemini_model=args.gemini_model,
         openai_model=args.openai_model,
         ollama_model=args.ollama_model,
         ollama_base_url=args.ollama_base_url,
-        model=_model_for_provider(args.provider, args.gemini_model, args.openai_model, args.ollama_model),
+        model=selected_model,
         min_companies=args.min_companies,
         max_companies=args.max_companies,
         person_emails_per_company=args.person_emails_per_company,
@@ -1024,33 +1109,9 @@ def write_recipients_csv(directory: Path, mode_label: str, recipients: list[Reci
 
 def _model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:
     """
-    Hilfsfunktion zur Auswahl des Modellnamens basierend auf dem gewählten Provider.
-    Berücksichtigt das RESEARCH_MODEL Setting, falls vorhanden.
+    Compatibility helper for old tests and CLI callers that still pass provider-specific models.
     """
-    from gui.settings_store import load_settings
-    settings = load_settings()
-    research_model = settings.get("RESEARCH_MODEL")
-    
-    normalized = provider.strip().lower()
-
-    # If RESEARCH_MODEL matches the provider type, use it as priority
-    if research_model:
-        if normalized == "openai" and research_model.startswith("gpt"):
-            return research_model
-        if normalized == "gemini" and research_model.startswith("gemini"):
-            return research_model
-        if normalized == "ollama" and research_model == "llama3.1:8b":
-            return research_model
-        if normalized == "self" and research_model == "self":
-            return "self"
-
-    if normalized == "self":
-        return "self"
-    if normalized == "ollama":
-        return os.getenv("OLLAMA_MODEL", ollama_model)
-    if normalized == "openai":
-        return os.getenv("OPENAI_MODEL", openai_model)
-    return os.getenv("GEMINI_MODEL", gemini_model)
+    return _legacy_model_for_provider(provider, gemini_model, openai_model, ollama_model)
 
 
 if __name__ == "__main__":  # pragma: no cover

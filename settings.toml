@@ -13,17 +13,8 @@ MODE = "Freelance_German"
 
 # Research
 
-# Research provider: gemini/openai use hosted web-capable models, ollama uses local crawling plus local filtering, self only crawls locally.
-RESEARCH_AI_PROVIDER = "gemini"
-
-# Gemini model: Gemini model for hosted research.
-GEMINI_MODEL = "gemini-3-flash-preview"
-
-# OpenAI model: OpenAI model for hosted research.
-OPENAI_MODEL = "gpt-5.4-mini-2026-03-17"
-
-# Ollama model: Installed local Ollama model used to filter locally crawled candidates.
-OLLAMA_MODEL = "llama3.1:8b"
+# Research model: Model used for research. The provider is detected from this value; use prefixes like openai:, gemini:, or ollama: for custom names.
+RESEARCH_MODEL = "gemini-3-flash-preview"
 
 # Ollama base URL: Local Ollama HTTP endpoint.
 OLLAMA_BASE_URL = "http://localhost:11434"
@@ -51,9 +42,9 @@ RESEARCH_UPLOAD_ATTACHMENTS = true
 
 # Self search keywords: One Google-style search query per line for the local crawler.
 SELF_SEARCH_KEYWORDS = [
-  "\"industry phd\" \"contact\" email Australia",
-  "\"research partnership\" \"contact\" email Australia",
-  "\"innovation\" \"university partnership\" email Australia",
+    "\"industry phd\" \"contact\" email Australia",
+    "\"research partnership\" \"contact\" email Australia",
+    "\"innovation\" \"university partnership\" email Australia",
 ]
 
 # Search pages/keyword: Number of result pages scanned per keyword.

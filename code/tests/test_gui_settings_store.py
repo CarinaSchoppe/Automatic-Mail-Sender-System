@@ -56,6 +56,25 @@ def test_setting_coercion_matches_widget_value_types() -> None:
     assert coerce_value(specs["SELF_SEARCH_KEYWORDS"], "a\n\n b ") == ["a", "b"]
 
 
+def test_research_model_replaces_provider_specific_gui_settings(tmp_path: Path) -> None:
+    """Checks that the GUI schema exposes one research model setting."""
+    path = tmp_path / "settings.toml"
+    values = default_settings()
+    values["RESEARCH_MODEL"] = "ollama:llama3.1:8b"
+
+    write_settings(path, values)
+    text = path.read_text(encoding="utf-8")
+    schema_keys = {spec.key for spec in SETTINGS_SCHEMA}
+
+    assert "RESEARCH_MODEL" in schema_keys
+    assert "RESEARCH_AI_PROVIDER" not in schema_keys
+    assert "GEMINI_MODEL" not in schema_keys
+    assert "OPENAI_MODEL" not in schema_keys
+    assert "OLLAMA_MODEL" not in schema_keys
+    assert 'RESEARCH_MODEL = "ollama:llama3.1:8b"' in text
+    assert "RESEARCH_AI_PROVIDER" not in text
+
+
 def test_env_store_writes_and_loads_all_env_values(tmp_path: Path) -> None:
     """Checks behavior for env store writes and loads all env values."""
     path = tmp_path / ".env"

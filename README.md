@@ -216,11 +216,12 @@ For AI research context upload, only CV/resume/Lebenslauf files from `attachment
 
 The prompt also tells the AI not to search for or return companies or email addresses already present in the mode-specific sent CSV list. The local parser still filters existing email addresses and mode-specific company names after the AI response.
 
-Gemini research is configured with Google Search grounding, automatic tool use, and high thinking/reasoning. OpenAI research uses the Responses API with `web_search`, automatic tool choice, and high reasoning effort. Provider-specific model names stay in `.env`:
+Gemini research is configured with Google Search grounding, automatic tool use, and high thinking/reasoning. OpenAI research uses the Responses API with `web_search`, automatic tool choice, and high reasoning effort. The research provider is detected from `RESEARCH_MODEL`; use `gemini-*`, `gpt*`, `self`, an Ollama-style local model such as `llama3.1:8b`, or an explicit prefix like `ollama:qwen2.5:7b`.
 
-```text
-GEMINI_MODEL=gemini-2.5-flash-lite
-OPENAI_MODEL=gpt-5.4
+```toml
+RESEARCH_MODEL = "gemini-3-flash-preview"
+RESEARCH_MODEL = "gpt-5.4"
+RESEARCH_MODEL = "ollama:llama3.1:8b"
 ```
 
 You can start research through `code/main.py`. If `RUN_AI_RESEARCH = true`, research runs first and the newly found contacts are then processed/sent.
@@ -228,11 +229,11 @@ You can start research through `code/main.py`. If `RUN_AI_RESEARCH = true`, rese
 ```toml
 RUN_AI_RESEARCH = true
 MODE = "PhD"
-RESEARCH_AI_PROVIDER = "openai"
+RESEARCH_MODEL = "gpt-5.4"
 RESEARCH_UPLOAD_ATTACHMENTS = false
 ```
 
-Set `GEMINI_API_KEY` or `OPENAI_API_KEY` in `.env`, depending on the provider. The layout is documented in `.env.example`. For OpenAI, `OPENAI_MODEL=gpt-5.4` is the default.
+Set `GEMINI_API_KEY` or `OPENAI_API_KEY` in `.env`, depending on the selected model/provider. The layout is documented in `.env.example`.
 
 Direct research examples:
 
@@ -240,7 +241,7 @@ Direct research examples:
 python code\research\research_leads.py --mode PhD
 python code\research\research_leads.py --mode Freelance_German
 python code\research\research_leads.py --mode Freelance_English
-python code\research\research_leads.py --provider openai --mode PhD --no-upload-attachments
+python code\research\research_leads.py --model gpt-5.4 --mode PhD --no-upload-attachments
 ```
 
 Test without writing output:

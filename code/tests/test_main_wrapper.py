@@ -65,7 +65,7 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
             run_name="__main__",
             init_globals={
                 "RUN_AI_RESEARCH": True,
-                "RESEARCH_AI_PROVIDER": "openai",
+                "RESEARCH_MODEL": "gpt-5.4",
                 "MODE": "Freelance_English",
                 "RESEARCH_MIN_COMPANIES": 2,
                 "RESEARCH_MAX_COMPANIES": 4,
@@ -83,6 +83,8 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
     research_args = calls[0][1]
     mail_args = calls[1][1]
     assert research_args[:6] == ["--provider", "openai", "--mode", "Freelance_English", "--base-dir", str(app_main.PROJECT_ROOT)]
+    assert "--model" in research_args
+    assert "gpt-5.4" in research_args
     assert "--no-write-output" in research_args
     assert "--no-upload-attachments" in research_args
     assert "--parallel-threads" in research_args

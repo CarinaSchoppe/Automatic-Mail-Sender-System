@@ -193,6 +193,26 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     assert cfg.base_dir == project
 
 
+def test_research_model_infers_provider_and_accepts_custom_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that the single research model value controls provider selection."""
+    monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
+    monkeypatch.delenv("RESEARCH_MODEL", raising=False)
+    monkeypatch.setattr(
+        research_leads,
+        "_load_settings",
+        lambda: {"RESEARCH_MODEL": "ollama:qwen2.5:7b", "MODE": "PhD"},
+    )
+
+    cfg = research_leads.default_config()
+
+    assert cfg.provider == "ollama"
+    assert cfg.model == "qwen2.5:7b"
+    assert cfg.ollama_model == "qwen2.5:7b"
+    assert research_leads._provider_and_model_from_research_model("gemini-3-custom") == ("gemini", "gemini-3-custom")
+    assert research_leads._provider_and_model_from_research_model("gpt-custom") == ("openai", "gpt-custom")
+    assert research_leads._provider_and_model_from_research_model("self") == ("self", "self")
+
+
 def test_default_config_ignores_empty_base_dir_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Checks behavior for default config ignores empty base dir env."""
     monkeypatch.setattr(research_leads, "load_dotenv", lambda: None)
