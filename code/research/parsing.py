@@ -10,6 +10,7 @@ import json
 import re
 
 from mail_sender.recipients import COMPANY_KEYS, EMAIL_KEYS, Recipient, normalize_email, normalize_key
+from research.logging_utils import info as _info, verbose as _verbose
 
 SOURCE_KEYS = {"source", "source-url", "source_url", "sourceurl", "url", "website"}
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -270,6 +271,3 @@ def find_field(row: dict[str, str], allowed_keys: set[str]) -> str | None:
         if field and normalize_key(field) in allowed_keys:
             return field
     return None
-
-
-from research.logging_utils import info as _info, verbose as _verbose

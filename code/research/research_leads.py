@@ -645,7 +645,7 @@ def _generate_and_process_response(
     if sink.is_full():
         return 0
 
-    _set_thread_id(thread_id if thread_id is not None else "X")
+    _set_thread_id(f"Thread-{thread_id if thread_id is not None else 'X'}")
     _info("Starting new search analysis...")
     # We use a placeholder for existing_emails because the sink handles the actual checking.
     # However, _needs_retry needs it for a quick heuristic.

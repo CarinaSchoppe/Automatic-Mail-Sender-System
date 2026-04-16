@@ -19,7 +19,14 @@ def set_thread_id(thread_id: int | str | None) -> None:
 def get_thread_id() -> str:
     """Returns the current thread ID as a string prefix, if available."""
     tid = getattr(_thread_context, "thread_id", None)
-    return f"[Thread-{tid}] " if tid is not None else ""
+    if tid is None:
+        # Fallback to current thread name if tid not explicitly set via set_thread_id
+        tid = threading.current_thread().name
+        # If it's the MainThread, we don't necessarily want a prefix, 
+        # but for the worker threads in ThreadPoolExecutor it helps.
+        if tid == "MainThread":
+            return ""
+    return f"[{tid}] "
 
 
 def verbose(enabled: bool, message: str) -> None:
