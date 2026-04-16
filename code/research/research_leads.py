@@ -645,6 +645,7 @@ def _generate_and_process_response(
     if sink.is_full():
         return 0
 
+    _info(f"Thread-{thread_id if thread_id is not None else 'X'}: Starte neue Suchanalyse...")
     # We use a placeholder for existing_emails because the sink handles the actual checking.
     # However, _needs_retry needs it for a quick heuristic.
     raw_response = _generate_research_response(config, mode, prompt, attachments, set(), input_context, stop_event)
@@ -667,6 +668,13 @@ def _generate_and_process_response(
                 if stop_event:
                     stop_event.set()
                 break
+
+    with sink.lock:
+        current_total = len(sink.recipients)
+        target = sink.target_count
+        missing = max(0, target - current_total)
+
+    _verbose(config.verbose, f"Thread-{thread_id if thread_id is not None else 'X'}: Parsed {len(candidates)} candidates, added {added_count} new. Total: {current_total}/{target}, missing: {missing}")
     return added_count
 
 
