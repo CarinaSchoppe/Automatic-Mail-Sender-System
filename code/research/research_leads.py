@@ -118,18 +118,22 @@ class ThreadSafeRecipientSink:
     Prevents duplicate entries and stops the search once the target is reached.
     """
 
-    def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig, mode: MailMode):
+    def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig, mode: MailMode, global_target_count: int, initial_count: int):
         """
         Initializes the sink with targets and already known data.
 
         Args:
-            target_count (int): Total number of desired email addresses.
+            target_count (int): Number of desired email addresses for this specific batch/sink.
             seen_emails (set[str]): Set of already contacted emails (deduplication).
             seen_companies (set[str]): Set of already researched companies.
             config (ResearchConfig): The current research configuration.
             mode (MailMode): The current email mode (for storage paths).
+            global_target_count (int): The total target across all batches.
+            initial_count (int): Number of leads already found in previous batches.
         """
         self.target_count = target_count
+        self.global_target_count = global_target_count
+        self.initial_count = initial_count
         self.seen_emails = {email.lower() for email in seen_emails}
         self.seen_companies = {company for company in seen_companies if company}
         self.config = config
@@ -230,10 +234,10 @@ class ThreadSafeRecipientSink:
             if company_key:
                 self.seen_companies.add(company_key)
 
-            current_count = len(self.recipients)
-            missing_count = max(0, self.target_count - current_count)
+            total_found = self.initial_count + len(self.recipients)
+            missing_count = max(0, self.global_target_count - total_found)
 
-            _verbose(self.config.verbose, f"Accepted {recipient.email}: {current_count}/{self.target_count} found, {missing_count} missing.")
+            _verbose(self.config.verbose, f"Accepted {recipient.email}: {total_found}/{self.global_target_count} found, {missing_count} missing.")
 
             # Instant save to CSV
             thread_file = self._get_thread_file(thread_id)
@@ -504,7 +508,17 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Mode-specific input context characters: {len(input_context)}")
 
     if config.provider.strip().lower() == "self":
-        recipients = run_self_research(config, mode, existing_emails, existing_companies)
+        target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
+        sink = ThreadSafeRecipientSink(
+            target_count,
+            existing_emails,
+            existing_companies,
+            config,
+            mode,
+            global_target_count=target_count,
+            initial_count=0
+        )
+        recipients = run_self_research(config, mode, existing_emails, existing_companies, sink=sink)
         output_path = None
         if config.write_output:
             output_path = write_recipients_csv(mode.recipients_dir, mode.label, recipients)
@@ -516,7 +530,17 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         return output_path, recipients
 
     if config.provider.strip().lower() == "ollama":
-        recipients = run_ollama_web_research(config, mode, existing_emails, existing_companies)
+        target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
+        sink = ThreadSafeRecipientSink(
+            target_count,
+            existing_emails,
+            existing_companies,
+            config,
+            mode,
+            global_target_count=target_count,
+            initial_count=0
+        )
+        recipients = run_ollama_web_research(config, mode, existing_emails, existing_companies, sink=sink)
         output_path = None
         if config.write_output:
             output_path = write_recipients_csv(mode.recipients_dir, mode.label, recipients)
@@ -559,7 +583,15 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
 
         stop_event = threading.Event()
         batch_new_count = 0
-        sink = ThreadSafeRecipientSink(remaining_target, seen_emails_in_run, seen_companies_in_run, config, mode)
+        sink = ThreadSafeRecipientSink(
+            remaining_target,
+            seen_emails_in_run,
+            seen_companies_in_run,
+            config,
+            mode,
+            global_target_count=target_count,
+            initial_count=len(all_recipients)
+        )
 
         executor = ThreadPoolExecutor(max_workers=batch_size)
         try:
