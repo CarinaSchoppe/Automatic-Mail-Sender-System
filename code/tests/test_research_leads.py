@@ -501,7 +501,7 @@ def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Pa
 
     assert output_path is not None
     assert output_path.exists()
-    assert recipients == [Recipient(email="a@example.com", company="A")]
+    assert recipients == [Recipient(email="a@example.com", company="A", source_url="https://a.example/contact")]
     assert "[VERBOSE] AI prompt characters:" in capsys.readouterr().out
 
 
@@ -597,7 +597,7 @@ def test_self_crawler_respects_depth_and_extracts_nested_emails(monkeypatch: pyt
     deep = research_leads.crawl_self_result_url(config(project, provider="self", self_crawl_depth=2), "https://example.com")
 
     assert shallow == []
-    assert deep == [Recipient(email="hello@example.com", company="Example Team")]
+    assert deep == [Recipient(email="hello@example.com", company="Example Team", source_url="https://example.com/team")]
 
 
 def test_generate_with_ollama_posts_to_local_api(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -674,7 +674,7 @@ def test_ollama_provider_uses_self_web_candidates_before_llm(monkeypatch: pytest
         config(project, provider="ollama", model="llama3.1:8b", max_companies=2)
     )
 
-    assert recipients == [Recipient(email="lead@example.com", company="Lead Co")]
+    assert recipients == [Recipient(email="lead@example.com", company="Lead Co", source_url="self-crawl")]
     assert calls == [
         ("search", ("query",)),
         ("crawl", "https://example.com"),
@@ -692,7 +692,7 @@ def test_run_research_can_skip_output_and_validates(monkeypatch: pytest.MonkeyPa
 
     output_path, recipients = research_leads.run_research(config(project, write_output=False))
     assert output_path is None
-    assert recipients == [Recipient(email="a@example.com", company="A")]
+    assert recipients == [Recipient(email="a@example.com", company="A", source_url="https://a.example/contact")]
 
     bad_config = ResearchConfig("gemini", "PhD", "model", 2, 1, 1, project, True, False, True, "gemini-model", "openai-model", reasoning_effort="middle")
     with pytest.raises(ValueError, match="Company limits"):
@@ -724,7 +724,7 @@ def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch
 
     _, recipients = research_leads.run_research(config(project, verbose=True, upload_attachments=False))
 
-    assert recipients == [Recipient(email="a@example.com", company="A")]
+    assert recipients == [Recipient(email="a@example.com", company="A", source_url="https://a.example/contact")]
     assert "Attachment upload disabled" in capsys.readouterr().out
 
 
@@ -757,7 +757,7 @@ def test_run_research_retries_without_attachments_after_empty_response(
 
     assert calls[0] == [cv]
     assert calls[1] == []
-    assert recipients == [Recipient(email="a@example.com", company="A")]
+    assert recipients == [Recipient(email="a@example.com", company="A", source_url="https://a.example/contact")]
     assert "retrying once without attachment uploads" in capsys.readouterr().out
 
 
@@ -786,7 +786,7 @@ def test_run_research_retries_with_lite_prompt_after_model_error(
     _, recipients = research_leads.run_research(config(project, verbose=True, max_companies=1))
 
     assert len(calls) >= 2
-    assert recipients == [Recipient(email="a@example.com", company="A")]
+    assert recipients == [Recipient(email="a@example.com", company="A", source_url="https://a.example/contact")]
     output = capsys.readouterr().out
     assert "retrying once with a smaller prompt" in output
     assert "Lite AI prompt characters:" in output

@@ -78,7 +78,13 @@ def run_self_research(
                     _verbose(config.verbose, f"Self research crawl failed for {url}: {exc}")
                     continue
 
-                if not sink:
+                if sink:
+                    for candidate in candidates:
+                        if sink.add_recipient(candidate):
+                            if sink.is_full():
+                                stop_event.set()
+                                break
+                else:
                     for candidate in candidates:
                         if len(recipients) >= target_count:
                             stop_event.set()

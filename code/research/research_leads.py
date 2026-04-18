@@ -166,7 +166,7 @@ class ThreadSafeRecipientSink:
         self.config = config
         self.mode = mode
         self.recipients: list[Recipient] = []
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.thread_files: dict[int | None, Path] = {}
 
     def _get_thread_file(self, thread_id: int | None) -> Path | None:

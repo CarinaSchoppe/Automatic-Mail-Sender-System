@@ -15,7 +15,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
-from typing import Any, Sequence, cast
+from typing import Any, Callable, Sequence, cast
 
 from gui.settings_store import (
     ENV_SCHEMA,
@@ -69,23 +69,23 @@ def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
     if spec.kind == "bool":
         return tk.BooleanVar(value=bool(value))
     if spec.kind == "int":
-        val = 0
+        int_val = 0
         raw_val = value if value is not None else spec.default
         if isinstance(raw_val, (int, float, str)):
             try:
-                val = int(raw_val)
+                int_val = int(raw_val)
             except (ValueError, TypeError):
                 pass
-        return tk.IntVar(value=val)
+        return tk.IntVar(value=int_val)
     if spec.kind == "float":
-        val = 0.0
+        float_val = 0.0
         raw_val = value if value is not None else spec.default
         if isinstance(raw_val, (int, float, str)):
             try:
-                val = float(raw_val)
+                float_val = float(raw_val)
             except (ValueError, TypeError):
                 pass
-        return tk.DoubleVar(value=val)
+        return tk.DoubleVar(value=float_val)
     return tk.StringVar(value=str(value if value is not None else spec.default or ""))
 
 
@@ -513,25 +513,34 @@ class MailSenderWorkbench:
 
             var.trace_add("write", sync_entry)
             entry_var.trace_add("write", sync_slider)
-            scale_kwargs = {
-                "from_": spec.min_value,
-                "to": spec.max_value,
-                "orient": "horizontal",
-            }
+
+            scale_min = float(spec.min_value)
+            scale_max = float(spec.max_value)
+
+            def make_scale(scale_var: tk.IntVar | tk.DoubleVar, command: Callable[[str], object] | None = None) -> ttk.Scale:
+                """Creates a numeric scale with the common setting bounds."""
+                if command is None:
+                    return ttk.Scale(
+                        wrapper,
+                        from_=scale_min,
+                        to=scale_max,
+                        orient="horizontal",
+                        variable=scale_var,
+                    )
+                return ttk.Scale(
+                    wrapper,
+                    from_=scale_min,
+                    to=scale_max,
+                    orient="horizontal",
+                    variable=scale_var,
+                    command=command,
+                )
+
             if spec.kind == "int":
                 int_var = cast(tk.IntVar, var)
-                scale = ttk.Scale(
-                    wrapper,
-                    variable=int_var,
-                    command=lambda value: int_var.set(int(float(value))),
-                    **scale_kwargs,
-                )
+                scale = make_scale(int_var, lambda value: int_var.set(int(float(value))))
             else:
-                scale = ttk.Scale(
-                    wrapper,
-                    variable=cast(tk.DoubleVar, var),
-                    **scale_kwargs,
-                )
+                scale = make_scale(cast(tk.DoubleVar, var))
             scale.pack(side="left", fill="x", expand=True)
             value_entry = ttk.Entry(wrapper, textvariable=entry_var, width=8, justify="right")
             value_entry.pack(side="right", padx=(8, 0))
