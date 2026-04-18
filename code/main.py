@@ -102,6 +102,7 @@ SKIP_INVALID_CHECK: bool = cast(bool, _setting("SKIP_INVALID_CHECK", True))
 SIGNATURE_LOGO: str = cast(str, _setting("SIGNATURE_LOGO", "templates/signature-logo.png"))
 SIGNATURE_LOGO_WIDTH: int = cast(int, _setting("SIGNATURE_LOGO_WIDTH", 325))
 ALLOW_EMPTY_ATTACHMENTS: bool = cast(bool, _setting("ALLOW_EMPTY_ATTACHMENTS", False))
+SPAM_SAFE_MODE: bool = cast(bool, _setting("SPAM_SAFE_MODE", False))
 LOG_DRY_RUN: bool = cast(bool, _setting("LOG_DRY_RUN", False))
 WRITE_SENT_LOG: bool = cast(bool, _setting("WRITE_SENT_LOG", True))
 DELETE_INPUT_AFTER_SUCCESS: bool = cast(bool, _setting("DELETE_INPUT_AFTER_SUCCESS", False))
@@ -213,11 +214,12 @@ def _print_effective_settings() -> None:
     _info(f"SMTP mailbox verification: {'enabled' if VERIFY_EMAIL_SMTP else 'disabled'}. DNS check: {'skipped' if SKIP_EMAIL_DNS_CHECK else 'enabled'}.")
     _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
+    _info(f"Spam-safe mode: {'enabled' if SPAM_SAFE_MODE else 'disabled'}.")
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
     _verbose(VERBOSE, f"Research model: {RESEARCH_MODEL}.")
     _verbose(VERBOSE, f"Ollama base URL: {OLLAMA_BASE_URL}.")
     _verbose(VERBOSE, f"Self research settings: pages={SELF_SEARCH_PAGES}, results_per_page={SELF_RESULTS_PER_PAGE}, crawl_max_pages_per_site={SELF_CRAWL_MAX_PAGES_PER_SITE}, crawl_depth={SELF_CRAWL_DEPTH}, keywords={SELF_SEARCH_KEYWORDS}.")
-    _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, skip_invalid_check={SKIP_INVALID_CHECK}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
+    _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, skip_invalid_check={SKIP_INVALID_CHECK}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, spam_safe_mode={SPAM_SAFE_MODE}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
     _verbose(VERBOSE, f"Target loop max rounds (safety gate): {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited (0)'}.")
     _verbose(VERBOSE, f"Signature logo: {SIGNATURE_LOGO}, width={SIGNATURE_LOGO_WIDTH}.")
     _verbose(VERBOSE, f"Verbose log directory: {_resolve_log_dir()}.")
@@ -295,6 +297,7 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
         ("--verbose", VERBOSE),
         ("--resend-existing", RESEND_EXISTING),
         ("--allow-empty-attachments", ALLOW_EMPTY_ATTACHMENTS),
+        ("--spam-safe", SPAM_SAFE_MODE),
         ("--log-dry-run", LOG_DRY_RUN),
         ("--no-write-sent-log", not WRITE_SENT_LOG),
         ("--delete-input-after-success", DELETE_INPUT_AFTER_SUCCESS),

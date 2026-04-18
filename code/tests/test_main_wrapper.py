@@ -247,6 +247,13 @@ def test_main_run_can_skip_research_and_mail_directly(monkeypatch) -> None:
     assert calls == [app_main._build_mail_args()]
 
 
+def test_main_mail_args_include_spam_safe_when_enabled(monkeypatch) -> None:
+    """Checks that settings.toml spam-safe mode is forwarded to the mail CLI."""
+    monkeypatch.setattr(app_main, "SPAM_SAFE_MODE", True)
+
+    assert "--spam-safe" in app_main._build_mail_args()
+
+
 def test_target_send_loop_repeats_until_logged_target_is_reached(monkeypatch) -> None:
     """Checks behavior for target send loop repeats until logged target is reached."""
     research_calls = []

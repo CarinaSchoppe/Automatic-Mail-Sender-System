@@ -21,6 +21,7 @@ class MailMode:
     recipients_dir: Path
     attachments_dir: Path
     template_path: Path
+    spam_safe_template_path: Path
     log_path: Path
 
 
@@ -43,6 +44,7 @@ def get_mode(mode: str, base_dir: Path) -> MailMode:
             recipients_dir=base_dir / "input" / "PhD",
             attachments_dir=base_dir / "attachments" / "PhD",
             template_path=base_dir / "templates" / "phd.txt",
+            spam_safe_template_path=base_dir / "templates" / "phd_spam_safe.txt",
             log_path=base_dir / "output" / "send_phd.csv",
         )
 
@@ -73,5 +75,6 @@ def _freelance_mode(base_dir: Path, template_name: str, attachments_dir_name: st
         recipients_dir=base_dir / "input" / attachments_dir_name,
         attachments_dir=base_dir / "attachments" / attachments_dir_name,
         template_path=base_dir / "templates" / template_name,
+        spam_safe_template_path=base_dir / "templates" / template_name.replace(".txt", "_spam_safe.txt"),
         log_path=base_dir / "output" / "send_freelance.csv",
     )

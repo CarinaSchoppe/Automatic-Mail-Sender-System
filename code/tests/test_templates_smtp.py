@@ -28,6 +28,20 @@ def test_render_mail_with_inline_image(project: Path) -> None:
     assert rendered.inline_images[0].path.name == "signature-logo.png"
 
 
+def test_render_mail_can_skip_inline_signature_image(project: Path) -> None:
+    """Checks that spam-safe rendering does not require or embed signature images."""
+    rendered = render_mail(
+        project / "templates/phd.txt",
+        project / "templates/signature.txt",
+        Recipient(email="a@example.com", company="ACME"),
+        embed_signature_image=False,
+    )
+
+    assert "[Logo]" in rendered.text_body
+    assert "cid:" not in rendered.html_body
+    assert rendered.inline_images == []
+
+
 def test_render_mail_subject_fallback_and_override(tmp_path: Path) -> None:
     """Checks behavior for render mail subject fallback and override."""
     template = tmp_path / "template.txt"

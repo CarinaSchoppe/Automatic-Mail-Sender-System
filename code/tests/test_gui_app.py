@@ -149,7 +149,17 @@ def test_mail_sender_workbench_exposes_required_tabs(tmp_path: Path) -> None:
         app = MailSenderWorkbench(root, project_root=tmp_path)
         tabs = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
 
-        assert tabs == ["Settings", ".env", "Prompts", "AI Inputs", "Found Mails", "Sent Mails", "Saved Logs", "Run Console"]
+        assert tabs == [
+            "Settings",
+            ".env",
+            "Prompts",
+            "Mail Templates",
+            "AI Inputs",
+            "Found Mails",
+            "Sent Mails",
+            "Saved Logs",
+            "Run Console",
+        ]
         assert app.autosave.get() is True
         assert app.auto_refresh.get() is True
     finally:
@@ -168,17 +178,44 @@ def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: P
         app.variables["MODE"].set("Freelance_English")
         app.variables["PARALLEL_THREADS"].set(7)
         app.variables["SEND"].set(True)
+        app.variables["SPAM_SAFE_MODE"].set(True)
         command = app._mail_only_command()
 
         assert any("from mail_sender.cli import main" in part for part in command)
         assert "--mode" in command
         assert "Freelance_English" in command
         assert "--send" in command
+        assert "--spam-safe" in command
         assert "--parallel-threads" in command
         assert "7" in command
         assert isinstance(app.variables["RESEARCH_MIN_COMPANIES"].get(), int)
         assert isinstance(app.variables["RESEARCH_MAX_COMPANIES"].get(), int)
         assert "SMTP_PORT" in app.variables
+    finally:
+        root.destroy()
+
+
+def test_mail_sender_workbench_edits_mail_templates(tmp_path: Path) -> None:
+    """Checks behavior for mail template editing in the GUI."""
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "phd.txt").write_text("Subject: Old\n\nOld body", encoding="utf-8")
+
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        app.mail_template_var.set("PhD")
+        app._on_mail_template_change()
+        app.mail_template_text.delete("1.0", "end")
+        app.mail_template_text.insert("1.0", "Subject: New\n\nNew body")
+        app.save_mail_templates()
+
+        assert (templates_dir / "phd.txt").read_text(encoding="utf-8") == "Subject: New\n\nNew body\n"
+        assert (templates_dir / "phd_spam_safe.txt").exists()
     finally:
         root.destroy()
 

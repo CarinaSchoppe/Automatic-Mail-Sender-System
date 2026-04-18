@@ -321,6 +321,42 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
         assert reader[1][1] == "phd@example.com"
 
 
+def test_cli_spam_safe_uses_safe_template_and_skips_attachments(monkeypatch, project: Path, capsys) -> None:
+    """Checks that spam-safe mode switches template and sends no MIME extras."""
+    write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")
+    (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
+    sent = []
+
+    class FakeMailer:
+        """Documents the test or helper class FakeMailer."""
+
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        @staticmethod
+        def send(recipient, subject, _text_body, html_body, attachments, inline_images) -> None:
+            sent.append((recipient.email, subject, len(attachments), len(inline_images), html_body))
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send", "--spam-safe"])
+
+    assert result == 0
+    assert len(sent) == 1
+    assert sent[0][:4] == ("phd@example.com", "PhD safe PhD Co", 0, 0)
+    assert "cid:" not in sent[0][4]
+    output = capsys.readouterr().out
+    assert "Spam-safe mode: yes" in output
+    assert "skipping all mail attachments" in output
+
+
 def test_cli_resend_existing_sends_without_duplicate_sent_log(monkeypatch, project: Path) -> None:
     """Checks that resend sends but does not write a duplicate sent-log row."""
     write_recipient(project / "input/PhD/phd.csv", "PhD Co", "phd@example.com")

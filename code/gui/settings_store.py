@@ -77,6 +77,7 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("RESEND_EXISTING", "Resend existing", "bool", False, "Mail", "Allows sending to addresses already present in output logs."),
     SettingSpec("SKIP_INVALID_CHECK", "Skip invalid check", "bool", True, "Mail", "If checked, ignores invalid_mails.csv so listed recipients can be sent again."),
     SettingSpec("ALLOW_EMPTY_ATTACHMENTS", "Allow empty attachments", "bool", False, "Mail", "Allows running a mode even when the attachment folder is empty."),
+    SettingSpec("SPAM_SAFE_MODE", "Spam-safe mode", "bool", False, "Mail", "Uses spam-safe mail templates and sends without file attachments or embedded signature images."),
     SettingSpec("LOG_DRY_RUN", "Log dry-run", "bool", False, "Mail", "Writes dry-run recipients to sent logs."),
     SettingSpec("WRITE_SENT_LOG", "Write sent log", "bool", True, "Mail", "Writes successful real sends to output/send_*.csv."),
     SettingSpec("DELETE_INPUT_AFTER_SUCCESS", "Delete input after success", "bool", False, "Mail", "Deletes processed input CSV/TXT files after a successful send run."),

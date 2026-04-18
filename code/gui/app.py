@@ -49,6 +49,16 @@ SENT_MAIL_TABS = (
     ("Invalid", "Invalid"),
 )
 
+MAIL_TEMPLATE_FILES = (
+    ("PhD", "templates/phd.txt"),
+    ("PhD spam-safe", "templates/phd_spam_safe.txt"),
+    ("Freelance German", "templates/freelance_german.txt"),
+    ("Freelance German spam-safe", "templates/freelance_german_spam_safe.txt"),
+    ("Freelance English", "templates/freelance_english.txt"),
+    ("Freelance English spam-safe", "templates/freelance_english_spam_safe.txt"),
+    ("Signature", "templates/signature.txt"),
+)
+
 
 def _create_variable(spec: SettingSpec, source: dict[str, Any]) -> tk.Variable:
     """
@@ -139,12 +149,14 @@ class MailSenderWorkbench:
         self.current_view_path: Path | None = None
         self.current_view_kind: str | None = None
         self._last_prompt_mode: str | None = None
+        self._last_mail_template: str | None = None
         self._save_after_id: str | None = None
         self._loading = True
         self._autosave_after_id: str | None = None
         self._autosave_target = "all"
         self.auto_refresh = tk.BooleanVar(value=True)
         self.prompts = load_prompts(self.project_root / "prompts.toml")
+        self.mail_templates = self._load_mail_templates()
         self.root.title("MailSenderSystem Workbench")
         self.root.geometry("1220x780")
         self.root.configure(bg=self.PALETTE["window_bg"])
@@ -272,6 +284,7 @@ class MailSenderWorkbench:
         self.settings_tab = ttk.Frame(self.notebook, padding=12)
         self.env_tab = ttk.Frame(self.notebook, padding=12)
         self.prompts_tab = ttk.Frame(self.notebook, padding=12)
+        self.mail_templates_tab = ttk.Frame(self.notebook, padding=12)
         self.inputs_tab = ttk.Frame(self.notebook, padding=12)
         self.found_tab = ttk.Frame(self.notebook, padding=12)
         self.sent_tab = ttk.Frame(self.notebook, padding=12)
@@ -280,6 +293,7 @@ class MailSenderWorkbench:
         self.notebook.add(self.settings_tab, text="Settings")
         self.notebook.add(self.env_tab, text=".env")
         self.notebook.add(self.prompts_tab, text="Prompts")
+        self.notebook.add(self.mail_templates_tab, text="Mail Templates")
         self.notebook.add(self.inputs_tab, text="AI Inputs")
         self.notebook.add(self.found_tab, text="Found Mails")
         self.notebook.add(self.sent_tab, text="Sent Mails")
@@ -288,6 +302,7 @@ class MailSenderWorkbench:
         self._build_settings_tab()
         self._build_env_tab()
         self._build_prompts_tab()
+        self._build_mail_templates_tab()
         self._build_inputs_tab()
         self._build_found_tab()
         self._build_sent_tab()
@@ -386,7 +401,7 @@ class MailSenderWorkbench:
         canvas = tk.Canvas(parent, borderwidth=0, highlightthickness=0, background=self.PALETTE["window_bg"])
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
         body = ttk.Frame(canvas, style="TFrame")
-        body.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        body.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=body, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True)
@@ -531,6 +546,80 @@ class MailSenderWorkbench:
         ttk.Button(bottom, text="Reset current to Default", command=self._reset_current_prompt).pack(side="right", padx=10)
 
         self._on_prompt_mode_change()
+
+    def _build_mail_templates_tab(self) -> None:
+        """
+        Builds the tab for editing the actual mail templates used for sending.
+        """
+        top = ttk.Frame(self.mail_templates_tab)
+        top.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(top, text="Select Template:").pack(side="left", padx=(0, 10))
+
+        self.mail_template_var = tk.StringVar()
+        template_names = list(self.mail_templates.keys())
+        self.mail_template_combo = ttk.Combobox(
+            top,
+            textvariable=self.mail_template_var,
+            values=template_names,
+            state="readonly",
+            width=32,
+        )
+        self.mail_template_combo.pack(side="left")
+        self.mail_template_combo.bind("<<ComboboxSelected>>", self._on_mail_template_change)
+
+        self.mail_template_path_var = tk.StringVar()
+        ttk.Label(top, textvariable=self.mail_template_path_var, style="Muted.TLabel").pack(side="left", padx=(20, 0))
+
+        if template_names:
+            self.mail_template_var.set(template_names[0])
+
+        self.mail_template_text = scrolledtext.ScrolledText(
+            self.mail_templates_tab,
+            wrap="word",
+            undo=True,
+            font=("Consolas", 10),
+        )
+        self.mail_template_text.pack(fill="both", expand=True, pady=10)
+        self._style_text_widget(self.mail_template_text)
+
+        bottom = ttk.Frame(self.mail_templates_tab)
+        bottom.pack(fill="x")
+        ttk.Button(bottom, text="Save Mail Templates", command=self.save_mail_templates, style="Accent.TButton").pack(side="right")
+        ttk.Button(bottom, text="Reload current from Disk", command=self._reload_current_mail_template).pack(side="right", padx=10)
+
+        self._on_mail_template_change()
+
+    def _load_mail_templates(self) -> dict[str, str]:
+        """Reads all editable mail templates from disk."""
+        templates: dict[str, str] = {}
+        for label, relative_path in MAIL_TEMPLATE_FILES:
+            path = self.project_root / relative_path
+            if path.exists():
+                templates[label] = path.read_text(encoding="utf-8", errors="replace").strip()
+            else:
+                templates[label] = ""
+        return templates
+
+    def _mail_template_path(self, label: str) -> Path:
+        """Returns the file path for a mail template label."""
+        mapping = dict(MAIL_TEMPLATE_FILES)
+        return self.project_root / mapping[label]
+
+    def _on_mail_template_change(self, _event=None) -> None:
+        """Caches current mail-template text and loads the selected template."""
+        if hasattr(self, "_last_mail_template") and self._last_mail_template:
+            self.mail_templates[self._last_mail_template] = self.mail_template_text.get("1.0", tk.END).strip()
+
+        label = self.mail_template_var.get()
+        if not label:
+            return
+
+        self._last_mail_template = label
+        path = self._mail_template_path(label)
+        self.mail_template_path_var.set(str(path))
+        self.mail_template_text.delete("1.0", tk.END)
+        self.mail_template_text.insert("1.0", self.mail_templates.get(label, ""))
 
     def _on_prompt_mode_change(self, _event=None) -> None:
         """
@@ -706,6 +795,7 @@ class MailSenderWorkbench:
         self.save_settings()
         self.save_env()
         self.save_all_prompts()
+        self.save_mail_templates()
 
     def save_all_prompts(self) -> None:
         """
@@ -724,6 +814,40 @@ class MailSenderWorkbench:
         self._append_console(f"[INFO] Saved prompts to {self.project_root / 'prompts.toml'}\n")
         if hasattr(self, "status_var") and self.status_var:
             self.status_var.set("Prompts saved successfully.")
+
+    def save_mail_templates(self) -> None:
+        """
+        Saves the currently edited mail template and writes all mail templates to disk.
+        """
+        label = self.mail_template_var.get()
+        if label:
+            self.mail_templates[label] = self.mail_template_text.get("1.0", tk.END).strip()
+
+        try:
+            for template_label, text in self.mail_templates.items():
+                path = self._mail_template_path(template_label)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text.rstrip() + "\n", encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror("Save failed", f"Failed to save mail templates: {exc}")
+            return
+
+        self._append_console(f"[INFO] Saved mail templates under {self.project_root / 'templates'}\n")
+        if hasattr(self, "status_var") and self.status_var:
+            self.status_var.set("Mail templates saved successfully.")
+
+    def _reload_current_mail_template(self) -> None:
+        """Reloads the selected mail template from disk."""
+        label = self.mail_template_var.get()
+        if not label:
+            return
+        path = self._mail_template_path(label)
+        text = path.read_text(encoding="utf-8", errors="replace").strip() if path.exists() else ""
+        self.mail_templates[label] = text
+        self.mail_template_text.delete("1.0", tk.END)
+        self.mail_template_text.insert("1.0", text)
+        if hasattr(self, "status_var") and self.status_var:
+            self.status_var.set(f"Reloaded {label}.")
 
     def _reset_current_prompt(self) -> None:
         """Resets the currently selected prompt to the built-in default."""
@@ -761,11 +885,15 @@ class MailSenderWorkbench:
         self.values = load_settings(self.settings_path)
         self.env_values = load_env(self.env_path)
         self.prompts = load_prompts(self.project_root / "prompts.toml")
+        self.mail_templates = self._load_mail_templates()
+        self._last_prompt_mode = None
+        self._last_mail_template = None
         self._load_form_values()
         self._load_env_values()
         self._on_prompt_mode_change()
+        self._on_mail_template_change()
         self._loading = False
-        self._append_console("[INFO] Reloaded settings.toml, .env and prompts.toml\n")
+        self._append_console("[INFO] Reloaded settings.toml, .env, prompts.toml and mail templates\n")
 
     def load_config_file(self) -> None:
         """
@@ -1060,6 +1188,7 @@ class MailSenderWorkbench:
             ("--resend-existing", "RESEND_EXISTING"),
             ("--skip-invalid-check", "SKIP_INVALID_CHECK"),
             ("--allow-empty-attachments", "ALLOW_EMPTY_ATTACHMENTS"),
+            ("--spam-safe", "SPAM_SAFE_MODE"),
             ("--log-dry-run", "LOG_DRY_RUN"),
             ("--delete-input-after-success", "DELETE_INPUT_AFTER_SUCCESS"),
             ("--verify-email-smtp", "VERIFY_EMAIL_SMTP"),

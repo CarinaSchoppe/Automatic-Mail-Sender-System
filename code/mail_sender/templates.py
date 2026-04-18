@@ -43,6 +43,7 @@ def render_mail(
         subject_override: str | None = None,
         signature_image_path: Path | None = None,
         signature_image_width: int = 180,
+        embed_signature_image: bool = True,
 ) -> RenderedMail:
     """
     Creates the subject, plain text body, and HTML body for an email.
@@ -55,6 +56,7 @@ def render_mail(
         subject_override (str | None): Optional subject override.
         signature_image_path (Path | None): Path to the logo image.
         signature_image_width (int): Width of the logo in HTML.
+        embed_signature_image (bool): Whether {IMAGE} should become an inline MIME image.
 
     Returns:
         RenderedMail: The finished email object.
@@ -82,7 +84,7 @@ def render_mail(
         body_text = f"{body_text}\n\n{_render_text_signature(signature_text)}"
 
     html_body = _text_to_html(body_text)
-    if signature and "{IMAGE}" in signature:
+    if signature and "{IMAGE}" in signature and embed_signature_image:
         if signature_image_path is None or not signature_image_path.exists():
             raise FileNotFoundError(
                 "Signature contains {IMAGE}, but the logo file was not found. "

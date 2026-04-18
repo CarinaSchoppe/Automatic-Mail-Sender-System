@@ -48,6 +48,9 @@ def project(tmp_path: Path) -> Path:
     (tmp_path / "templates/phd.txt").write_text("Subject: PhD {company}\n\nHello {company}", encoding="utf-8")
     (tmp_path / "templates/freelance_german.txt").write_text("Subject: DE {company}\n\nHallo {company}", encoding="utf-8")
     (tmp_path / "templates/freelance_english.txt").write_text("Subject: EN {company}\n\nHello {company}", encoding="utf-8")
+    (tmp_path / "templates/phd_spam_safe.txt").write_text("Subject: PhD safe {company}\n\nHello safe {company}", encoding="utf-8")
+    (tmp_path / "templates/freelance_german_spam_safe.txt").write_text("Subject: DE safe {company}\n\nHallo safe {company}", encoding="utf-8")
+    (tmp_path / "templates/freelance_english_spam_safe.txt").write_text("Subject: EN safe {company}\n\nHello safe {company}", encoding="utf-8")
     (tmp_path / "templates/signature.txt").write_text("Regards\n{IMAGE}", encoding="utf-8")
     (tmp_path / "templates/signature-logo.png").write_bytes(PNG_BYTES)
 

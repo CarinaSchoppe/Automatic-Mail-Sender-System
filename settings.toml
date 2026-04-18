@@ -101,6 +101,9 @@ SKIP_INVALID_CHECK = false
 # Allow empty attachments: Allows running a mode even when the attachment folder is empty.
 ALLOW_EMPTY_ATTACHMENTS = false
 
+# Spam-safe mode: Uses spam-safe mail templates and sends without file attachments or embedded signature images.
+SPAM_SAFE_MODE = false
+
 # Log dry-run: Writes dry-run recipients to sent logs.
 LOG_DRY_RUN = false
 

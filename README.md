@@ -56,8 +56,11 @@ The mail sender only needs `company` and `mail`, but research rows without `sour
 4. Edit the email templates and signature:
 
 - `templates/phd.txt`
+- `templates/phd_spam_safe.txt`
 - `templates/freelance_german.txt`
+- `templates/freelance_german_spam_safe.txt`
 - `templates/freelance_english.txt`
+- `templates/freelance_english_spam_safe.txt`
 - `templates/signature.txt`
 
 Mode mapping:
@@ -70,6 +73,8 @@ The signature contains `{IMAGE}` for your logo. By default, place the logo here:
 ```text
 templates/signature-logo.png
 ```
+
+Set `SPAM_SAFE_MODE = true` in `settings.toml` or enable "Spam-safe mode" in the GUI to send the matching spam-safe mail template instead of the normal template. In that mode, the sender does not attach files from `attachments/<Mode>` and does not embed the signature logo as an inline image. The message body says that the documents can be sent later if the recipient is interested.
 
 If the file has another name, pass it at startup:
 
@@ -109,6 +114,7 @@ SEND_TARGET_MAX_ROUNDS = 0
 LOG_DRY_RUN = false
 WRITE_SENT_LOG = true
 DELETE_INPUT_AFTER_SUCCESS = false
+SPAM_SAFE_MODE = false
 ```
 
 Then run:

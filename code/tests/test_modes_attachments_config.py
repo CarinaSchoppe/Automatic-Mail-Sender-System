@@ -20,10 +20,13 @@ def test_modes_point_to_input_attachments_and_output(project: Path) -> None:
     assert phd.recipients_dir == project / "input/PhD"
     assert phd.log_path == project / "output/send_phd.csv"
     assert german.template_path.name == "freelance_german.txt"
+    assert german.spam_safe_template_path.name == "freelance_german_spam_safe.txt"
     assert german.attachments_dir == project / "attachments/Freelance_German"
     assert german.log_path == project / "output/send_freelance.csv"
     assert english.template_path.name == "freelance_english.txt"
+    assert english.spam_safe_template_path.name == "freelance_english_spam_safe.txt"
     assert english.recipients_dir == project / "input/Freelance_English"
+    assert phd.spam_safe_template_path.name == "phd_spam_safe.txt"
 
     with pytest.raises(ValueError, match="Unknown mode"):
         get_mode("Freelance", project)
