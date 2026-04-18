@@ -136,7 +136,16 @@ class ThreadSafeRecipientSink:
     Prevents duplicate entries and stops the search once the target is reached.
     """
 
-    def __init__(self, target_count: int, seen_emails: set[str], seen_companies: set[str], config: ResearchConfig, mode: MailMode, global_target_count: int, initial_count: int):
+    def __init__(
+            self,
+            target_count: int,
+            seen_emails: set[str],
+            seen_companies: set[str],
+            config: ResearchConfig,
+            mode: MailMode,
+            global_target_count: int | None = None,
+            initial_count: int = 0,
+    ):
         """
         Initializes the sink with targets and already known data.
 
@@ -150,7 +159,7 @@ class ThreadSafeRecipientSink:
             initial_count (int): Number of leads already found in previous batches.
         """
         self.target_count = target_count
-        self.global_target_count = global_target_count
+        self.global_target_count = target_count if global_target_count is None else global_target_count
         self.initial_count = initial_count
         self.seen_emails = {email.lower() for email in seen_emails}
         self.seen_companies = {company for company in seen_companies if company}
@@ -309,7 +318,7 @@ def _load_settings() -> dict:
         return {}
 
 
-def _provider_and_model_from_research_model(research_model: str, fallback_provider: str = "gemini") -> tuple[str, str]:
+def provider_and_model_from_research_model(research_model: str, fallback_provider: str = "gemini") -> tuple[str, str]:
     """
     Derives the provider from one user-facing RESEARCH_MODEL value.
     Prefixes like openai:gpt-5.4 or ollama:llama3.1:8b force the provider.
@@ -334,6 +343,9 @@ def _provider_and_model_from_research_model(research_model: str, fallback_provid
     if ":" in raw_model or lowered.startswith(OLLAMA_MODEL_PREFIXES):
         return "ollama", raw_model
     return fallback_provider.strip().lower() or "gemini", raw_model
+
+
+_provider_and_model_from_research_model = provider_and_model_from_research_model
 
 
 def _legacy_model_for_provider(provider: str, gemini_model: str, openai_model: str, ollama_model: str = "llama3.1:8b") -> str:
@@ -376,7 +388,7 @@ def default_config() -> ResearchConfig:
     ollama_model = cast(str, _get("OLLAMA_MODEL", "llama3.1:8b"))
     research_model = cast(str, _get("RESEARCH_MODEL", ""))
     if research_model:
-        provider, model = _provider_and_model_from_research_model(research_model, legacy_provider)
+        provider, model = provider_and_model_from_research_model(research_model, legacy_provider)
     else:
         provider = legacy_provider
         model = _legacy_model_for_provider(provider, gemini_model, openai_model, ollama_model)
@@ -478,7 +490,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
 
     selected_provider = args.provider or env_config.provider
     if args.model:
-        selected_provider, selected_model = _provider_and_model_from_research_model(args.model, selected_provider)
+        selected_provider, selected_model = provider_and_model_from_research_model(args.model, selected_provider)
     elif args.provider:
         selected_model = _legacy_model_for_provider(args.provider, args.gemini_model, args.openai_model, args.ollama_model)
     else:
@@ -853,10 +865,12 @@ def run_self_research(
         mode: MailMode,
         existing_emails: set[str],
         existing_companies: set[str],
+        sink: RecipientSink | None = None,
 ) -> list[Recipient]:
     """Compatibility wrapper around the self research base workflow."""
-    target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
-    sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config, mode)
+    if sink is None:
+        target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
+        sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config, mode)
     return _self_research.run_self_research(config, mode, existing_emails, existing_companies, sink=sink)
 
 
@@ -865,10 +879,12 @@ def run_ollama_web_research(
         mode: MailMode,
         existing_emails: set[str],
         existing_companies: set[str],
+        sink: RecipientSink | None = None,
 ) -> list[Recipient]:
     """Fuehrt aus Ollama-Ausgabe web Recherche."""
-    target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
-    sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config, mode)
+    if sink is None:
+        target_count = config.send_target_count if config.send_target_count > 0 else config.max_companies
+        sink = ThreadSafeRecipientSink(target_count, existing_emails, existing_companies, config, mode)
     return _self_research.run_ollama_web_research(config, mode, existing_emails, existing_companies, sink=sink)
 
 

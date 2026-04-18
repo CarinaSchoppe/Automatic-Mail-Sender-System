@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from mail_sender.recipients import Recipient
 
@@ -51,6 +51,10 @@ class RecipientSink(Protocol):
     Schnittstellen-Definition für Objekte, die gefundene Leads (Recipient) sammeln.
     Ermöglicht eine Entkoppelung zwischen der Suche (Crawler/KI) und der Speicherung.
     """
+
+    lock: Any
+    recipients: list[Recipient]
+    target_count: int
 
     def add_recipient(self, recipient: Recipient, thread_id: int | None = None) -> bool:
         """

@@ -141,6 +141,10 @@ class MailSenderWorkbench:
         self.env_variables: dict[str, tk.Variable] = {}
         self.text_widgets: dict[str, tk.Text] = {}
         self.env_text_widgets: dict[str, tk.Text] = {}
+        self.setting_search_vars: dict[str, tk.StringVar] = {}
+        self.setting_search_counts: dict[str, tk.StringVar] = {}
+        self.setting_row_widgets: dict[str, list[dict[str, Any]]] = {"settings": [], "env": []}
+        self.setting_section_widgets: dict[str, list[dict[str, Any]]] = {"settings": [], "env": []}
         self.keyword_text: tk.Text | None = None
         self.compact_save = tk.BooleanVar(value=False)
         self.autosave = tk.BooleanVar(value=True)
@@ -347,7 +351,7 @@ class MailSenderWorkbench:
         """
         top = ttk.Frame(self.settings_tab)
         top.pack(fill="x", pady=(0, 10))
-        ttk.Checkbutton(top, text="Compact save: remove settings that match defaults", variable=self.compact_save).pack(side="left")
+        self._build_setting_search_controls(top, "settings", "Search settings")
         ttk.Checkbutton(top, text="Auto-save changes directly", variable=self.autosave).pack(side="left", padx=(18, 0))
         ttk.Checkbutton(top, text="Auto-refresh tables", variable=self.auto_refresh).pack(side="left", padx=(18, 0))
 
@@ -362,8 +366,34 @@ class MailSenderWorkbench:
         top = ttk.Frame(self.env_tab)
         top.pack(fill="x", pady=(0, 10))
         ttk.Label(top, text=f".env: {self.env_path}", style="Muted.TLabel").pack(side="left")
+        self._build_setting_search_controls(top, "env", "Search .env", padx=(18, 0))
         body = self._scrollable_body(self.env_tab)
         self._build_settings_sections(body, ENV_SCHEMA, env=True)
+
+    def _build_setting_search_controls(
+            self,
+            parent: ttk.Frame,
+            target: str,
+            placeholder: str,
+            *,
+            padx: tuple[int, int] = (0, 0),
+    ) -> None:
+        """Creates search controls for settings-style tabs."""
+        wrapper = ttk.Frame(parent)
+        wrapper.pack(side="left", padx=padx)
+        ttk.Label(wrapper, text=placeholder).pack(side="left", padx=(0, 6))
+
+        search_var = tk.StringVar()
+        self.setting_search_vars[target] = search_var
+        entry = ttk.Entry(wrapper, textvariable=search_var, width=28)
+        entry.pack(side="left")
+        self._attach_hover(entry, "Filters by setting key, label, section, and help text.")
+        search_var.trace_add("write", lambda *_args, search_target=target: self._apply_setting_search(search_target))
+
+        ttk.Button(wrapper, text="Clear", command=lambda: search_var.set("")).pack(side="left", padx=(6, 0))
+        count_var = tk.StringVar(value="")
+        self.setting_search_counts[target] = count_var
+        ttk.Label(wrapper, textvariable=count_var, style="Muted.TLabel").pack(side="left", padx=(8, 0))
 
     def _build_settings_sections(
             self,
@@ -374,6 +404,9 @@ class MailSenderWorkbench:
             column_count: int = 2,
     ) -> None:
         """Arranges setting groups in balanced columns."""
+        target = "env" if env else "settings"
+        self.setting_row_widgets[target] = []
+        self.setting_section_widgets[target] = []
         sections: dict[str, list[SettingSpec]] = {}
         for spec in schema:
             sections.setdefault(spec.section, []).append(spec)
@@ -390,9 +423,23 @@ class MailSenderWorkbench:
             target_column = weights.index(min(weights))
             frame = ttk.LabelFrame(columns[target_column], text=section, padding=12)
             frame.pack(fill="x", expand=False, pady=8)
+            section_entry: dict[str, Any] = {"frame": frame, "section": section, "rows": []}
+            self.setting_section_widgets[target].append(section_entry)
             for row, spec in enumerate(specs):
-                self._add_setting_row(frame, row, spec, env=env)
+                row_widget = self._add_setting_row(frame, row, spec, env=env)
+                row_entry = {
+                    "widget": row_widget,
+                    "section": section_entry,
+                    "key": spec.key,
+                    "visible": True,
+                    "search_text": " ".join(
+                        [section, spec.key, spec.label, spec.kind, spec.help_text, *spec.choices]
+                    ).lower(),
+                }
+                self.setting_row_widgets[target].append(row_entry)
+                section_entry["rows"].append(row_entry)
             weights[target_column] += _settings_section_weight(specs)
+        self._apply_setting_search(target)
 
     def _scrollable_body(self, parent: ttk.Frame) -> ttk.Frame:
         """
@@ -408,12 +455,14 @@ class MailSenderWorkbench:
         scrollbar.pack(side="right", fill="y")
         return body
 
-    def _add_setting_row(self, parent: tk.Widget, row: int, spec: SettingSpec, *, env: bool = False) -> None:
+    def _add_setting_row(self, parent: tk.Widget, row: int, spec: SettingSpec, *, env: bool = False) -> tk.Widget:
         """
         Adds a single setting row (label + widget) to the UI.
         Supports checkboxes, sliders, choice menus, and text fields.
         """
-        ttk.Label(parent, text=spec.label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
+        row_frame = ttk.Frame(parent)
+        row_frame.grid(row=row, column=0, sticky="ew")
+        ttk.Label(row_frame, text=spec.label).grid(row=0, column=0, sticky="w", padx=(0, 10), pady=5)
 
         var = _create_variable(spec, self.env_values if env else self.values)
         variables = self.env_variables if env else self.variables
@@ -422,12 +471,12 @@ class MailSenderWorkbench:
         var.trace_add("write", lambda *_args, target="env" if env else "settings": self._schedule_autosave(target))
         widget: tk.Widget
         if spec.kind == "bool":
-            widget = ttk.Checkbutton(parent, variable=var)
+            widget = ttk.Checkbutton(row_frame, variable=var)
         elif spec.kind == "choice":
             state = "normal" if spec.key == "RESEARCH_MODEL" else "readonly"
-            widget = ttk.Combobox(parent, textvariable=var, values=spec.choices, state=state, width=28)
+            widget = ttk.Combobox(row_frame, textvariable=var, values=spec.choices, state=state, width=28)
         elif spec.kind in {"int", "float"} and spec.slider and spec.min_value is not None and spec.max_value is not None:
-            wrapper = ttk.Frame(parent)
+            wrapper = ttk.Frame(row_frame)
             entry_var = tk.StringVar(value=str(var.get()))
             updating = {"active": False}
 
@@ -464,30 +513,31 @@ class MailSenderWorkbench:
 
             var.trace_add("write", sync_entry)
             entry_var.trace_add("write", sync_slider)
+            scale_kwargs = {
+                "from_": spec.min_value,
+                "to": spec.max_value,
+                "orient": "horizontal",
+            }
             if spec.kind == "int":
                 int_var = cast(tk.IntVar, var)
                 scale = ttk.Scale(
                     wrapper,
-                    from_=spec.min_value,
-                    to=spec.max_value,
-                    orient="horizontal",
                     variable=int_var,
                     command=lambda value: int_var.set(int(float(value))),
+                    **scale_kwargs,
                 )
             else:
                 scale = ttk.Scale(
                     wrapper,
-                    from_=spec.min_value,
-                    to=spec.max_value,
-                    orient="horizontal",
                     variable=cast(tk.DoubleVar, var),
+                    **scale_kwargs,
                 )
             scale.pack(side="left", fill="x", expand=True)
             value_entry = ttk.Entry(wrapper, textvariable=entry_var, width=8, justify="right")
             value_entry.pack(side="right", padx=(8, 0))
             widget = wrapper
         elif spec.kind == "list":
-            text = tk.Text(parent, height=5, width=46, wrap="word")
+            text = tk.Text(row_frame, height=5, width=46, wrap="word")
             self._style_text_widget(text)
             (self.env_text_widgets if env else self.text_widgets)[spec.key] = text
             if spec.key == "SELF_SEARCH_KEYWORDS":
@@ -503,13 +553,49 @@ class MailSenderWorkbench:
             widget = text
         else:
             show = "*" if any(secret in spec.key.lower() for secret in ("password", "api_key", "token", "secret")) else ""
-            widget = ttk.Entry(parent, textvariable=var, width=32, show=show)
-        widget.grid(row=row, column=1, sticky="ew", pady=5)
+            widget = ttk.Entry(row_frame, textvariable=var, width=32, show=show)
+        widget.grid(row=0, column=1, sticky="ew", pady=5)
         self._attach_hover(widget, f"{spec.key}: {spec.help_text}")
-        help_label = ttk.Label(parent, text=spec.help_text, style="Muted.TLabel", wraplength=360)
-        help_label.grid(row=row, column=2, sticky="w", padx=(12, 0))
+        help_label = ttk.Label(row_frame, text=spec.help_text, style="Muted.TLabel", wraplength=360)
+        help_label.grid(row=0, column=2, sticky="w", padx=(12, 0))
         self._attach_hover(help_label, f"{spec.key}: {spec.help_text}")
-        parent.columnconfigure(1, weight=1)
+        row_frame.columnconfigure(1, weight=1)
+        parent.columnconfigure(0, weight=1)
+        return row_frame
+
+    def _apply_setting_search(self, target: str) -> None:
+        """Filters setting rows for the selected settings-style tab."""
+        rows = self.setting_row_widgets.get(target, [])
+        if not rows:
+            return
+
+        query = self.setting_search_vars.get(target, tk.StringVar()).get().strip().lower()
+        tokens = [token for token in query.split() if token]
+        visible_count = 0
+
+        for row in rows:
+            visible = all(token in row["search_text"] for token in tokens)
+            row["visible"] = visible
+            if visible:
+                row["widget"].grid()
+                visible_count += 1
+            else:
+                row["widget"].grid_remove()
+
+        sections = self.setting_section_widgets.get(target, [])
+        for section in sections:
+            section["frame"].pack_forget()
+
+        for section in sections:
+            section_visible = any(row["visible"] for row in section["rows"])
+            frame = section["frame"]
+            if section_visible:
+                frame.pack(fill="x", expand=False, pady=8)
+
+        count_var = self.setting_search_counts.get(target)
+        if count_var is not None:
+            total = len(rows)
+            count_var.set(f"{visible_count}/{total}" if tokens else "")
 
     def _build_prompts_tab(self) -> None:
         """

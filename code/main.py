@@ -15,8 +15,8 @@ from mail_sender.cli import main as mail_main
 from mail_sender.sent_log import read_known_output_emails, read_logged_rows
 from research.logging_utils import info as _info
 from research.logging_utils import verbose as _verbose
-from research.research_leads import _provider_and_model_from_research_model
 from research.research_leads import main as research_main
+from research.research_leads import provider_and_model_from_research_model
 
 # Project root directory and path to configuration file
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -67,9 +67,9 @@ if _RESEARCH_MODEL_SETTING is None:
         _RESEARCH_MODEL_SETTING = "self"
     else:
         _RESEARCH_MODEL_SETTING = _setting("GEMINI_MODEL", "gemini-3-flash-preview")
-RESEARCH_MODEL: str = cast(str, _RESEARCH_MODEL_SETTING)
+RESEARCH_MODEL: str = _RESEARCH_MODEL_SETTING
 RESEARCH_AI_PROVIDER: str
-RESEARCH_AI_PROVIDER, RESEARCH_MODEL = _provider_and_model_from_research_model(
+RESEARCH_AI_PROVIDER, RESEARCH_MODEL = provider_and_model_from_research_model(
     RESEARCH_MODEL,
     _LEGACY_RESEARCH_PROVIDER,
 )

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from gui.app import MailSenderWorkbench
+from gui.settings_store import ENV_SCHEMA, SETTINGS_SCHEMA
 
 
 def test_mail_sender_workbench_collects_and_saves_settings(tmp_path: Path) -> None:
@@ -191,6 +192,44 @@ def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: P
         assert isinstance(app.variables["RESEARCH_MIN_COMPANIES"].get(), int)
         assert isinstance(app.variables["RESEARCH_MAX_COMPANIES"].get(), int)
         assert "SMTP_PORT" in app.variables
+    finally:
+        root.destroy()
+
+
+def test_mail_sender_workbench_filters_settings_and_env(tmp_path: Path) -> None:
+    """Checks behavior for settings and env search filters."""
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+
+        assert len(app.setting_row_widgets["settings"]) == len(SETTINGS_SCHEMA)
+        app.setting_search_vars["settings"].set("spam safe")
+        visible_setting_keys = {
+            row["key"]
+            for row in app.setting_row_widgets["settings"]
+            if row["visible"]
+        }
+
+        assert visible_setting_keys == {"SPAM_SAFE_MODE"}
+        assert app.setting_search_counts["settings"].get() == f"1/{len(SETTINGS_SCHEMA)}"
+
+        app.setting_search_vars["settings"].set("")
+        assert app.setting_search_counts["settings"].get() == ""
+        assert all(row["visible"] for row in app.setting_row_widgets["settings"])
+
+        app.setting_search_vars["env"].set("password")
+        visible_env_keys = {
+            row["key"]
+            for row in app.setting_row_widgets["env"]
+            if row["visible"]
+        }
+
+        assert visible_env_keys == {"SMTP_PASSWORD"}
+        assert app.setting_search_counts["env"].get() == f"1/{len(ENV_SCHEMA)}"
     finally:
         root.destroy()
 
