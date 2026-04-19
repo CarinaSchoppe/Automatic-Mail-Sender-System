@@ -83,6 +83,7 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("LOG_DRY_RUN", "Log dry-run", "bool", False, "Mail", "Writes dry-run recipients to sent logs."),
     SettingSpec("WRITE_SENT_LOG", "Write sent log", "bool", True, "Mail", "Writes successful real sends to output/send_*.csv."),
     SettingSpec("DELETE_INPUT_AFTER_SUCCESS", "Delete input after success", "bool", False, "Mail", "Deletes processed input CSV/TXT files after a successful send run."),
+    SettingSpec("SUBJECT_OVERRIDE", "Subject override", "str", "", "Mail", "Optional subject line override for mail sending. Leave empty to use the selected template subject."),
     SettingSpec("SIGNATURE_LOGO", "Signature logo", "str", "templates/signature-logo.png", "Mail", "Path to the inline signature image."),
     SettingSpec("SIGNATURE_LOGO_WIDTH", "Logo width", "int", 325, "Mail", "Inline signature logo width in pixels.", min_value=50, max_value=900),
     SettingSpec("VERBOSE", "Verbose output", "bool", False, "Logging", "Enables detailed [VERBOSE] lines."),

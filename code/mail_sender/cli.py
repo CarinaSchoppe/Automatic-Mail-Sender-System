@@ -13,7 +13,7 @@ from pathlib import Path
 from mail_sender.attachments import list_attachments
 from mail_sender.config import ConfigError, load_smtp_config
 from mail_sender.email_validation import EmailValidationResult, validate_email_address
-from mail_sender.modes import MODE_NAMES
+from mail_sender.modes import get_available_mode_names
 from mail_sender.modes import get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients_from_dir
 from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails
@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         int: Exit code (0 for success, 1 for errors).
     """
     parser = argparse.ArgumentParser(description="Send PhD or Freelance mail batches via SMTPS.")
-    parser.add_argument("--mode", required=True, choices=["Auto", "auto", "PhD", "phd", "Freelance_German", "freelance_german", "Freelance_English", "freelance_english"], help="Mail mode.")
+    parser.add_argument("--mode", required=True, help="Mail mode. Use Auto or any built-in/custom task mode.")
     parser.add_argument("--base-dir", default=".", help="Project base directory.")
     parser.add_argument("--send", action="store_true", help="Actually send the emails. Without this flag, dry-run only.")
     parser.add_argument("--log-dry-run", action="store_true", help="Write dry-run rows to the CSV log. Off by default.")
@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         _verbose(args.verbose, f"Parsed CLI args: {args}")
         modes = _select_modes(args.mode, base_dir)
         if not modes:
-            print("No input files found in input/PhD, input/Freelance_German, or input/Freelance_English.")
+            print("No input files found for any available mode.")
             return 0
 
         _info(f"Selected {len(modes)} mode(s): {', '.join(mode.label for mode in modes)}.")
@@ -133,7 +133,7 @@ def _select_modes(mode_name: str, base_dir: Path):
     if normalized != "auto":
         return [get_mode(mode_name, base_dir)]
 
-    modes = [get_mode(name, base_dir) for name in MODE_NAMES]
+    modes = [get_mode(name, base_dir) for name in get_available_mode_names(base_dir)]
     return [mode for mode in modes if list_recipient_files(mode.recipients_dir)]
 
 

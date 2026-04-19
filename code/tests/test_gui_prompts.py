@@ -74,3 +74,35 @@ def test_workbench_adds_custom_task_to_prompt_template_and_mode_dropdowns(workbe
     assert (workbench.project_root / "attachments" / "Custom_Online_Training").exists()
     assert (workbench.project_root / "templates" / "custom_online_training.txt").exists()
     assert (workbench.project_root / "templates" / "custom_online_training_spam_safe.txt").exists()
+
+
+def test_workbench_custom_task_action_buttons(workbench, monkeypatch):
+    """Checks the operational buttons around custom outreach tasks."""
+    workbench.new_task_var.set("Custom Online Training")
+    workbench.add_prompt_task()
+
+    workbench.open_current_task_template(spam_safe=True)
+    assert workbench.notebook.select() == str(workbench.mail_templates_tab)
+    assert workbench.mail_template_var.get() == "Custom Online Training spam-safe"
+
+    workbench.notebook.select(workbench.prompts_tab)
+    workbench.prompt_mode_var.set("Custom Online Training")
+    workbench._on_prompt_mode_change()
+    workbench.use_current_prompt_task()
+    assert workbench.variables["MODE"].get() == "Custom_Online_Training"
+    assert workbench.input_mode_var.get() == "Custom_Online_Training"
+
+    workbench.new_task_var.set("Duplicated Outreach")
+    workbench.duplicate_current_prompt_task()
+    assert "Duplicated Outreach" in workbench.prompts
+    assert workbench.variables["MODE"].get() == "Duplicated_Outreach"
+
+    workbench.new_task_var.set("Renamed Outreach")
+    workbench.rename_current_prompt_task()
+    assert "Renamed Outreach" in workbench.prompts
+    assert "Duplicated Outreach" not in workbench.prompts
+    assert workbench.variables["MODE"].get() == "Renamed_Outreach"
+
+    monkeypatch.setattr("gui.app.messagebox.askyesno", lambda *_args, **_kwargs: True)
+    workbench.delete_current_prompt_task()
+    assert "Renamed Outreach" not in workbench.prompts

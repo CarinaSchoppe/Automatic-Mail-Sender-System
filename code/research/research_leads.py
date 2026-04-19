@@ -31,7 +31,7 @@ if str(CODE_DIR) not in sys.path:
 
 from mail_sender.attachments import list_attachments
 from mail_sender.email_validation import validate_email_address
-from mail_sender.modes import MODE_NAMES, MailMode, get_mode
+from mail_sender.modes import MailMode, get_available_mode_names, get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients
 from mail_sender.sent_log import read_logged_emails, read_logged_rows, read_known_output_emails
 from research import parsing as _parsing
@@ -469,7 +469,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     env_config = default_config()
     parser = argparse.ArgumentParser(description="research new lead CSV files with AI providers or self-hosted web scraping.")
     parser.add_argument("--provider", default=None, choices=["gemini", "openai", "ollama", "self"], help="Research provider. Usually inferred from --model.")
-    parser.add_argument("--mode", default=env_config.mode_name, choices=MODE_NAMES, help="research mode.")
+    parser.add_argument("--mode", default=env_config.mode_name, help="Research mode. Use any built-in or custom task mode.")
     parser.add_argument("--model", default=None, help="Research model. Provider is inferred from the model name or an optional provider: prefix.")
     parser.add_argument("--gemini-model", default=env_config.gemini_model)
     parser.add_argument("--openai-model", default=env_config.openai_model)
@@ -822,9 +822,9 @@ def _generate_and_process_response(
         global_total, global_missing, global_target = current_total, missing, target
     thread_label = thread_id if thread_id is not None else "X"
     _info(
-        f"Thread {thread_label} hat nun {added_count} neue Mail(s) in die Gesamt-Target-Liste aufgenommen. "
-        f"Somit haben wir {global_total} aktuell in der Gesamt-Target-Liste und es fehlen noch "
-        f"{global_missing} bis zum Target {global_target}."
+        f"Thread {thread_label} added {added_count} new email(s) to the global target list. "
+        f"The global target list now has {global_total} email(s); "
+        f"{global_missing} still missing to reach target {global_target}."
     )
 
     _info(f"Parsed {len(candidates)} candidates, added {added_count} new. Total: {current_total}/{target}, missing: {missing}")
@@ -1019,7 +1019,7 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
         _verbose(verbose, f"Loaded {len(invalid)} invalid email exclusion(s) from {invalid_path}.")
 
     # Load from all input directories
-    for mode_name in MODE_NAMES:
+    for mode_name in get_available_mode_names(base_dir):
         mode = get_mode(mode_name, base_dir)
         recipient_files = list_recipient_files(mode.recipients_dir)
         for path in recipient_files:

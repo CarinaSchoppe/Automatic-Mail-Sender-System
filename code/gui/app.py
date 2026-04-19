@@ -39,6 +39,12 @@ HOVER_TEXTS = {
     "Run Pipeline": "Run research and mail sending through code/main.py using the current settings.",
     "Research Only": "Run only the AI/self/Ollama research step.",
     "Mail Only": "Run only the mail sender for the currently selected mode.",
+    "Use Task": "Make the selected prompt task the active MODE and create its folders/templates.",
+    "Sync Task Assets": "Create or repair the selected task folders and mail templates.",
+    "Open Mail Template": "Open the normal outreach mail template for the selected task.",
+    "Open Spam-safe Template": "Open the spam-safe outreach mail template for the selected task.",
+    "Duplicate Task": "Copy the selected task prompt and templates into the name typed in New task.",
+    "Rename Task": "Rename the selected custom task to the name typed in New task.",
     "Stop": "Terminate the currently running subprocess.",
     "Refresh": "Refresh file lists, mail tables, and log lists from disk.",
     "Import CSV/TXT": "Copy a CSV or TXT lead file into the selected input mode folder.",
@@ -284,7 +290,7 @@ class MailSenderWorkbench:
         self._toolbar_button(actions, "Save Config As", self.save_config_file)
         self._toolbar_button(actions, "Save All", self.save_all, style="Accent.TButton")
         self._toolbar_button(actions, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
-        self._toolbar_button(actions, "Research Only", lambda: self.start_process(["code/research/research_leads.py"]))
+        self._toolbar_button(actions, "Research Only", self.start_research_only)
         self._toolbar_button(actions, "Mail Only", self.start_mail_only)
         self._toolbar_button(actions, "Stop", self.stop_process, style="Danger.TButton")
 
@@ -693,8 +699,14 @@ class MailSenderWorkbench:
         ttk.Label(bottom, text="New task:").pack(side="left", padx=(0, 6))
         self.new_task_var = tk.StringVar()
         ttk.Entry(bottom, textvariable=self.new_task_var, width=28).pack(side="left", padx=(0, 8))
-        ttk.Button(bottom, text="Add Task", command=self.add_prompt_task).pack(side="left", padx=(0, 8))
-        ttk.Button(bottom, text="Delete Task", command=self.delete_current_prompt_task, style="Danger.TButton").pack(side="left")
+        self._toolbar_button(bottom, "Add Task", self.add_prompt_task)
+        self._toolbar_button(bottom, "Use Task", self.use_current_prompt_task)
+        self._toolbar_button(bottom, "Sync Task Assets", self.sync_current_prompt_task_assets)
+        self._toolbar_button(bottom, "Open Mail Template", lambda: self.open_current_task_template(spam_safe=False))
+        self._toolbar_button(bottom, "Open Spam-safe Template", lambda: self.open_current_task_template(spam_safe=True))
+        self._toolbar_button(bottom, "Duplicate Task", self.duplicate_current_prompt_task)
+        self._toolbar_button(bottom, "Rename Task", self.rename_current_prompt_task)
+        self._toolbar_button(bottom, "Delete Task", self.delete_current_prompt_task, style="Danger.TButton")
         ttk.Button(bottom, text="Save Prompts", command=self.save_all_prompts, style="Accent.TButton").pack(side="right")
         ttk.Button(bottom, text="Reset current to Default", command=self._reset_current_prompt).pack(side="right", padx=10)
 
@@ -818,12 +830,7 @@ class MailSenderWorkbench:
             self.prompts[current] = self.prompt_text.get("1.0", tk.END).strip()
 
         self.prompts[label] = _default_new_task_prompt(label)
-        slug = mode_template_slug(label)
-        self.mail_templates[label] = _default_new_mail_template(label)
-        self.mail_templates[f"{label} spam-safe"] = _default_new_mail_template(label, spam_safe=True)
-        mode_name = mode_name_from_label(label)
-        (self.project_root / "input" / mode_name).mkdir(parents=True, exist_ok=True)
-        (self.project_root / "attachments" / mode_name).mkdir(parents=True, exist_ok=True)
+        mode_name, slug = self._sync_task_assets(label)
 
         self.new_task_var.set("")
         self._last_prompt_mode = None
@@ -847,6 +854,124 @@ class MailSenderWorkbench:
             f"and templates/{slug}_spam_safe.txt.\n"
         )
 
+    def use_current_prompt_task(self) -> None:
+        """Makes the selected prompt task the active run/input mode."""
+        label = self.prompt_mode_var.get()
+        if not self._is_real_task_label(label):
+            messagebox.showerror("No task selected", "Select a real outreach task first.")
+            return
+        if self._last_prompt_mode:
+            self.prompts[self._last_prompt_mode] = self.prompt_text.get("1.0", tk.END).strip()
+        mode_name, _slug = self._sync_task_assets(label)
+        if "MODE" in self.variables:
+            self.variables["MODE"].set(mode_name)
+        if hasattr(self, "input_mode_var"):
+            self.input_mode_var.set(mode_name)
+        self.save_settings()
+        self.refresh_tables()
+        self.notebook.select(self.inputs_tab)
+        self._append_console(f"[INFO] Active outreach task set to '{label}' ({mode_name}).\n")
+        if hasattr(self, "status_var") and self.status_var:
+            self.status_var.set(f"Active outreach task: {label}.")
+
+    def sync_current_prompt_task_assets(self) -> None:
+        """Creates missing folders/templates for the selected task and refreshes all dependent controls."""
+        label = self.prompt_mode_var.get()
+        if not self._is_real_task_label(label):
+            messagebox.showerror("No task selected", "Select a real outreach task first.")
+            return
+        mode_name, slug = self._sync_task_assets(label)
+        self._refresh_task_dropdowns(selected_label=label)
+        self.save_mail_templates()
+        self.refresh_tables()
+        self._append_console(
+            f"[INFO] Synced task '{label}': mode={mode_name}, templates/{slug}.txt, "
+            f"templates/{slug}_spam_safe.txt.\n"
+        )
+
+    def open_current_task_template(self, *, spam_safe: bool = False) -> None:
+        """Selects the selected task's normal or spam-safe mail template in the Mail Templates tab."""
+        label = self.prompt_mode_var.get()
+        if not self._is_real_task_label(label):
+            messagebox.showerror("No task selected", "Select a real outreach task first.")
+            return
+        self._sync_task_assets(label)
+        template_label = f"{label} spam-safe" if spam_safe else label
+        self._refresh_task_dropdowns(selected_label=label)
+        self.mail_template_var.set(template_label)
+        self._on_mail_template_change()
+        self.notebook.select(self.mail_templates_tab)
+        self._append_console(f"[INFO] Opened mail template '{template_label}'.\n")
+
+    def duplicate_current_prompt_task(self) -> None:
+        """Copies the selected task into a new task name from the New task field."""
+        source_label = self.prompt_mode_var.get()
+        target_label = mode_label_from_name(self.new_task_var.get().strip())
+        if not self._is_real_task_label(source_label):
+            messagebox.showerror("No source task", "Select a real outreach task to duplicate.")
+            return
+        if not target_label:
+            messagebox.showerror("Task name missing", "Enter the new task name in New task.")
+            return
+        if target_label == "Overseer" or target_label in self.prompts:
+            messagebox.showerror("Task exists", f"The task '{target_label}' is reserved or already exists.")
+            return
+        self.prompts[source_label] = self.prompt_text.get("1.0", tk.END).strip()
+        self.prompts[target_label] = self.prompts[source_label]
+        self.mail_templates[target_label] = self.mail_templates.get(source_label, _default_new_mail_template(target_label))
+        self.mail_templates[f"{target_label} spam-safe"] = self.mail_templates.get(
+            f"{source_label} spam-safe",
+            _default_new_mail_template(target_label, spam_safe=True),
+        )
+        self.new_task_var.set("")
+        self._last_prompt_mode = None
+        mode_name, _slug = self._sync_task_assets(target_label)
+        self._refresh_task_dropdowns(selected_label=target_label)
+        self.prompt_mode_var.set(target_label)
+        self._on_prompt_mode_change()
+        self.variables["MODE"].set(mode_name)
+        self.save_all_prompts()
+        self.save_mail_templates()
+        self.save_settings()
+        self._append_console(f"[INFO] Duplicated outreach task '{source_label}' to '{target_label}'.\n")
+
+    def rename_current_prompt_task(self) -> None:
+        """Renames a custom task using the New task field."""
+        old_label = self.prompt_mode_var.get()
+        new_label = mode_label_from_name(self.new_task_var.get().strip())
+        if old_label in {"PhD", "Freelance German", "Freelance English", "Overseer"}:
+            messagebox.showerror("Built-in task", "Built-in or reserved tasks cannot be renamed.")
+            return
+        if not self._is_real_task_label(old_label):
+            messagebox.showerror("No task selected", "Select a custom task to rename.")
+            return
+        if not new_label:
+            messagebox.showerror("Task name missing", "Enter the new task name in New task.")
+            return
+        if new_label == "Overseer" or new_label in self.prompts:
+            messagebox.showerror("Task exists", f"The task '{new_label}' is reserved or already exists.")
+            return
+
+        self.prompts[old_label] = self.prompt_text.get("1.0", tk.END).strip()
+        self.prompts[new_label] = self.prompts.pop(old_label)
+        self.mail_templates[new_label] = self.mail_templates.pop(old_label, _default_new_mail_template(new_label))
+        self.mail_templates[f"{new_label} spam-safe"] = self.mail_templates.pop(
+            f"{old_label} spam-safe",
+            _default_new_mail_template(new_label, spam_safe=True),
+        )
+        self.new_task_var.set("")
+        self._last_prompt_mode = None
+        mode_name, _slug = self._sync_task_assets(new_label)
+        self._refresh_task_dropdowns(selected_label=new_label)
+        self.prompt_mode_var.set(new_label)
+        self._on_prompt_mode_change()
+        self.variables["MODE"].set(mode_name)
+        self.save_all_prompts()
+        self.save_mail_templates()
+        self.save_settings()
+        self.refresh_tables()
+        self._append_console(f"[INFO] Renamed outreach task '{old_label}' to '{new_label}'.\n")
+
     def delete_current_prompt_task(self) -> None:
         """Deletes a custom prompt task from the GUI prompt list."""
         label = self.prompt_mode_var.get()
@@ -867,6 +992,21 @@ class MailSenderWorkbench:
         self._on_prompt_mode_change()
         self.save_all_prompts()
         self._append_console(f"[INFO] Deleted custom task '{label}' from prompts.toml.\n")
+
+    def _is_real_task_label(self, label: str) -> bool:
+        """Returns True when a label is a runnable outreach task."""
+        return bool(label and label != "Overseer" and label in self.prompts)
+
+    def _sync_task_assets(self, label: str) -> tuple[str, str]:
+        """Creates missing task folders and in-memory template entries."""
+        mode_name = mode_name_from_label(label)
+        slug = mode_template_slug(label)
+        (self.project_root / "input" / mode_name).mkdir(parents=True, exist_ok=True)
+        (self.project_root / "attachments" / mode_name).mkdir(parents=True, exist_ok=True)
+        self.mail_templates.setdefault(label, _default_new_mail_template(label))
+        self.mail_templates.setdefault(f"{label} spam-safe", _default_new_mail_template(label, spam_safe=True))
+        self.mail_template_paths = self._mail_template_file_map()
+        return mode_name, slug
 
     def _build_inputs_tab(self) -> None:
         """
@@ -1412,6 +1552,67 @@ class MailSenderWorkbench:
         command = self._mail_only_command()
         self._start_command(command)
 
+    def start_research_only(self) -> None:
+        """Starts research only with explicit arguments from the current GUI settings."""
+        self.save_all()
+        command = self._research_only_command()
+        self._start_command(command)
+
+    def _research_only_command(self) -> list[str]:
+        """Builds the command-line call for a pure research run from GUI settings."""
+        settings = self.collect_form_values()
+        args = [
+            sys.executable,
+            "code/research/research_leads.py",
+            "--mode",
+            str(settings["MODE"]),
+            "--base-dir",
+            str(self.project_root),
+            "--model",
+            str(settings["RESEARCH_MODEL"]),
+            "--ollama-base-url",
+            str(settings["OLLAMA_BASE_URL"]),
+            "--reasoning-effort",
+            str(settings["RESEARCH_REASONING_EFFORT"]),
+            "--min-companies",
+            str(settings["RESEARCH_MIN_COMPANIES"]),
+            "--max-companies",
+            str(settings["RESEARCH_MAX_COMPANIES"]),
+            "--person-emails-per-company",
+            str(settings["RESEARCH_PERSON_EMAILS_PER_COMPANY"]),
+            "--send-target-count",
+            str(settings["SEND_TARGET_COUNT"]),
+            "--max-iterations",
+            str(settings["SEND_TARGET_MAX_ROUNDS"]),
+            "--parallel-threads",
+            str(settings["PARALLEL_THREADS"]),
+            "--self-search-pages",
+            str(settings["SELF_SEARCH_PAGES"]),
+            "--self-results-per-page",
+            str(settings["SELF_RESULTS_PER_PAGE"]),
+            "--self-crawl-max-pages-per-site",
+            str(settings["SELF_CRAWL_MAX_PAGES_PER_SITE"]),
+            "--self-crawl-depth",
+            str(settings["SELF_CRAWL_DEPTH"]),
+            "--self-request-timeout",
+            str(settings["SELF_REQUEST_TIMEOUT"]),
+        ]
+        for keyword in settings.get("SELF_SEARCH_KEYWORDS", []):
+            args.extend(["--self-search-keyword", str(keyword)])
+        for flag, key in [
+            ("--no-write-output", "RESEARCH_WRITE_OUTPUT"),
+            ("--no-upload-attachments", "RESEARCH_UPLOAD_ATTACHMENTS"),
+        ]:
+            if not settings[key]:
+                args.append(flag)
+        for flag, key in [
+            ("--self-verify-email-smtp", "SELF_VERIFY_EMAIL_SMTP"),
+            ("--verbose", "VERBOSE"),
+        ]:
+            if settings[key]:
+                args.append(flag)
+        return args
+
     def _mail_only_command(self) -> list[str]:
         """Builds the command-line call for a pure mail sending run."""
         settings = self.collect_form_values()
@@ -1432,6 +1633,9 @@ class MailSenderWorkbench:
             "--verify-email-smtp-timeout",
             str(settings["VERIFY_EMAIL_SMTP_TIMEOUT"]),
         ]
+        subject_override = str(settings.get("SUBJECT_OVERRIDE", "")).strip()
+        if subject_override:
+            args.extend(["--subject", subject_override])
         for flag, key in [
             ("--send", "SEND"),
             ("--verbose", "VERBOSE"),
@@ -1444,6 +1648,7 @@ class MailSenderWorkbench:
             ("--verify-email-smtp", "VERIFY_EMAIL_SMTP"),
             ("--require-email-smtp-pass", "REQUIRE_EMAIL_SMTP_PASS"),
             ("--reject-catch-all", "REJECT_CATCH_ALL"),
+            ("--skip-email-dns-check", "SKIP_EMAIL_DNS_CHECK"),
         ]:
             if settings[key]:
                 args.append(flag)

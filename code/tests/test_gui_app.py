@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from pathlib import Path
 
@@ -180,6 +181,8 @@ def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: P
         app.variables["PARALLEL_THREADS"].set(7)
         app.variables["SEND"].set(True)
         app.variables["SPAM_SAFE_MODE"].set(True)
+        app.variables["SKIP_EMAIL_DNS_CHECK"].set(True)
+        app.variables["SUBJECT_OVERRIDE"].set("Custom subject")
         command = app._mail_only_command()
 
         assert any("from mail_sender.cli import main" in part for part in command)
@@ -187,11 +190,48 @@ def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: P
         assert "Freelance_English" in command
         assert "--send" in command
         assert "--spam-safe" in command
+        assert "--skip-email-dns-check" in command
+        assert "--subject" in command
+        assert "Custom subject" in command
         assert "--parallel-threads" in command
         assert "7" in command
         assert isinstance(app.variables["RESEARCH_MIN_COMPANIES"].get(), int)
         assert isinstance(app.variables["RESEARCH_MAX_COMPANIES"].get(), int)
         assert "SMTP_PORT" in app.variables
+    finally:
+        root.destroy()
+
+
+def test_mail_sender_workbench_research_only_command_uses_gui_settings(tmp_path: Path) -> None:
+    """Checks that Research Only forwards all important GUI settings explicitly."""
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        app.variables["MODE"].set("Custom_Online_Training")
+        app.variables["RESEARCH_MODEL"].set("gemini-3-flash-preview")
+        app.variables["RESEARCH_MIN_COMPANIES"].set(12)
+        app.variables["RESEARCH_MAX_COMPANIES"].set(34)
+        app.variables["RESEARCH_WRITE_OUTPUT"].set(False)
+        app.variables["RESEARCH_UPLOAD_ATTACHMENTS"].set(False)
+        app.variables["VERBOSE"].set(True)
+        command = app._research_only_command()
+
+        assert command[:2] == [sys.executable, "code/research/research_leads.py"]
+        assert "--mode" in command
+        assert "Custom_Online_Training" in command
+        assert "--model" in command
+        assert "gemini-3-flash-preview" in command
+        assert "--min-companies" in command
+        assert "12" in command
+        assert "--max-companies" in command
+        assert "34" in command
+        assert "--no-write-output" in command
+        assert "--no-upload-attachments" in command
+        assert "--verbose" in command
     finally:
         root.destroy()
 
