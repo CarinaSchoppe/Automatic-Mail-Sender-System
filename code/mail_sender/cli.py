@@ -178,8 +178,10 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     if not recipients_to_process:
         print("Nothing to process.")
         if args.send and args.delete_input_after_success:
-            _info("Deleting input files because everything was already handled.")
-            _delete_input_files(recipient_files, args.verbose)
+            _info("Checking for completed input files to delete (nothing to process in this run).")
+            completed_files = _identify_completed_files(recipients, logged_emails, invalid_emails)
+            if completed_files:
+                _delete_input_files(completed_files, args.verbose)
         return 0
 
     _info("Loading SMTP configuration.")
@@ -202,10 +204,34 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
         print(f"Finished {mode.label} with {errors} error(s).")
     else:
         print(f"Finished {mode.label} successfully.")
-        if args.send and args.delete_input_after_success:
-            _info("Deleting processed input files after successful send.")
-            _delete_input_files(recipient_files, args.verbose)
+
+    if args.send and args.delete_input_after_success:
+        _info("Checking for completed input files to delete.")
+        # Reload logs to see what was actually sent/marked invalid in this run
+        logged_emails_after, invalid_emails_after = _load_exclusion_logs(args, base_dir, invalid_log_path)
+        completed_files = _identify_completed_files(recipients, logged_emails_after, invalid_emails_after)
+        if completed_files:
+            _delete_input_files(completed_files, args.verbose)
+        else:
+            _info("No input files were fully processed (some recipients might still be pending or failed).")
     return errors
+
+
+def _identify_completed_files(recipients: list[Recipient], logged_emails: set[str], invalid_emails: set[str]) -> list[Path]:
+    """
+    Identifies files where all recipients have been either successfully logged or marked invalid.
+    """
+    file_to_recipients: dict[Path, list[str]] = {}
+    for r in recipients:
+        if r.source_file:
+            file_to_recipients.setdefault(r.source_file, []).append(r.email.lower())
+
+    completed_files: list[Path] = []
+    for file_path, emails in file_to_recipients.items():
+        if all(email in logged_emails or email in invalid_emails for email in emails):
+            completed_files.append(file_path)
+
+    return completed_files
 
 
 def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:

@@ -1069,7 +1069,7 @@ def test_generate_with_gemini_uses_google_search_and_uploaded_files(
             thinking_level = getattr(thinking_config, "thinking_level")
             tool_config = getattr(config_val, "tool_config")
             function_config = getattr(tool_config, "function_calling_config")
-            assert getattr(config_val, "temperature") == 0.3
+            assert getattr(config_val, "temperature") == 0.4
             assert getattr(thinking_level, "name") == "FULL"
             assert getattr(function_config, "mode") == "AUTO"
             assert getattr(tool_config, "include_server_side_tool_invocations") is True

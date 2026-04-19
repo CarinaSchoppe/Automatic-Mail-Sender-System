@@ -222,6 +222,10 @@ class MailSenderWorkbench:
         style.map("Accent.TButton", background=[("active", self.PALETTE["accent_active"])])
         style.configure("Danger.TButton", background=self.PALETTE["danger"], foreground="#ffffff")
         style.map("Danger.TButton", background=[("active", "#d42f2f")])
+        style.configure("Success.TButton", background=self.PALETTE["success"], foreground="#ffffff")
+        style.map("Success.TButton", background=[("active", "#0ea35d")])
+        style.configure("Warning.TButton", background=self.PALETTE["warning"], foreground="#ffffff")
+        style.map("Warning.TButton", background=[("active", "#e68207")])
         style.configure(
             "TNotebook",
             background=self.PALETTE["window_bg"],
@@ -289,9 +293,9 @@ class MailSenderWorkbench:
         self._toolbar_button(actions, "Load Config", self.load_config_file)
         self._toolbar_button(actions, "Save Config As", self.save_config_file)
         self._toolbar_button(actions, "Save All", self.save_all, style="Accent.TButton")
-        self._toolbar_button(actions, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
-        self._toolbar_button(actions, "Research Only", self.start_research_only)
-        self._toolbar_button(actions, "Mail Only", self.start_mail_only)
+        self._toolbar_button(actions, "Run Pipeline", lambda: self.start_process(["code/main.py"]), style="Success.TButton")
+        self._toolbar_button(actions, "Research Only", self.start_research_only, style="Success.TButton")
+        self._toolbar_button(actions, "Mail Only", self.start_mail_only, style="Success.TButton")
         self._toolbar_button(actions, "Stop", self.stop_process, style="Danger.TButton")
 
         self.notebook = ttk.Notebook(self.root)
@@ -715,16 +719,16 @@ class MailSenderWorkbench:
         ttk.Label(bottom, text="New task:").pack(side="left", padx=(0, 6))
         self.new_task_var = tk.StringVar()
         ttk.Entry(bottom, textvariable=self.new_task_var, width=28).pack(side="left", padx=(0, 8))
-        self._toolbar_button(bottom, "Add Task", self.add_prompt_task)
-        self._toolbar_button(bottom, "Use Task", self.use_current_prompt_task)
-        self._toolbar_button(bottom, "Sync Task Assets", self.sync_current_prompt_task_assets)
+        self._toolbar_button(bottom, "Add Task", self.add_prompt_task, style="Success.TButton")
+        self._toolbar_button(bottom, "Use Task", self.use_current_prompt_task, style="Success.TButton")
+        self._toolbar_button(bottom, "Sync Task Assets", self.sync_current_prompt_task_assets, style="Success.TButton")
         self._toolbar_button(bottom, "Open Mail Template", lambda: self.open_current_task_template(spam_safe=False))
         self._toolbar_button(bottom, "Open Spam-safe Template", lambda: self.open_current_task_template(spam_safe=True))
         self._toolbar_button(bottom, "Duplicate Task", self.duplicate_current_prompt_task)
         self._toolbar_button(bottom, "Rename Task", self.rename_current_prompt_task)
         self._toolbar_button(bottom, "Delete Task", self.delete_current_prompt_task, style="Danger.TButton")
         ttk.Button(bottom, text="Save Prompts", command=self.save_all_prompts, style="Accent.TButton").pack(side="right")
-        ttk.Button(bottom, text="Reset current to Default", command=self._reset_current_prompt).pack(side="right", padx=10)
+        ttk.Button(bottom, text="Reset current to Default", command=self._reset_current_prompt, style="Warning.TButton").pack(side="right", padx=10)
 
         self._on_prompt_mode_change()
 
@@ -762,7 +766,7 @@ class MailSenderWorkbench:
         bottom = ttk.Frame(self.mail_templates_tab)
         bottom.pack(fill="x")
         ttk.Button(bottom, text="Save Mail Templates", command=self.save_mail_templates, style="Accent.TButton").pack(side="right")
-        ttk.Button(bottom, text="Reload current from Disk", command=self._reload_current_mail_template).pack(side="right", padx=10)
+        ttk.Button(bottom, text="Reload current from Disk", command=self._reload_current_mail_template, style="Warning.TButton").pack(side="right", padx=10)
 
         self._on_mail_template_change()
 
@@ -1037,7 +1041,7 @@ class MailSenderWorkbench:
         input_mode_combo.pack(side="left", padx=(0, 8))
         input_mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh_tables())
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
-        self._toolbar_button(toolbar, "Import CSV/TXT", self.import_input_file)
+        self._toolbar_button(toolbar, "Import CSV/TXT", self.import_input_file, style="Success.TButton")
         self._toolbar_button(toolbar, "Delete Selected", self._delete_selected_input, style="Danger.TButton")
 
         pane = ttk.PanedWindow(self.inputs_tab, orient="horizontal")
@@ -1108,8 +1112,8 @@ class MailSenderWorkbench:
         """
         toolbar = ttk.Frame(self.console_tab)
         toolbar.pack(fill="x", pady=(0, 8))
-        self._toolbar_button(toolbar, "Run Pipeline", lambda: self.start_process(["code/main.py"]))
-        self._toolbar_button(toolbar, "Stop", self.stop_process)
+        self._toolbar_button(toolbar, "Run Pipeline", lambda: self.start_process(["code/main.py"]), style="Success.TButton")
+        self._toolbar_button(toolbar, "Stop", self.stop_process, style="Danger.TButton")
         ttk.Button(toolbar, text="Clear", command=lambda: self.console.delete("1.0", "end")).pack(side="left", padx=4)
         self.console = scrolledtext.ScrolledText(self.console_tab, height=28, wrap="word")
         self._style_text_widget(self.console)

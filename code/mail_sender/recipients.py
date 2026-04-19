@@ -23,6 +23,7 @@ class Recipient:
     email: str
     company: str = ""
     source_url: str = ""
+    source_file: Path | None = None
 
     @property
     def greeting(self) -> str:
@@ -69,7 +70,17 @@ def read_recipients(path: Path) -> list[Recipient]:
     if not rows:
         raise ValueError(f"Recipient file has no usable rows: {path}")
 
-    return _read_with_header(rows)
+    recipients = _read_with_header(rows)
+    # Set the source file for all recipients in this file
+    return [
+        Recipient(
+            email=r.email,
+            company=r.company,
+            source_url=r.source_url,
+            source_file=path,
+        )
+        for r in recipients
+    ]
 
 
 def read_recipients_from_dir(directory: Path) -> list[Recipient]:

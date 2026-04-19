@@ -26,7 +26,7 @@ def generate_with_gemini(
         attachment_paths: list[Path],
         reasoning_effort: str = "middle",
         verbose: bool = False,
-        load_env: Callable[[], object] = load_dotenv,
+        load_env: Callable[..., Any] = load_dotenv,
 ) -> str | None | Any:
     """
     Führt eine Anfrage an Google Gemini durch, lädt Anhänge hoch und verarbeitet die Antwort.
@@ -42,10 +42,14 @@ def generate_with_gemini(
     Returns:
         Das Ergebnis als String (meist CSV).
     """
-    load_env()
+    # override=True allows reloading the API key if it's updated in the .env file during a long run
+    load_env(override=True)
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("Set GEMINI_API_KEY before running research.")
+        # Fallback to GOOGLE_API_KEY which is standard for Google libraries
+        api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("Set GEMINI_API_KEY or GOOGLE_API_KEY before running research.")
 
     try:
         from google import genai
@@ -91,7 +95,7 @@ def generate_with_gemini(
     _verbose(
         verbose,
         f"Gemini config: google_search enabled, tool auto mode enabled, "
-        f"thinking_level={_thinking_level_name(thinking_level)}, temperature=0.3.",
+        f"thinking_level={_thinking_level_name(thinking_level)}, temperature=0.4.",
     )
 
     max_retries = 5
@@ -110,7 +114,7 @@ def generate_with_gemini(
                         include_server_side_tool_invocations=True,
                     ),
                     thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
-                    temperature=0.3,
+                    temperature=0.4,
                 ),
             )
             break
@@ -119,13 +123,20 @@ def generate_with_gemini(
             # If it's a rate limit error (429) or temporary server error (500, 503)
             is_retryable = "429" in msg or "quota" in msg or "exhausted" in msg or "500" in msg or "503" in msg
 
+            # 401 is usually not retryable unless the key was just updated in .env
+            # But we don't want to spam retries for a fundamentally broken key.
+            # However, if the user sees the error and fixes .env, override=True will pick it up.
+            
             if is_retryable and attempt < max_retries - 1:
                 wait_time = (2 ** attempt) + 10.0  # Exponential backoff + fixed buffer
                 _verbose(verbose, f"Gemini API error (retryable). Retrying in {wait_time:.2f}s (Attempt {attempt + 1}/{max_retries}). Error: {e}")
                 time.sleep(wait_time)
                 continue
 
-            _verbose(verbose, f"Gemini API error (non-retryable or max retries). Error: {e}")
+            if "401" in msg or "unauthenticated" in msg:
+                _verbose(verbose, f"Gemini API error: 401 UNAUTHENTICATED. Your API key might be invalid or expired. If you are using a temporary token, please update GEMINI_API_KEY in your .env file. (Error: {e})")
+            else:
+                _verbose(verbose, f"Gemini API error (non-retryable or max retries). Error: {e}")
             raise
 
     _verbose(verbose, "Gemini response received.")

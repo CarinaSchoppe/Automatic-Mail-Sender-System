@@ -27,7 +27,7 @@ def generate_with_openai(
         attachment_paths: list[Path],
         reasoning_effort: str = "middle",
         verbose: bool = False,
-        load_env: Callable[[], object] = load_dotenv,
+        load_env: Callable[..., Any] = load_dotenv,
 ) -> str | None | Any:
     """
     Führt eine Anfrage an OpenAI durch, lädt Anhänge hoch und verarbeitet die Antwort.
@@ -43,7 +43,8 @@ def generate_with_openai(
     Returns:
         Das Ergebnis als String (meist CSV).
     """
-    load_env()
+    # override=True allows reloading the API key if it's updated in the .env file during a long run
+    load_env(override=True)
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("Set OPENAI_API_KEY before running OpenAI research.")
