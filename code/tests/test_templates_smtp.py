@@ -12,42 +12,42 @@ from mail_sender.smtp_sender import SmtpMailer, guess_content_type
 from mail_sender.templates import render_mail
 
 
-def test_render_mail_with_inline_image(project: Path) -> None:
-    """Checks behavior for render mail with inline image."""
+def test_render_mail_with_html_signature(project: Path) -> None:
+    """Checks behavior for render mail with the configured HTML signature."""
     rendered = render_mail(
         project / "templates/phd.txt",
-        project / "templates/signature.txt",
+        project / "templates/signature.html",
         Recipient(email="a@example.com", company="ACME"),
-        signature_image_path=project / "templates/signature-logo.png",
-        signature_image_width=222,
     )
 
     assert rendered.subject == "PhD ACME"
-    assert "[Logo]" in rendered.text_body
-    assert 'width="222"' in rendered.html_body
-    assert rendered.inline_images[0].path.name == "signature-logo.png"
+    assert "Carina Sophie Schoppe" in rendered.text_body
+    assert "<table>" in rendered.html_body
+    assert "cid:" not in rendered.html_body
+    assert rendered.inline_images == []
 
 
-def test_render_mail_can_skip_inline_signature_image(project: Path) -> None:
-    """Checks that spam-safe rendering does not require or embed signature images."""
+def test_render_mail_supports_signature_placeholder(project: Path) -> None:
+    """Checks that {SIGNATURE} places the configured HTML signature exactly there."""
+    template = project / "templates/phd.txt"
+    template.write_text("Subject: PhD {company}\n\nHello {company}\n{SIGNATURE}\nAfter", encoding="utf-8")
+
     rendered = render_mail(
-        project / "templates/phd.txt",
-        project / "templates/signature.txt",
+        template,
+        project / "templates/signature.html",
         Recipient(email="a@example.com", company="ACME"),
-        embed_signature_image=False,
     )
 
-    assert "[Logo]" in rendered.text_body
-    assert "cid:" not in rendered.html_body
+    assert rendered.html_body.index("<table>") < rendered.html_body.index("After")
     assert rendered.inline_images == []
 
 
 def test_render_mail_subject_fallback_and_override(tmp_path: Path) -> None:
     """Checks behavior for render mail subject fallback and override."""
     template = tmp_path / "template.txt"
-    signature = tmp_path / "signature.txt"
+    signature = tmp_path / "signature.html"
     template.write_text("Body for {company}", encoding="utf-8")
-    signature.write_text("", encoding="utf-8")
+    signature.write_text("<html><body></body></html>", encoding="utf-8")
 
     rendered = render_mail(template, signature, Recipient(email="a@example.com", company="ACME"))
     assert rendered.subject == "Message for ACME"
@@ -62,21 +62,8 @@ def test_render_mail_errors(project: Path, tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="Mail template"):
         render_mail(tmp_path / "missing.txt", project / "templates/signature.txt", Recipient(email="a@example.com"))
 
-    with pytest.raises(FileNotFoundError, match="Signature template"):
-        render_mail(project / "templates/phd.txt", tmp_path / "missing.txt", Recipient(email="a@example.com"))
-
-    with pytest.raises(FileNotFoundError, match="logo file"):
-        render_mail(project / "templates/phd.txt", project / "templates/signature.txt", Recipient(email="a@example.com"))
-
-    not_image = tmp_path / "file.txt"
-    not_image.write_text("not image", encoding="utf-8")
-    with pytest.raises(ValueError, match="must be an image"):
-        render_mail(
-            project / "templates/phd.txt",
-            project / "templates/signature.txt",
-            Recipient(email="a@example.com"),
-            signature_image_path=not_image,
-        )
+    with pytest.raises(FileNotFoundError, match="Signature HTML file"):
+        render_mail(project / "templates/phd.txt", tmp_path / "missing.html", Recipient(email="a@example.com"))
 
 
 class FakeSMTP:
@@ -106,17 +93,16 @@ class FakeSMTP:
         self.quit_called = True
 
 
-def test_smtp_mailer_sends_message_with_attachment_and_inline_image(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
-    """Checks behavior for smtp mailer sends message with attachment and inline image."""
+def test_smtp_mailer_sends_message_with_attachment(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Checks behavior for smtp mailer sends message with attachment."""
     monkeypatch.setattr("mail_sender.smtp_sender.smtplib.SMTP_SSL", FakeSMTP)
     FakeSMTP.instances.clear()
     attachment = project / "attachments/PhD/file.txt"
     attachment.write_text("attachment", encoding="utf-8")
     rendered = render_mail(
         project / "templates/phd.txt",
-        project / "templates/signature.txt",
+        project / "templates/signature.html",
         Recipient(email="to@example.com", company="ACME"),
-        signature_image_path=project / "templates/signature-logo.png",
     )
     config = SmtpConfig(
         host="smtp.example.com",

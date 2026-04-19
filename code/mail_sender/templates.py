@@ -1,15 +1,15 @@
 """
 Module for rendering email templates.
-Supports placeholders (e.g., {company}), HTML conversion, and embedding signature logos.
+Supports placeholders (e.g., {company}), HTML conversion, and appending the configured HTML signature.
 """
 
 from __future__ import annotations
 
 import html
-import mimetypes
+import re
 from collections import defaultdict
 from dataclasses import dataclass
-from email.utils import make_msgid
+from html.parser import HTMLParser
 from pathlib import Path
 
 from mail_sender.recipients import Recipient
@@ -41,22 +41,16 @@ def render_mail(
         signature_path: Path,
         recipient: Recipient,
         subject_override: str | None = None,
-        signature_image_path: Path | None = None,
-        signature_image_width: int = 180,
-        embed_signature_image: bool = True,
 ) -> RenderedMail:
     """
     Creates the subject, plain text body, and HTML body for an email.
-    Replaces placeholders with recipient data and adds the signature.
+    Replaces placeholders with recipient data and adds the configured HTML signature.
 
     Args:
         template_path (Path): Path to the mode's .txt template.
-        signature_path (Path): Path to the signature file.
+        signature_path (Path): Path to the HTML signature file.
         recipient (Recipient): Data of the current recipient.
         subject_override (str | None): Optional subject override.
-        signature_image_path (Path | None): Path to the logo image.
-        signature_image_width (int): Width of the logo in HTML.
-        embed_signature_image (bool): Whether {IMAGE} should become an inline MIME image.
 
     Returns:
         RenderedMail: The finished email object.
@@ -64,40 +58,31 @@ def render_mail(
     if not template_path.exists():
         raise FileNotFoundError(f"Mail template not found: {template_path}")
     if not signature_path.exists():
-        raise FileNotFoundError(f"Signature template not found: {signature_path}")
+        raise FileNotFoundError(f"Signature HTML file not found: {signature_path}")
 
     subject_template, body_template = _split_subject(template_path.read_text(encoding="utf-8"))
     if subject_override:
         subject_template = subject_override
 
     signature = signature_path.read_text(encoding="utf-8").strip()
+    signature_html = _html_body_fragment(signature)
+    signature_text = _html_to_text(signature)
+    signature_marker = "__MAILSENDER_SIGNATURE_HTML__"
     context = defaultdict(str, recipient.template_context())
-    context["IMAGE"] = "{IMAGE}"
+    context["SIGNATURE"] = signature_marker
 
     subject = subject_template.format_map(context).strip()
-    body_text = body_template.format_map(context).strip()
+    body_with_marker = body_template.format_map(context).strip()
     inline_images: list[InlineImage] = []
-    signature_text = ""
-
-    if signature:
-        signature_text = signature.format_map(context)
-        body_text = f"{body_text}\n\n{_render_text_signature(signature_text)}"
-
-    html_body = _text_to_html(body_text)
-    if signature and "{IMAGE}" in signature and embed_signature_image:
-        if signature_image_path is None or not signature_image_path.exists():
-            raise FileNotFoundError(
-                "Signature contains {IMAGE}, but the logo file was not found. "
-                "Add it as templates/signature-logo.png or pass --signature-logo."
-            )
-
-        content_type, encoding = mimetypes.guess_type(signature_image_path)
-        if content_type is None or encoding is not None or not content_type.startswith("image/"):
-            raise ValueError(f"Signature logo must be an image file: {signature_image_path}")
-
-        cid = make_msgid(domain="signature.local")[1:-1]
-        inline_images.append(InlineImage(path=signature_image_path, cid=cid, width=signature_image_width))
-        html_body = _render_html_with_signature_image(body_template.format_map(context), signature_text, cid, signature_image_width)
+    if signature_marker in body_with_marker:
+        body_text = body_with_marker.replace(signature_marker, signature_text).strip()
+        html_body = _text_to_html(body_with_marker).replace(html.escape(signature_marker), signature_html)
+    elif signature:
+        body_text = f"{body_with_marker}\n\n{signature_text}".strip()
+        html_body = _append_signature_html(_text_to_html(body_with_marker), signature_html)
+    else:
+        body_text = body_with_marker
+        html_body = _text_to_html(body_with_marker)
 
     return RenderedMail(subject=subject, text_body=body_text, html_body=html_body, inline_images=inline_images)
 
@@ -117,24 +102,78 @@ def _split_subject(text: str) -> tuple[str, str]:
     return "Message for {company_or_email}", text
 
 
-def _render_text_signature(signature: str) -> str:
-    """Renders text signature."""
-    return signature.replace("{IMAGE}", "[Logo]").strip()
-
-
 def _text_to_html(text: str) -> str:
     """Escapes plain text and preserves line breaks as HTML breaks."""
     escaped = html.escape(text).replace("\n", "<br>\n")
     return f"<html><body>{escaped}</body></html>"
 
 
-def _render_html_with_signature_image(body: str, signature: str, cid: str, width: int) -> str:
-    """Renders HTML content with embedded signature image."""
-    safe_body = html.escape(body.strip()).replace("\n", "<br>\n")
-    image_html = (
-        f'<img src="cid:{cid}" width="{width}" '
-        'style="display:block; width:'
-        f'{width}px; height:auto; margin:8px 0;" alt="Carina Schoppe logo">'
+def _html_to_text(markup: str) -> str:
+    """Extracts a readable plain-text fallback from the configured HTML signature."""
+    extractor = _HtmlTextExtractor()
+    extractor.feed(markup)
+    extractor.close()
+    return extractor.text()
+
+
+def _html_body_fragment(markup: str) -> str:
+    """Returns the body content when the configured signature is a full HTML document."""
+    match = re.search(r"<body\b[^>]*>(?P<body>.*?)</body>", markup, flags=re.IGNORECASE | re.DOTALL)
+    return match.group("body").strip() if match else markup.strip()
+
+
+def _append_signature_html(html_body: str, signature_html: str) -> str:
+    """Inserts the signature fragment before the message body's closing tag."""
+    if not signature_html:
+        return html_body
+    return re.sub(
+        r"</body>\s*</html>\s*$",
+        f"<br><br>{signature_html}</body></html>",
+        html_body,
+        flags=re.IGNORECASE,
     )
-    safe_signature = html.escape(signature.strip()).replace("{IMAGE}", image_html).replace("\n", "<br>\n")
-    return f"<html><body>{safe_body}<br><br>{safe_signature}</body></html>"
+
+
+class _HtmlTextExtractor(HTMLParser):
+    """Small HTML-to-text extractor for multipart/alternative plain text bodies."""
+
+    _BREAK_TAGS = {"br", "div", "p", "tr", "table"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Adds useful text for links/images and lightweight line breaks."""
+        if tag in self._BREAK_TAGS:
+            self._newline()
+        if tag == "img":
+            alt = dict(attrs).get("alt")
+            if alt:
+                self.handle_data(alt)
+
+    def handle_endtag(self, tag: str) -> None:
+        """Keeps block-ish tags separated in the text alternative."""
+        if tag in self._BREAK_TAGS:
+            self._newline()
+
+    def handle_data(self, data: str) -> None:
+        """Stores non-empty normalized text chunks."""
+        text = " ".join(data.split())
+        if text:
+            if self._chunks and self._chunks[-1] not in {"\n", " "}:
+                self._chunks.append(" ")
+            self._chunks.append(text)
+
+    def _newline(self) -> None:
+        if self._chunks and self._chunks[-1] != "\n":
+            self._chunks.append("\n")
+
+    def text(self) -> str:
+        """Returns the extracted text with duplicate blank lines removed."""
+        lines = []
+        for line in "".join(self._chunks).splitlines():
+            stripped = line.strip()
+            if stripped:
+                lines.append(stripped)
+        return "\n".join(lines)

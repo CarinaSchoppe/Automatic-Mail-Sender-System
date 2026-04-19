@@ -74,6 +74,7 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "RESEARCH_UPLOAD_ATTACHMENTS": False,
                 "SEND": True,
                 "SEND_TARGET_COUNT": 0,
+                "REJECT_CATCH_ALL": True,
                 "VERBOSE": True,
             },
         )

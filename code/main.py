@@ -101,8 +101,7 @@ SAVE_VERBOSE_LOG: bool = cast(bool, _setting("SAVE_VERBOSE_LOG", True))
 VERBOSE_LOG_DIR: str = cast(str, _setting("VERBOSE_LOG_DIR", "logs"))
 RESEND_EXISTING: bool = cast(bool, _setting("RESEND_EXISTING", False))
 SKIP_INVALID_CHECK: bool = cast(bool, _setting("SKIP_INVALID_CHECK", True))
-SIGNATURE_LOGO: str = cast(str, _setting("SIGNATURE_LOGO", "templates/signature-logo.png"))
-SIGNATURE_LOGO_WIDTH: int = cast(int, _setting("SIGNATURE_LOGO_WIDTH", 325))
+SIGNATURE_HTML: str = cast(str, _setting("SIGNATURE_HTML", r"C:\Users\Carina\OneDrive\Work\Allgemein\Logo\signature.html"))
 ALLOW_EMPTY_ATTACHMENTS: bool = cast(bool, _setting("ALLOW_EMPTY_ATTACHMENTS", False))
 SPAM_SAFE_MODE: bool = cast(bool, _setting("SPAM_SAFE_MODE", False))
 LOG_DRY_RUN: bool = cast(bool, _setting("LOG_DRY_RUN", False))
@@ -230,7 +229,7 @@ def _print_effective_settings() -> None:
     _verbose(VERBOSE, f"Advanced mail settings: resend_existing={RESEND_EXISTING}, skip_invalid_check={SKIP_INVALID_CHECK}, allow_empty_attachments={ALLOW_EMPTY_ATTACHMENTS}, spam_safe_mode={SPAM_SAFE_MODE}, log_dry_run={LOG_DRY_RUN}, write_sent_log={WRITE_SENT_LOG}, delete_input_after_success={DELETE_INPUT_AFTER_SUCCESS}.")
     _verbose(VERBOSE, f"Subject override: {'configured' if SUBJECT_OVERRIDE else 'template default'}.")
     _verbose(VERBOSE, f"Target loop max rounds (safety gate): {SEND_TARGET_MAX_ROUNDS if SEND_TARGET_MAX_ROUNDS else 'unlimited (0)'}.")
-    _verbose(VERBOSE, f"Signature logo: {SIGNATURE_LOGO}, width={SIGNATURE_LOGO_WIDTH}.")
+    _verbose(VERBOSE, f"Signature HTML file: {SIGNATURE_HTML}.")
     _verbose(VERBOSE, f"Verbose log directory: {_resolve_log_dir()}.")
 
 
@@ -296,10 +295,8 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
         MODE,
         "--base-dir",
         str(PROJECT_ROOT),
-        "--signature-logo",
-        SIGNATURE_LOGO,
-        "--signature-logo-width",
-        str(SIGNATURE_LOGO_WIDTH),
+        "--signature-html",
+        SIGNATURE_HTML,
     ]
     for flag, enabled in [
         ("--send", SEND),

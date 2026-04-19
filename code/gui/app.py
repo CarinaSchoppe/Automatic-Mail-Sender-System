@@ -63,7 +63,6 @@ MAIL_TEMPLATE_FILES = (
     ("Freelance German spam-safe", "templates/freelance_german_spam_safe.txt"),
     ("Freelance English", "templates/freelance_english.txt"),
     ("Freelance English spam-safe", "templates/freelance_english_spam_safe.txt"),
-    ("Signature", "templates/signature.txt"),
 )
 
 
@@ -1638,10 +1637,8 @@ class MailSenderWorkbench:
             str(settings["MODE"]),
             "--base-dir",
             str(self.project_root),
-            "--signature-logo",
-            str(settings["SIGNATURE_LOGO"]),
-            "--signature-logo-width",
-            str(settings["SIGNATURE_LOGO_WIDTH"]),
+            "--signature-html",
+            str(settings["SIGNATURE_HTML"]),
             "--parallel-threads",
             str(settings["PARALLEL_THREADS"]),
             "--verify-email-smtp-timeout",

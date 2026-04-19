@@ -53,7 +53,7 @@ The mail sender only needs `company` and `mail`, but research rows without `sour
 
 3. Place all English freelance attachments in `attachments/Freelance_English`.
 
-4. Edit the email templates and signature:
+4. Edit the email templates:
 
 - `templates/phd.txt`
 - `templates/phd_spam_safe.txt`
@@ -61,31 +61,24 @@ The mail sender only needs `company` and `mail`, but research rows without `sour
 - `templates/freelance_german_spam_safe.txt`
 - `templates/freelance_english.txt`
 - `templates/freelance_english_spam_safe.txt`
-- `templates/signature.txt`
 
 Mode mapping:
 
 - `MODE = "Freelance_German"` uses `templates/freelance_german.txt` and `attachments/Freelance_German`
 - `MODE = "Freelance_English"` uses `templates/freelance_english.txt` and `attachments/Freelance_English`
 
-The signature contains `{IMAGE}` for your logo. By default, place the logo here:
+The sender appends the configured HTML signature file to every rendered mail. The active path is configured in `settings.toml` as `SIGNATURE_HTML` and defaults to:
 
 ```text
-templates/signature-logo.png
+C:\Users\Carina\OneDrive\Work\Allgemein\Logo\signature.html
 ```
 
-Set `SPAM_SAFE_MODE = true` in `settings.toml` or enable "Spam-safe mode" in the GUI to send the matching spam-safe mail template instead of the normal template. In that mode, the sender does not attach files from `attachments/<Mode>` and does not embed the signature logo as an inline image. The message body says that the documents can be sent later if the recipient is interested.
+Set `SPAM_SAFE_MODE = true` in `settings.toml` or enable "Spam-safe mode" in the GUI to send the matching spam-safe mail template instead of the normal template. In that mode, the sender does not attach files from `attachments/<Mode>`.
 
-If the file has another name, pass it at startup:
-
-```powershell
-python code\main.py --mode PhD --signature-logo "C:\Path\to\logo.png"
-```
-
-Set the logo width like this:
+If the signature file has another path, configure it in `settings.toml` or pass it to the mail sender CLI:
 
 ```powershell
-python code\main.py --mode PhD --signature-logo-width 180
+python -c "from mail_sender.cli import main; raise SystemExit(main())" --mode PhD --signature-html "C:\Path\to\signature.html"
 ```
 
 The first template line may be `Subject: ...`. These placeholders are available:
@@ -95,7 +88,7 @@ The first template line may be `Subject: ...`. These placeholders are available:
 - `{company_or_email}`
 - `{email}`
 - `{mail}`
-- `{IMAGE}` in the signature for the embedded logo
+- `{SIGNATURE}` to place the configured HTML signature at a specific point; otherwise it is appended automatically
 
 ## Dry Run
 

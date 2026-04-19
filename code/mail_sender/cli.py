@@ -72,11 +72,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--spam-safe",
         action="store_true",
-        help="Use the spam-safe mail template and send without file attachments or embedded signature image.",
+        help="Use the spam-safe mail template and send without file attachments.",
     )
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
-    parser.add_argument("--signature-logo", default="templates/signature-logo.png", help="Inline logo image used when the signature contains {IMAGE}.")
-    parser.add_argument("--signature-logo-width", type=int, default=180, help="Width of the inline signature logo in pixels.")
+    parser.add_argument(
+        "--signature-html",
+        default=r"C:\Users\Carina\OneDrive\Work\Allgemein\Logo\signature.html",
+        help="HTML signature file appended to every rendered mail.",
+    )
     parser.add_argument("--max-send-count", type=int, help="Maximum number of filtered recipients to process in this run.")
     parser.add_argument("--parallel-threads", type=int, default=1, help="Maximum number of recipients to render/send in parallel.")
     parser.add_argument("--verify-email-smtp", action="store_true", help="Probe recipient MX servers for definitive mailbox rejects before sending.")
@@ -96,8 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     base_dir = Path(args.base_dir).resolve()
-    signature_path = base_dir / "templates" / "signature.txt"
-    signature_logo_path = (base_dir / args.signature_logo).resolve() if not Path(args.signature_logo).is_absolute() else Path(args.signature_logo)
+    signature_path = _resolve_optional_base_path(base_dir, args.signature_html)
 
     try:
         if args.max_send_count is not None and args.max_send_count < 1:
@@ -117,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         _info(f"Selected {len(modes)} mode(s): {', '.join(mode.label for mode in modes)}.")
         total_errors = 0
         for mode in modes:
-            total_errors += _run_mode(args, mode, base_dir, signature_path, signature_logo_path)
+            total_errors += _run_mode(args, mode, base_dir, signature_path)
 
         if total_errors:
             print(f"Finished with {total_errors} total error(s).")
@@ -147,7 +149,7 @@ def _select_modes(mode_name: str, base_dir: Path) -> list[MailMode]:
     return [mode for mode in modes if list_recipient_files(mode.recipients_dir)]
 
 
-def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
+def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signature_path: Path) -> int:
     """
     Executes the sending process for a specific mode (e.g., PhD).
 
@@ -155,15 +157,14 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
         args: The parsed command-line arguments.
         mode: The MailMode object.
         base_dir (Path): The project base directory.
-        signature_path (Path): Path to the signature template.
-        signature_logo_path (Path): Path to the logo for the signature.
+        signature_path (Path): Path to the HTML signature file.
 
     Returns:
         int: Number of errors encountered during recipient processing.
     """
     _info(f"Starting mode {mode.label}.")
     invalid_log_path = base_dir / "output" / "invalid_mails.csv"
-    _log_mode_paths(args, mode, base_dir, signature_path, signature_logo_path, invalid_log_path)
+    _log_mode_paths(args, mode, base_dir, signature_path, invalid_log_path)
 
     _scan_recipient_files(args, mode)
     _info("Reading recipients.")
@@ -213,7 +214,6 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
         args,
         mode,
         signature_path,
-        signature_logo_path,
         recipients_to_process,
         attachments,
         smtp_config,
@@ -255,16 +255,20 @@ def _identify_completed_files(recipients: list[Recipient], logged_emails: set[st
     return completed_files
 
 
-def _log_mode_paths(args: argparse.Namespace, mode: MailMode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:
+def _resolve_optional_base_path(base_dir: Path, raw_path: str) -> Path:
+    """Resolves an absolute path directly or a relative path below the project base."""
+    path = Path(raw_path)
+    return path if path.is_absolute() else (base_dir / path).resolve()
+
+
+def _log_mode_paths(args: argparse.Namespace, mode: MailMode, base_dir: Path, signature_path: Path, invalid_log_path: Path) -> None:
     """Writes the most important paths of the current mailing mode to the verbose log."""
     template_path = mode.spam_safe_template_path if args.spam_safe else mode.template_path
     _verbose(args.verbose, f"Base directory: {base_dir}")
     _verbose(args.verbose, f"Recipient input directory: {mode.recipients_dir}")
     _verbose(args.verbose, f"Mode template: {template_path}")
     _verbose(args.verbose, f"Spam-safe mode: {'enabled' if args.spam_safe else 'disabled'}")
-    _verbose(args.verbose, f"Signature template: {signature_path}")
-    _verbose(args.verbose, f"Signature logo: {signature_logo_path}")
-    _verbose(args.verbose, f"Signature logo width: {args.signature_logo_width}px")
+    _verbose(args.verbose, f"Signature HTML file: {signature_path}")
     _verbose(args.verbose, f"Attachment directory: {mode.attachments_dir}")
     _verbose(args.verbose, f"CSV log file: {mode.log_path}")
     _verbose(args.verbose, f"Invalid email log file: {invalid_log_path}")
@@ -514,7 +518,6 @@ def _send_or_dry_run(
         args: argparse.Namespace,
         mode: MailMode,
         signature_path: Path,
-        signature_logo_path: Path,
         recipients_to_process: list[Recipient],
         attachments: list[Path],
         smtp_config: Any,
@@ -524,7 +527,6 @@ def _send_or_dry_run(
     Decides based on the --send flag whether a dry-run or a real mailing occurs.
     """
     template_path = mode.spam_safe_template_path if args.spam_safe else mode.template_path
-    embed_signature_image = not args.spam_safe
     if not args.send:
         _info("Running dry-run rendering; no real emails will be sent.")
         return _process_recipients(
@@ -536,15 +538,12 @@ def _send_or_dry_run(
             recipients=recipients_to_process,
             attachments=attachments,
             subject_override=args.subject,
-            signature_image_path=signature_logo_path,
-            signature_image_width=args.signature_logo_width,
             dry_run=True,
             log_dry_run=args.log_dry_run,
             write_sent_log=not args.no_write_sent_log,
             verbose=args.verbose,
             smtp_config=None,
             parallel_threads=args.parallel_threads,
-            embed_signature_image=embed_signature_image,
         )
 
     _info("Opening SMTP connection and sending real emails.")
@@ -557,15 +556,12 @@ def _send_or_dry_run(
         recipients=recipients_to_process,
         attachments=attachments,
         subject_override=args.subject,
-        signature_image_path=signature_logo_path,
-        signature_image_width=args.signature_logo_width,
         dry_run=False,
         log_dry_run=args.log_dry_run,
         write_sent_log=not args.no_write_sent_log,
         verbose=args.verbose,
         smtp_config=smtp_config,
         parallel_threads=args.parallel_threads,
-        embed_signature_image=embed_signature_image,
     )
 
 
@@ -588,15 +584,12 @@ def _process_recipients(
         recipients: list[Recipient],
         attachments: list[Path],
         subject_override: str | None,
-        signature_image_path: Path,
-        signature_image_width: int,
         dry_run: bool,
         log_dry_run: bool,
         write_sent_log: bool,
         verbose: bool,
         smtp_config: Any = None,
         parallel_threads: int = 1,
-        embed_signature_image: bool = True,
 ) -> int:
     """
     Verarbeitet die Liste der Empfänger (Rendern und Senden/Dry-Run).
@@ -619,13 +612,10 @@ def _process_recipients(
                     recipient=recipient,
                     attachments=attachments,
                     subject_override=subject_override,
-                    signature_image_path=signature_image_path,
-                    signature_image_width=signature_image_width,
                     dry_run=dry_run,
                     log_dry_run=log_dry_run,
                     write_sent_log=write_sent_log,
                     verbose=verbose,
-                    embed_signature_image=embed_signature_image,
                 )
             except Exception as recipient_error:
                 errors += 1
@@ -649,13 +639,10 @@ def _process_recipients(
                 recipient=recipient,
                 attachments=attachments,
                 subject_override=subject_override,
-                signature_image_path=signature_image_path,
-                signature_image_width=signature_image_width,
                 dry_run=dry_run,
                 log_dry_run=log_dry_run,
                 write_sent_log=write_sent_log,
                 verbose=verbose,
-                embed_signature_image=embed_signature_image,
             ): recipient
             for recipient in recipients
         }
@@ -683,13 +670,10 @@ def _process_one_recipient(
         recipient: Recipient,
         attachments: list[Path],
         subject_override: str | None,
-        signature_image_path: Path,
-        signature_image_width: int,
         dry_run: bool,
         log_dry_run: bool,
         write_sent_log: bool,
         verbose: bool,
-        embed_signature_image: bool = True,
 ) -> None:
     """
     Führt den kompletten Workflow für einen einzelnen Empfänger aus.
@@ -701,9 +685,6 @@ def _process_one_recipient(
         signature_path,
         recipient,
         subject_override=subject_override,
-        signature_image_path=signature_image_path,
-        signature_image_width=signature_image_width,
-        embed_signature_image=embed_signature_image,
     )
     _verbose(verbose, f"Subject for {recipient.email}: {rendered.subject}")
     _verbose(verbose, f"Text body length for {recipient.email}: {len(rendered.text_body)} characters.")

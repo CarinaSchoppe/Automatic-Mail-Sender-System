@@ -105,12 +105,12 @@ EXTERNAL_VALIDATION_SERVICE = "zerobounce"
 RESEND_EXISTING = false
 
 # Skip invalid check: If checked, ignores invalid_mails.csv so listed recipients can be sent again.
-SKIP_INVALID_CHECK = true
+SKIP_INVALID_CHECK = false
 
 # Allow empty attachments: Allows running a mode even when the attachment folder is empty.
 ALLOW_EMPTY_ATTACHMENTS = false
 
-# Spam-safe mode: Uses spam-safe mail templates and sends without file attachments or embedded signature images.
+# Spam-safe mode: Uses spam-safe mail templates and sends without file attachments.
 SPAM_SAFE_MODE = true
 
 # Log dry-run: Writes dry-run recipients to sent logs.
@@ -125,11 +125,8 @@ DELETE_INPUT_AFTER_SUCCESS = true
 # Subject override: Optional subject line override for mail sending. Leave empty to use the selected template subject.
 SUBJECT_OVERRIDE = ""
 
-# Signature logo: Path to the inline signature image.
-SIGNATURE_LOGO = "templates/signature-logo.png"
-
-# Logo width: Inline signature logo width in pixels.
-SIGNATURE_LOGO_WIDTH = 250
+# Signature HTML file: HTML signature file appended to every sent mail.
+SIGNATURE_HTML = "C:\\Users\\Carina\\OneDrive\\Work\\Allgemein\\Logo\\signature.html"
 
 
 # Logging

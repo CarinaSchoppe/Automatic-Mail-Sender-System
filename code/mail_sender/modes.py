@@ -5,11 +5,21 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
+
+
+class _LoadPrompts(Protocol):
+    """Callable shape for optional prompt loading."""
+
+    def __call__(self, path: Path = ...) -> dict[str, str]:
+        """Loads prompt labels from a TOML file."""
 
 try:
-    from mail_sender.prompts import load_prompts
+    from mail_sender.prompts import load_prompts as _load_prompts_impl
 except ImportError:
-    load_prompts = None
+    load_prompts: _LoadPrompts | None = None
+else:
+    load_prompts = _load_prompts_impl
 
 MODE_NAMES = ["PhD", "Freelance_German", "Freelance_English"]
 _BUILT_IN_MODE_LABELS = {

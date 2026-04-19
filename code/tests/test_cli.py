@@ -387,7 +387,7 @@ def test_cli_send_path_uses_mailer(monkeypatch, project: Path) -> None:
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--send"])
 
     assert result == 0
-    assert sent == [("phd@example.com", "PhD PhD Co", 1, 1)]
+    assert sent == [("phd@example.com", "PhD PhD Co", 1, 0)]
     with (project / "output/send_phd.csv").open("r", encoding="utf-8-sig", newline="") as f:
         reader = list(csv.reader(f))
         assert reader[1][1] == "phd@example.com"
@@ -713,14 +713,12 @@ def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> N
     errors = cli._process_recipients(
         mailer=None,
         template_path=project / "templates/phd.txt",
-        signature_path=project / "templates/signature.txt",
+        signature_path=project / "templates/signature.html",
         log_path=project / "output/send_phd.csv",
         invalid_log_path=invalid_log,
         recipients=[],
         attachments=[],
         subject_override=None,
-        signature_image_path=project / "templates/signature-logo.png",
-        signature_image_width=180,
         dry_run=False,
         log_dry_run=False,
         write_sent_log=False,
@@ -731,14 +729,12 @@ def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> N
     errors = cli._process_recipients(
         mailer=None,
         template_path=project / "templates/phd.txt",
-        signature_path=project / "templates/signature.txt",
+        signature_path=project / "templates/signature.html",
         log_path=project / "output/send_phd.csv",
         invalid_log_path=invalid_log,
         recipients=[Recipient(email="a@example.com", company="A")],
         attachments=[],
         subject_override=None,
-        signature_image_path=project / "templates/signature-logo.png",
-        signature_image_width=180,
         dry_run=False,
         log_dry_run=False,
         write_sent_log=False,
