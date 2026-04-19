@@ -217,3 +217,73 @@ def test_domain_accepts_mail_uses_mx_and_falls_back_on_resolver_error(monkeypatc
     monkeypatch.setattr(email_validation, "_domain_has_a_record", lambda domain: domain == "example.com")
 
     assert email_validation._domain_accepts_mail("example.com") is True
+
+
+def test_validate_email_address_uses_external_zerobounce(monkeypatch):
+    """Checks that ZeroBounce API is called when configured."""
+    from mail_sender.email_validation import validate_email_address
+    import json
+    import urllib.request
+
+    class FakeResponse:
+        def __init__(self, data):
+            self.data = data
+
+        def read(self):
+            return json.dumps(self.data).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_urlopen(url, timeout=None):
+        if "zerobounce.net" in url:
+            return FakeResponse({"status": "invalid", "sub_status": "mailbox_not_found"})
+        return FakeResponse({"status": "valid"})
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    res = validate_email_address(
+        "test@example.com",
+        external_service="zerobounce",
+        external_api_key="fake_key"
+    )
+    assert res.is_valid is False
+    assert "ZeroBounce: mailbox_not_found" in res.reason
+
+
+def test_validate_email_address_uses_external_neverbounce(monkeypatch):
+    """Checks that NeverBounce API is called when configured."""
+    from mail_sender.email_validation import validate_email_address
+    import json
+    import urllib.request
+
+    class FakeResponse:
+        def __init__(self, data):
+            self.data = data
+
+        def read(self):
+            return json.dumps(self.data).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_urlopen(url, timeout=None):
+        if "neverbounce.com" in url:
+            return FakeResponse({"result": "invalid"})
+        return FakeResponse({"result": "valid"})
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    res = validate_email_address(
+        "test@example.com",
+        external_service="neverbounce",
+        external_api_key="fake_key"
+    )
+    assert res.is_valid is False
+    assert "NeverBounce: invalid" in res.reason

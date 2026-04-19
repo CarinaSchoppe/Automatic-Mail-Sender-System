@@ -144,6 +144,8 @@ def test_cli_strict_smtp_validation_flags_are_forwarded(monkeypatch, project: Pa
             "good@example.com",
             {
                 "skip_dns_check": False,
+                "external_service": "none",
+                "external_api_key": "",
                 "verify_mailbox": True,
                 "require_mailbox_confirmation": True,
                 "reject_catch_all": True,

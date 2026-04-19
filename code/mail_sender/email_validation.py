@@ -5,9 +5,11 @@ Checks syntax (regex), DNS records (MX/A), and optionally offers an SMTP check (
 
 from __future__ import annotations
 
+import json
 import re
 import smtplib
 import socket
+import urllib.request
 import uuid
 from dataclasses import dataclass
 
@@ -32,6 +34,8 @@ def validate_email_address(
         skip_dns_check: bool = False,
         require_mailbox_confirmation: bool = False,
         reject_catch_all: bool = False,
+        external_service: str = "none",
+        external_api_key: str = "",
 ) -> EmailValidationResult:
     """
     Performs a multi-stage validation of an email address.
@@ -44,6 +48,8 @@ def validate_email_address(
         skip_dns_check (bool): If True, only the syntax is checked.
         require_mailbox_confirmation (bool): If True, unconfirmed mailboxes are rejected.
         reject_catch_all (bool): If True, domains accepting random recipients are rejected.
+        external_service (str): "zerobounce", "neverbounce", or "none".
+        external_api_key (str): API key for the external service.
 
     Returns:
         EmailValidationResult: The result of the check.
@@ -59,6 +65,17 @@ def validate_email_address(
     if skip_dns_check:
         return EmailValidationResult(True)
 
+    # 1. External Service check (often more reliable/expensive, so maybe first or after syntax)
+    if external_service != "none" and external_api_key:
+        ext_res = _validate_external(normalized, external_service, external_api_key, smtp_timeout)
+        if ext_res is not None:
+            # If the external service gives a definitive answer, we might stop here
+            if not ext_res.is_valid:
+                return ext_res
+            # If valid, we might still want to do local checks or trust it
+            return ext_res
+
+    # 2. DNS check
     mx_hosts = _mail_exchange_hosts(domain)
     if not mx_hosts and not _domain_has_a_record(domain):
         return EmailValidationResult(False, "domain has no MX or A record")
@@ -151,3 +168,48 @@ def _decode_smtp_message(message) -> str:
     if isinstance(message, bytes):
         return message.decode("utf-8", errors="replace").strip()
     return str(message or "").strip()
+
+
+def _validate_external(email: str, service: str, api_key: str, timeout: float) -> EmailValidationResult | None:
+    """Uses an external API (ZeroBounce or NeverBounce) to validate the email."""
+    if service == "zerobounce":
+        return _validate_zerobounce(email, api_key, timeout)
+    if service == "neverbounce":
+        return _validate_neverbounce(email, api_key, timeout)
+    return None
+
+
+def _validate_zerobounce(email: str, api_key: str, timeout: float) -> EmailValidationResult | None:
+    """Calls the ZeroBounce V2 API."""
+    url = f"https://api.zerobounce.net/v2/validate?api_key={api_key}&email={email}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            status = data.get("status", "").lower()
+            if status == "valid":
+                return EmailValidationResult(True)
+            if status in ("invalid", "do_not_mail", "spamtrap"):
+                reason = data.get("sub_status", status)
+                return EmailValidationResult(False, f"ZeroBounce: {reason}")
+            # 'unknown' or 'catch-all' (if not rejected) could be handled here
+    except Exception as e:
+        # We don't want to fail the whole process if the API is down, 
+        # but maybe we should log it. Returning None falls back to local checks.
+        pass
+    return None
+
+
+def _validate_neverbounce(email: str, api_key: str, timeout: float) -> EmailValidationResult | None:
+    """Calls the NeverBounce V4 API."""
+    url = f"https://api.neverbounce.com/v4/single/check?key={api_key}&email={email}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            result = data.get("result", "").lower()
+            if result == "valid":
+                return EmailValidationResult(True)
+            if result in ("invalid", "disposable", "spamtrap"):
+                return EmailValidationResult(False, f"NeverBounce: {result}")
+    except Exception:
+        pass
+    return None

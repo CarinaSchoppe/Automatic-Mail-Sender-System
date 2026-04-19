@@ -45,6 +45,8 @@ class SmtpConfig:
     from_email: str
     from_name: str
     encryption: str = "ssl"
+    external_validation_service: str = "none"
+    external_validation_api_key: str = ""
 
 
 def _load_settings() -> dict:
@@ -97,6 +99,9 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
     from_name = _get("SMTP_FROM_NAME", "Carina Sophie Schoppe")
     password = os.getenv("SMTP_PASSWORD", "").strip()
 
+    external_validation_service = _get("EXTERNAL_VALIDATION_SERVICE", "none").lower()
+    external_validation_api_key = os.getenv("EXTERNAL_VALIDATION_API_KEY", _get("EXTERNAL_VALIDATION_API_KEY", "")).strip()
+
     if encryption != "ssl":
         raise ConfigError("Only SSL/SMTPS is supported right now. Set SMTP_ENCRYPTION=ssl.")
 
@@ -127,4 +132,6 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         from_email=from_email,
         from_name=from_name,
         encryption=encryption,
+        external_validation_service=external_validation_service,
+        external_validation_api_key=external_validation_api_key,
     )

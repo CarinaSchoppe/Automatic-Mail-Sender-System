@@ -163,14 +163,24 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
 
     attachments = _load_attachments(args, mode)
     logged_emails, invalid_emails = _load_exclusion_logs(args, base_dir, invalid_log_path)
-    validation_smtp_from = _load_validation_smtp_from(args)
+
+    _info("Loading configuration for validation and sending.")
+    smtp_config = load_smtp_config(require_password=args.send)
+    _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
+    _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
+    _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
+    if smtp_config.external_validation_service != "none":
+        _verbose(args.verbose, f"External validation service: {smtp_config.external_validation_service}")
+
     recipients_to_process, skipped_before_send = _filter_recipients(
         args,
         recipients,
         logged_emails,
         invalid_emails,
         invalid_log_path,
-        validation_smtp_from,
+        smtp_config.from_email,
+        external_service=smtp_config.external_validation_service,
+        external_api_key=smtp_config.external_validation_api_key,
     )
     recipients_to_process = _apply_max_send_count(args, recipients_to_process)
     _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send, attachments, invalid_log_path)
@@ -186,12 +196,6 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
             if completed_files:
                 _delete_input_files(completed_files, args.verbose)
         return 0
-
-    _info("Loading SMTP configuration.")
-    smtp_config = load_smtp_config(require_password=args.send)
-    _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
-    _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
-    _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
 
     errors = _send_or_dry_run(
         args,
@@ -338,6 +342,8 @@ def _filter_recipients(
         invalid_emails: set[str],
         invalid_log_path: Path,
         validation_smtp_from: str | None = None,
+        external_service: str = "none",
+        external_api_key: str = "",
 ) -> tuple[list[Recipient], int]:
     """
     Filters the loaded recipients based on duplicates, exclusion lists, and email validation.
@@ -373,7 +379,11 @@ def _filter_recipients(
         return [], skipped_before_send
 
     # 2. Parallele Validierung
-    validation_kwargs = {"skip_dns_check": args.skip_email_dns_check}
+    validation_kwargs = {
+        "skip_dns_check": args.skip_email_dns_check,
+        "external_service": external_service,
+        "external_api_key": external_api_key,
+    }
     if _smtp_mailbox_validation_enabled(args):
         validation_kwargs.update(
             verify_mailbox=True,
