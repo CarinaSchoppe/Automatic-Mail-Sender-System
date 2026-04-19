@@ -162,7 +162,7 @@ def test_cli_logs_validation_crashes_as_invalid(monkeypatch, project: Path, caps
     """Checks that validation worker crashes become invalid rows instead of killing the run."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.com")
 
-    def broken_validate(email: str, **kwargs):
+    def broken_validate(email: str):
         """Simulates a DNS/SMTP library crash during validation."""
         raise RuntimeError(f"validator died for {email}")
 

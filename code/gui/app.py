@@ -665,6 +665,23 @@ class MailSenderWorkbench:
         if hasattr(self, "mail_template_combo"):
             self.mail_template_combo.configure(values=template_names)
 
+    def _readonly_combo(
+            self,
+            parent: tk.Widget,
+            variable: tk.StringVar,
+            values: Sequence[str],
+            command: Callable[[tk.Event], object],
+            *,
+            width: int,
+    ) -> ttk.Combobox:
+        """Creates a readonly combobox and binds its selection callback."""
+        combo = ttk.Combobox(parent, textvariable=variable, values=tuple(values), state="readonly", width=width)
+        combo.pack(side="left")
+        combo.bind("<<ComboboxSelected>>", command)
+        if values:
+            variable.set(values[0])
+        return combo
+
     def _build_prompts_tab(self) -> None:
         """
         Builds the tab for editing AI prompts.
@@ -677,17 +694,16 @@ class MailSenderWorkbench:
 
         self.prompt_mode_var = tk.StringVar()
         modes = self._prompt_task_labels(include_overseer=True)
-        self.prompt_mode_combo = ttk.Combobox(
-            top, textvariable=self.prompt_mode_var, values=modes, state="readonly", width=25
+        self.prompt_mode_combo = self._readonly_combo(
+            top,
+            self.prompt_mode_var,
+            modes,
+            self._on_prompt_mode_change,
+            width=25,
         )
-        self.prompt_mode_combo.pack(side="left")
-        self.prompt_mode_combo.bind("<<ComboboxSelected>>", self._on_prompt_mode_change)
 
         self.prompt_info_var = tk.StringVar()
         ttk.Label(top, textvariable=self.prompt_info_var, style="Muted.TLabel").pack(side="left", padx=(20, 0))
-
-        if modes:
-            self.prompt_mode_var.set(modes[0])
 
         self.prompt_text = scrolledtext.ScrolledText(self.prompts_tab, wrap="word", undo=True, font=("Consolas", 10))
         self.prompt_text.pack(fill="both", expand=True, pady=10)
@@ -723,21 +739,16 @@ class MailSenderWorkbench:
 
         self.mail_template_var = tk.StringVar()
         template_names = list(self._mail_template_file_map().keys())
-        self.mail_template_combo = ttk.Combobox(
+        self.mail_template_combo = self._readonly_combo(
             top,
-            textvariable=self.mail_template_var,
-            values=template_names,
-            state="readonly",
+            self.mail_template_var,
+            template_names,
+            self._on_mail_template_change,
             width=32,
         )
-        self.mail_template_combo.pack(side="left")
-        self.mail_template_combo.bind("<<ComboboxSelected>>", self._on_mail_template_change)
 
         self.mail_template_path_var = tk.StringVar()
         ttk.Label(top, textvariable=self.mail_template_path_var, style="Muted.TLabel").pack(side="left", padx=(20, 0))
-
-        if template_names:
-            self.mail_template_var.set(template_names[0])
 
         self.mail_template_text = scrolledtext.ScrolledText(
             self.mail_templates_tab,
@@ -906,15 +917,11 @@ class MailSenderWorkbench:
     def duplicate_current_prompt_task(self) -> None:
         """Copies the selected task into a new task name from the New task field."""
         source_label = self.prompt_mode_var.get()
-        target_label = mode_label_from_name(self.new_task_var.get().strip())
         if not self._is_real_task_label(source_label):
             messagebox.showerror("No source task", "Select a real outreach task to duplicate.")
             return
-        if not target_label:
-            messagebox.showerror("Task name missing", "Enter the new task name in New task.")
-            return
-        if target_label == "Overseer" or target_label in self.prompts:
-            messagebox.showerror("Task exists", f"The task '{target_label}' is reserved or already exists.")
+        target_label = self._valid_new_task_label()
+        if target_label is None:
             return
         self.prompts[source_label] = self.prompt_text.get("1.0", tk.END).strip()
         self.prompts[target_label] = self.prompts[source_label]
@@ -923,33 +930,20 @@ class MailSenderWorkbench:
             f"{source_label} spam-safe",
             _default_new_mail_template(target_label, spam_safe=True),
         )
-        self.new_task_var.set("")
-        self._last_prompt_mode = None
-        mode_name, _slug = self._sync_task_assets(target_label)
-        self._refresh_task_dropdowns(selected_label=target_label)
-        self.prompt_mode_var.set(target_label)
-        self._on_prompt_mode_change()
-        self.variables["MODE"].set(mode_name)
-        self.save_all_prompts()
-        self.save_mail_templates()
-        self.save_settings()
+        self._activate_task_after_structure_change(target_label)
         self._append_console(f"[INFO] Duplicated outreach task '{source_label}' to '{target_label}'.\n")
 
     def rename_current_prompt_task(self) -> None:
         """Renames a custom task using the New task field."""
         old_label = self.prompt_mode_var.get()
-        new_label = mode_label_from_name(self.new_task_var.get().strip())
         if old_label in {"PhD", "Freelance German", "Freelance English", "Overseer"}:
             messagebox.showerror("Built-in task", "Built-in or reserved tasks cannot be renamed.")
             return
         if not self._is_real_task_label(old_label):
             messagebox.showerror("No task selected", "Select a custom task to rename.")
             return
-        if not new_label:
-            messagebox.showerror("Task name missing", "Enter the new task name in New task.")
-            return
-        if new_label == "Overseer" or new_label in self.prompts:
-            messagebox.showerror("Task exists", f"The task '{new_label}' is reserved or already exists.")
+        new_label = self._valid_new_task_label()
+        if new_label is None:
             return
 
         self.prompts[old_label] = self.prompt_text.get("1.0", tk.END).strip()
@@ -959,16 +953,7 @@ class MailSenderWorkbench:
             f"{old_label} spam-safe",
             _default_new_mail_template(new_label, spam_safe=True),
         )
-        self.new_task_var.set("")
-        self._last_prompt_mode = None
-        mode_name, _slug = self._sync_task_assets(new_label)
-        self._refresh_task_dropdowns(selected_label=new_label)
-        self.prompt_mode_var.set(new_label)
-        self._on_prompt_mode_change()
-        self.variables["MODE"].set(mode_name)
-        self.save_all_prompts()
-        self.save_mail_templates()
-        self.save_settings()
+        self._activate_task_after_structure_change(new_label)
         self.refresh_tables()
         self._append_console(f"[INFO] Renamed outreach task '{old_label}' to '{new_label}'.\n")
 
@@ -1008,6 +993,30 @@ class MailSenderWorkbench:
         self.mail_template_paths = self._mail_template_file_map()
         return mode_name, slug
 
+    def _valid_new_task_label(self) -> str | None:
+        """Validates and normalizes the New task field."""
+        label = mode_label_from_name(self.new_task_var.get().strip())
+        if not label:
+            messagebox.showerror("Task name missing", "Enter the new task name in New task.")
+            return None
+        if label == "Overseer" or label in self.prompts:
+            messagebox.showerror("Task exists", f"The task '{label}' is reserved or already exists.")
+            return None
+        return label
+
+    def _activate_task_after_structure_change(self, label: str) -> None:
+        """Selects and saves a task after add, duplicate, or rename operations."""
+        self.new_task_var.set("")
+        self._last_prompt_mode = None
+        mode_name, _slug = self._sync_task_assets(label)
+        self._refresh_task_dropdowns(selected_label=label)
+        self.prompt_mode_var.set(label)
+        self._on_prompt_mode_change()
+        self.variables["MODE"].set(mode_name)
+        self.save_all_prompts()
+        self.save_mail_templates()
+        self.save_settings()
+
     def _build_inputs_tab(self) -> None:
         """
         Builds the tab for input files (leads).
@@ -1017,15 +1026,16 @@ class MailSenderWorkbench:
         toolbar.pack(fill="x", pady=(0, 8))
         ttk.Label(toolbar, text="Mode").pack(side="left", padx=(0, 6))
         self.input_mode_var = tk.StringVar(value="PhD")
-        self.input_mode_combo = ttk.Combobox(
+        input_mode_combo = ttk.Combobox(
             toolbar,
             textvariable=self.input_mode_var,
             values=tuple(self._available_mode_names()),
             state="readonly",
             width=22,
         )
-        self.input_mode_combo.pack(side="left", padx=(0, 8))
-        self.input_mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh_tables())
+        self.input_mode_combo = input_mode_combo
+        input_mode_combo.pack(side="left", padx=(0, 8))
+        input_mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh_tables())
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
         self._toolbar_button(toolbar, "Import CSV/TXT", self.import_input_file)
         self._toolbar_button(toolbar, "Delete Selected", self._delete_selected_input, style="Danger.TButton")

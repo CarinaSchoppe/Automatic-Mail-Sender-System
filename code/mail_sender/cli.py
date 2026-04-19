@@ -358,8 +358,8 @@ def _filter_recipients(
         _verbose(args.verbose, f"Checking recipient {rec.email} ({rec.company}).")
         try:
             val = validate_email_address(rec.email, **validation_kwargs)
-        except TypeError as exc:
-            if "unexpected keyword" not in str(exc):
+        except TypeError as type_error:
+            if "unexpected keyword" not in str(type_error):
                 raise
             val = validate_email_address(rec.email)
         return rec, val
@@ -378,8 +378,8 @@ def _filter_recipients(
             rec = to_validate[index]
             try:
                 rec, validation = future.result()
-            except Exception as exc:  # pragma: no cover - defensive around third-party DNS/SMTP libraries
-                reason = f"validation crashed: {type(exc).__name__}: {exc}"
+            except Exception as validation_error:  # pragma: no cover - defensive around third-party DNS/SMTP libraries
+                reason = f"validation crashed: {type(validation_error).__name__}: {validation_error}"
                 validation = EmailValidationResult(False, reason)
             results[index] = (rec, validation)
             # Instant feedback for verbose users
@@ -549,9 +549,9 @@ def _process_recipients(
                     verbose=verbose,
                     embed_signature_image=embed_signature_image,
                 )
-            except Exception as exc:
+            except Exception as recipient_error:
                 errors += 1
-                print(f"[ERROR] {recipient.email} | {type(exc).__name__}: {exc}")
+                print(f"[ERROR] {recipient.email} | {type(recipient_error).__name__}: {recipient_error}")
         _info(f"Recipient processing finished with {errors} error(s).")
         return errors
 
@@ -582,9 +582,9 @@ def _process_recipients(
             recipient = futures[future]
             try:
                 future.result()
-            except Exception as exc:
+            except Exception as recipient_error:
                 errors += 1
-                print(f"[ERROR] {recipient.email} | {type(exc).__name__}: {exc}")
+                print(f"[ERROR] {recipient.email} | {type(recipient_error).__name__}: {recipient_error}")
     _info(f"Recipient processing finished with {errors} error(s).")
 
     return errors

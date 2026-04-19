@@ -66,6 +66,8 @@ def test_workbench_adds_custom_task_to_prompt_template_and_mode_dropdowns(workbe
     assert "Custom Online Training" in workbench.prompts
     assert workbench.prompt_mode_var.get() == "Custom Online Training"
     assert workbench.variables["MODE"].get() == "Custom_Online_Training"
+    assert workbench.mode_setting_combo is not None
+    assert workbench.input_mode_combo is not None
     assert "Custom_Online_Training" in workbench.mode_setting_combo.cget("values")
     assert "Custom_Online_Training" in workbench.input_mode_combo.cget("values")
     assert "Custom Online Training" in workbench.mail_template_combo.cget("values")

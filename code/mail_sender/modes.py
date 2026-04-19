@@ -132,10 +132,10 @@ def get_available_mode_names(base_dir: Path | None = None) -> list[str]:
     prompts_path = (base_dir / "prompts.toml") if base_dir is not None else None
     try:
         from mail_sender.prompts import load_prompts
-
-        prompts = load_prompts(prompts_path) if prompts_path is not None else load_prompts()
-    except Exception:
+    except ImportError:
         prompts = {}
+    else:
+        prompts = load_prompts(prompts_path) if prompts_path is not None else load_prompts()
 
     seen = {mode_name_key(name) for name in mode_names}
     for label in prompts:
