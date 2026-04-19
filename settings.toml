@@ -42,9 +42,9 @@ RESEARCH_UPLOAD_ATTACHMENTS = true
 
 # Self search keywords: One Google-style search query per line for the local crawler.
 SELF_SEARCH_KEYWORDS = [
-    "\"industry phd\" \"contact\" email Australia",
-    "\"research partnership\" \"contact\" email Australia",
-    "\"innovation\" \"university partnership\" email Australia",
+  "\"industry phd\" \"contact\" email Australia",
+  "\"research partnership\" \"contact\" email Australia",
+  "\"innovation\" \"university partnership\" email Australia",
 ]
 
 # Search pages/keyword: Number of result pages scanned per keyword.
@@ -68,8 +68,8 @@ SELF_VERIFY_EMAIL_SMTP = false
 
 # Run
 
-# Real email sending: Off means dry-run. On sends through SMTP.
-SEND = false
+# SEND / Real email sending: Required for target sending. Off means dry-run; on sends through SMTP.
+SEND = true
 
 # Target new sends: Repeated research/send target. 0 disables the target loop.
 SEND_TARGET_COUNT = 550
@@ -102,7 +102,7 @@ SKIP_INVALID_CHECK = false
 ALLOW_EMPTY_ATTACHMENTS = false
 
 # Spam-safe mode: Uses spam-safe mail templates and sends without file attachments or embedded signature images.
-SPAM_SAFE_MODE = false
+SPAM_SAFE_MODE = true
 
 # Log dry-run: Writes dry-run recipients to sent logs.
 LOG_DRY_RUN = false

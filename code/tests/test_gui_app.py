@@ -196,6 +196,36 @@ def test_mail_sender_workbench_mail_only_command_and_integer_sliders(tmp_path: P
         root.destroy()
 
 
+def test_mail_sender_workbench_blocks_target_pipeline_when_send_is_off(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+) -> None:
+    """Checks that target sending cannot be started from the GUI with SEND disabled."""
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        errors: list[tuple[str, str]] = []
+        commands: list[list[str]] = []
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        app.variables["SEND"].set(False)
+        app.variables["SEND_TARGET_COUNT"].set(550)
+        monkeypatch.setattr("gui.app.messagebox.showerror", lambda title, body: errors.append((title, body)))
+        monkeypatch.setattr(app, "_start_command", lambda command: commands.append(command))
+
+        app.start_process(["code/main.py"])
+
+        assert commands == []
+        assert errors
+        assert errors[0][0] == "SEND is off"
+        assert "SEND / Real email sending" in errors[0][1]
+        assert app.setting_search_vars["settings"].get() == "SEND"
+    finally:
+        root.destroy()
+
+
 def test_mail_sender_workbench_filters_settings_and_env(tmp_path: Path) -> None:
     """Checks behavior for settings and env search filters."""
     try:

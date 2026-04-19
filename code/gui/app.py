@@ -1247,9 +1247,36 @@ class MailSenderWorkbench:
         if self.process and self.process.poll() is None:
             messagebox.showwarning("Process running", "A process is already running.")
             return
+        if not self._validate_process_settings(script_args):
+            return
         self.save_all()
         command = [sys.executable, *script_args]
         self._start_command(command)
+
+    def _validate_process_settings(self, script_args: list[str]) -> bool:
+        """Checks GUI-only setting combinations before starting a long-running process."""
+        is_pipeline = any(Path(arg).as_posix().endswith("code/main.py") for arg in script_args)
+        if not is_pipeline:
+            return True
+
+        settings = self.collect_form_values()
+        target_count = int(settings.get("SEND_TARGET_COUNT", 0) or 0)
+        send_enabled = bool(settings.get("SEND", False))
+        if target_count <= 0 or send_enabled:
+            return True
+
+        if "settings" in self.setting_search_vars:
+            self.setting_search_vars["settings"].set("SEND")
+        if hasattr(self, "settings_tab"):
+            self.notebook.select(self.settings_tab)
+        messagebox.showerror(
+            "SEND is off",
+            "SEND_TARGET_COUNT is greater than 0, so the pipeline needs SEND / Real email sending enabled. "
+            "Enable the SEND checkbox in Settings -> Run, or set Target new sends to 0 for a dry research run.",
+        )
+        if hasattr(self, "status_var") and self.status_var:
+            self.status_var.set("Pipeline not started: enable SEND or set Target new sends to 0.")
+        return False
 
     def start_mail_only(self) -> None:
         """Starts mail only."""
