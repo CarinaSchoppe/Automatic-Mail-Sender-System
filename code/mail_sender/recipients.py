@@ -6,6 +6,7 @@ Supports reading CSV and text files from directories.
 from __future__ import annotations
 
 import csv
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -154,9 +155,11 @@ def _read_with_header(rows: list[list[str]]) -> list[Recipient]:
         values = {header[index]: value.strip() for index, value in enumerate(row) if index < len(header)}
         email = normalize_email(_first_value(values, EMAIL_KEYS))
         if not email:
-            raise ValueError(f"Missing email address in recipients.csv line {line_number}.")
+            print(f"Warning: Missing email address in recipients.csv line {line_number}. Skipping.", file=sys.stderr)
+            continue
         if not _validate_email(email):
-            raise ValueError(f"Invalid email address in recipients.csv line {line_number}: {email}")
+            print(f"Warning: Invalid email address in recipients.csv line {line_number}: {email}. Skipping.", file=sys.stderr)
+            continue
 
         recipients.append(
             Recipient(
