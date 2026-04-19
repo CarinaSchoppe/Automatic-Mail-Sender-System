@@ -98,12 +98,6 @@ SKIP_EMAIL_DNS_CHECK = false
 # Verify timeout: Timeout for recipient SMTP probe.
 VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
 
-# External validation: Use services like NeverBounce or ZeroBounce ("zerobounce", "neverbounce" or "none").
-EXTERNAL_VALIDATION_SERVICE = "none"
-
-# External API key: API key for the selected validation service.
-EXTERNAL_VALIDATION_API_KEY = ""
-
 # Resend existing: Allows sending to addresses already present in output logs.
 RESEND_EXISTING = false
 
