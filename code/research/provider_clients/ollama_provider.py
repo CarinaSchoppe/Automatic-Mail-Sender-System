@@ -35,7 +35,7 @@ def generate_with_ollama(
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0.2},
+        "options": {"temperature": 1},
     }
     url = f"{base_url.rstrip('/')}/api/generate"
     _verbose(verbose, f"Calling Ollama local model at {url} with model={model}.")

@@ -95,7 +95,7 @@ def generate_with_gemini(
     _verbose(
         verbose,
         f"Gemini config: google_search enabled, tool auto mode enabled, "
-        f"thinking_level={_thinking_level_name(thinking_level)}, temperature=0.4.",
+        f"thinking_level={_thinking_level_name(thinking_level)}, temperature=1",
     )
 
     max_retries = 5
@@ -114,7 +114,7 @@ def generate_with_gemini(
                         include_server_side_tool_invocations=True,
                     ),
                     thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
-                    temperature=0.4,
+                    temperature=1,
                 ),
             )
             break
