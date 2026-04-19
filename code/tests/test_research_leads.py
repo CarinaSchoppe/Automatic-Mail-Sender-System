@@ -525,9 +525,9 @@ def test_generate_response_reports_thread_target_list_progress(
 
     assert added == 2
     output = capsys.readouterr().out
-    assert "Thread 7 hat nun 2 neue Mail(s) in die Gesamt-Target-Liste aufgenommen." in output
-    assert "Somit haben wir 4 aktuell in der Gesamt-Target-Liste" in output
-    assert "es fehlen noch 1 bis zum Target 5" in output
+    assert "Thread 7 added 2 new email(s) to the global target list." in output
+    assert "The global target list now has 4 email(s)" in output
+    assert "1 still missing to reach target 5" in output
 
 
 def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:

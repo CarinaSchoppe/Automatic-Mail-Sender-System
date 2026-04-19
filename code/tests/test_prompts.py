@@ -59,6 +59,16 @@ def test_partial_load(tmp_path):
     assert loaded["Freelance German"] == DEFAULT_PROMPTS["Freelance German"]
 
 
+def test_load_keeps_custom_task_prompts(tmp_path):
+    """Checks behavior for loading custom task prompts."""
+    path = tmp_path / "custom.toml"
+    content = '[prompts]\n"Custom Task" = "Custom instructions"\n'
+    path.write_text(content, encoding="utf-8")
+
+    loaded = load_prompts(path)
+    assert loaded["Custom Task"] == "Custom instructions"
+
+
 def test_multiline_save(tmp_path):
     """Checks behavior for multiline save."""
     path = tmp_path / "multiline.toml"

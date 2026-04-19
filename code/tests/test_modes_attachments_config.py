@@ -28,8 +28,13 @@ def test_modes_point_to_input_attachments_and_output(project: Path) -> None:
     assert english.recipients_dir == project / "input/Freelance_English"
     assert phd.spam_safe_template_path.name == "phd_spam_safe.txt"
 
-    with pytest.raises(ValueError, match="Unknown mode"):
-        get_mode("Freelance", project)
+    custom = get_mode("Custom Training Task", project)
+    assert custom.label == "Custom Training Task"
+    assert custom.recipients_dir == project / "input/Custom_Training_Task"
+    assert custom.attachments_dir == project / "attachments/Custom_Training_Task"
+    assert custom.template_path == project / "templates/custom_training_task.txt"
+    assert custom.spam_safe_template_path == project / "templates/custom_training_task_spam_safe.txt"
+    assert custom.log_path == project / "output/send_custom_training_task.csv"
 
 
 def test_list_attachments_filters_gitkeep_and_sorts(tmp_path: Path) -> None:

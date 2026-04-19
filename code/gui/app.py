@@ -28,6 +28,7 @@ from gui.settings_store import (
     write_env,
     write_settings,
 )
+from mail_sender.modes import get_available_mode_names, mode_label_from_name, mode_name_from_label, mode_template_slug
 from mail_sender.prompts import load_prompts, save_prompts
 
 HOVER_TEXTS = {
@@ -145,6 +146,8 @@ class MailSenderWorkbench:
         self.setting_search_counts: dict[str, tk.StringVar] = {}
         self.setting_row_widgets: dict[str, list[dict[str, Any]]] = {"settings": [], "env": []}
         self.setting_section_widgets: dict[str, list[dict[str, Any]]] = {"settings": [], "env": []}
+        self.mode_setting_combo: ttk.Combobox | None = None
+        self.input_mode_combo: ttk.Combobox | None = None
         self.keyword_text: tk.Text | None = None
         self.compact_save = tk.BooleanVar(value=False)
         self.autosave = tk.BooleanVar(value=True)
@@ -161,6 +164,7 @@ class MailSenderWorkbench:
         self._autosave_target = "all"
         self.auto_refresh = tk.BooleanVar(value=True)
         self.prompts = load_prompts(self.project_root / "prompts.toml")
+        self.mail_template_paths: dict[str, Path] = {}
         self.mail_templates = self._load_mail_templates()
         self.root.title("MailSenderSystem Workbench")
         self.root.geometry("1220x780")
@@ -475,7 +479,10 @@ class MailSenderWorkbench:
             widget = ttk.Checkbutton(row_frame, variable=var)
         elif spec.kind == "choice":
             state = "normal" if spec.key == "RESEARCH_MODEL" else "readonly"
-            widget = ttk.Combobox(row_frame, textvariable=var, values=spec.choices, state=state, width=28)
+            values = tuple(self._available_mode_names()) if spec.key == "MODE" else spec.choices
+            widget = ttk.Combobox(row_frame, textvariable=var, values=values, state=state, width=28)
+            if spec.key == "MODE":
+                self.mode_setting_combo = cast(ttk.Combobox, widget)
         elif spec.kind in {"int", "float"} and spec.slider and spec.min_value is not None and spec.max_value is not None:
             wrapper = ttk.Frame(row_frame)
             entry_var = tk.StringVar(value=str(var.get()))
@@ -607,6 +614,51 @@ class MailSenderWorkbench:
             total = len(rows)
             count_var.set(f"{visible_count}/{total}" if tokens else "")
 
+    def _prompt_task_labels(self, *, include_overseer: bool = False) -> list[str]:
+        """Returns prompt labels that represent editable research tasks."""
+        labels = list(self.prompts.keys())
+        if not include_overseer:
+            labels = [label for label in labels if label != "Overseer"]
+        return labels
+
+    def _available_mode_names(self) -> list[str]:
+        """Returns all mode names currently selectable in run and input controls."""
+        mode_names = get_available_mode_names(self.project_root)
+        seen = {name.lower() for name in mode_names}
+        for label in self._prompt_task_labels():
+            mode_name = mode_name_from_label(label)
+            if mode_name.lower() not in seen:
+                mode_names.append(mode_name)
+                seen.add(mode_name.lower())
+        return mode_names
+
+    def _mail_template_file_map(self) -> dict[str, Path]:
+        """Builds the template label to path map, including custom task templates."""
+        mapping = {label: self.project_root / relative for label, relative in MAIL_TEMPLATE_FILES}
+        for task_label in self._prompt_task_labels():
+            slug = mode_template_slug(task_label)
+            mapping.setdefault(task_label, self.project_root / "templates" / f"{slug}.txt")
+            mapping.setdefault(f"{task_label} spam-safe", self.project_root / "templates" / f"{slug}_spam_safe.txt")
+        return mapping
+
+    def _refresh_task_dropdowns(self, selected_label: str | None = None) -> None:
+        """Refreshes every GUI dropdown that depends on editable task definitions."""
+        prompt_labels = self._prompt_task_labels(include_overseer=True)
+        if hasattr(self, "prompt_mode_combo"):
+            self.prompt_mode_combo.configure(values=prompt_labels)
+        if selected_label and selected_label in prompt_labels and hasattr(self, "prompt_mode_var"):
+            self.prompt_mode_var.set(selected_label)
+
+        mode_names = self._available_mode_names()
+        if self.mode_setting_combo is not None:
+            self.mode_setting_combo.configure(values=mode_names)
+        if self.input_mode_combo is not None:
+            self.input_mode_combo.configure(values=mode_names)
+
+        template_names = list(self._mail_template_file_map().keys())
+        if hasattr(self, "mail_template_combo"):
+            self.mail_template_combo.configure(values=template_names)
+
     def _build_prompts_tab(self) -> None:
         """
         Builds the tab for editing AI prompts.
@@ -618,7 +670,7 @@ class MailSenderWorkbench:
         ttk.Label(top, text="Select Mode:").pack(side="left", padx=(0, 10))
 
         self.prompt_mode_var = tk.StringVar()
-        modes = list(self.prompts.keys())
+        modes = self._prompt_task_labels(include_overseer=True)
         self.prompt_mode_combo = ttk.Combobox(
             top, textvariable=self.prompt_mode_var, values=modes, state="readonly", width=25
         )
@@ -638,6 +690,11 @@ class MailSenderWorkbench:
         bottom = ttk.Frame(self.prompts_tab)
         bottom.pack(fill="x")
 
+        ttk.Label(bottom, text="New task:").pack(side="left", padx=(0, 6))
+        self.new_task_var = tk.StringVar()
+        ttk.Entry(bottom, textvariable=self.new_task_var, width=28).pack(side="left", padx=(0, 8))
+        ttk.Button(bottom, text="Add Task", command=self.add_prompt_task).pack(side="left", padx=(0, 8))
+        ttk.Button(bottom, text="Delete Task", command=self.delete_current_prompt_task, style="Danger.TButton").pack(side="left")
         ttk.Button(bottom, text="Save Prompts", command=self.save_all_prompts, style="Accent.TButton").pack(side="right")
         ttk.Button(bottom, text="Reset current to Default", command=self._reset_current_prompt).pack(side="right", padx=10)
 
@@ -653,7 +710,7 @@ class MailSenderWorkbench:
         ttk.Label(top, text="Select Template:").pack(side="left", padx=(0, 10))
 
         self.mail_template_var = tk.StringVar()
-        template_names = list(self.mail_templates.keys())
+        template_names = list(self._mail_template_file_map().keys())
         self.mail_template_combo = ttk.Combobox(
             top,
             textvariable=self.mail_template_var,
@@ -689,8 +746,8 @@ class MailSenderWorkbench:
     def _load_mail_templates(self) -> dict[str, str]:
         """Reads all editable mail templates from disk."""
         templates: dict[str, str] = {}
-        for label, relative_path in MAIL_TEMPLATE_FILES:
-            path = self.project_root / relative_path
+        self.mail_template_paths = self._mail_template_file_map()
+        for label, path in self.mail_template_paths.items():
             if path.exists():
                 templates[label] = path.read_text(encoding="utf-8", errors="replace").strip()
             else:
@@ -699,8 +756,8 @@ class MailSenderWorkbench:
 
     def _mail_template_path(self, label: str) -> Path:
         """Returns the file path for a mail template label."""
-        mapping = dict(MAIL_TEMPLATE_FILES)
-        return self.project_root / mapping[label]
+        self.mail_template_paths = self._mail_template_file_map()
+        return self.mail_template_paths[label]
 
     def _on_mail_template_change(self, _event=None) -> None:
         """Caches current mail-template text and loads the selected template."""
@@ -742,6 +799,75 @@ class MailSenderWorkbench:
         self.prompt_text.delete("1.0", tk.END)
         self.prompt_text.insert("1.0", self.prompts.get(mode, ""))
 
+    def add_prompt_task(self) -> None:
+        """Adds a new research task and immediately wires matching mail templates and mode dropdowns."""
+        raw_label = self.new_task_var.get().strip()
+        if not raw_label:
+            messagebox.showerror("Task name missing", "Enter a task name first.")
+            return
+        label = mode_label_from_name(raw_label)
+        if label == "Overseer":
+            messagebox.showerror("Reserved task", "Overseer is reserved for the global prompt wrapper.")
+            return
+        if label in self.prompts:
+            messagebox.showerror("Task exists", f"The task '{label}' already exists.")
+            return
+
+        current = self.prompt_mode_var.get()
+        if current:
+            self.prompts[current] = self.prompt_text.get("1.0", tk.END).strip()
+
+        self.prompts[label] = _default_new_task_prompt(label)
+        slug = mode_template_slug(label)
+        self.mail_templates[label] = _default_new_mail_template(label)
+        self.mail_templates[f"{label} spam-safe"] = _default_new_mail_template(label, spam_safe=True)
+        mode_name = mode_name_from_label(label)
+        (self.project_root / "input" / mode_name).mkdir(parents=True, exist_ok=True)
+        (self.project_root / "attachments" / mode_name).mkdir(parents=True, exist_ok=True)
+
+        self.new_task_var.set("")
+        self._last_prompt_mode = None
+        self._refresh_task_dropdowns(selected_label=label)
+        self.prompt_mode_var.set(label)
+        self.prompt_text.delete("1.0", tk.END)
+        self.prompt_text.insert("1.0", self.prompts[label])
+        if "MODE" in self.variables:
+            self.variables["MODE"].set(mode_name)
+        if hasattr(self, "input_mode_var"):
+            self.input_mode_var.set(mode_name)
+        if hasattr(self, "mail_template_var"):
+            self.mail_template_var.set(label)
+            self._on_mail_template_change()
+        self.save_all_prompts()
+        self.save_mail_templates()
+        self.save_settings()
+        self.refresh_tables()
+        self._append_console(
+            f"[INFO] Added task '{label}' with mode {mode_name}, templates/{slug}.txt, "
+            f"and templates/{slug}_spam_safe.txt.\n"
+        )
+
+    def delete_current_prompt_task(self) -> None:
+        """Deletes a custom prompt task from the GUI prompt list."""
+        label = self.prompt_mode_var.get()
+        if not label or label == "Overseer":
+            return
+        if label in {"PhD", "Freelance German", "Freelance English"}:
+            messagebox.showerror("Built-in task", "Built-in tasks cannot be deleted.")
+            return
+        if not messagebox.askyesno("Delete task", f"Delete the custom task '{label}' from prompts.toml? Template files stay on disk."):
+            return
+        self.prompts.pop(label, None)
+        self.mail_templates.pop(label, None)
+        self.mail_templates.pop(f"{label} spam-safe", None)
+        self._last_prompt_mode = None
+        self._refresh_task_dropdowns()
+        next_label = next((item for item in self._prompt_task_labels(include_overseer=True) if item != label), "")
+        self.prompt_mode_var.set(next_label)
+        self._on_prompt_mode_change()
+        self.save_all_prompts()
+        self._append_console(f"[INFO] Deleted custom task '{label}' from prompts.toml.\n")
+
     def _build_inputs_tab(self) -> None:
         """
         Builds the tab for input files (leads).
@@ -751,15 +877,15 @@ class MailSenderWorkbench:
         toolbar.pack(fill="x", pady=(0, 8))
         ttk.Label(toolbar, text="Mode").pack(side="left", padx=(0, 6))
         self.input_mode_var = tk.StringVar(value="PhD")
-        mode_combo = ttk.Combobox(
+        self.input_mode_combo = ttk.Combobox(
             toolbar,
             textvariable=self.input_mode_var,
-            values=("PhD", "Freelance_German", "Freelance_English"),
+            values=tuple(self._available_mode_names()),
             state="readonly",
             width=22,
         )
-        mode_combo.pack(side="left", padx=(0, 8))
-        mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh_tables())
+        self.input_mode_combo.pack(side="left", padx=(0, 8))
+        self.input_mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh_tables())
         self._toolbar_button(toolbar, "Refresh", self.refresh_tables)
         self._toolbar_button(toolbar, "Import CSV/TXT", self.import_input_file)
         self._toolbar_button(toolbar, "Delete Selected", self._delete_selected_input, style="Danger.TButton")
@@ -984,6 +1110,7 @@ class MailSenderWorkbench:
         self.mail_templates = self._load_mail_templates()
         self._last_prompt_mode = None
         self._last_mail_template = None
+        self._refresh_task_dropdowns()
         self._load_form_values()
         self._load_env_values()
         self._on_prompt_mode_change()
@@ -1078,7 +1205,7 @@ class MailSenderWorkbench:
         self.input_tree.delete(*self.input_tree.get_children())
         input_dir = self.project_root / "input"
         selected_mode = self.input_mode_var.get()
-        modes = [selected_mode] if selected_mode else ["PhD", "Freelance_German", "Freelance_English"]
+        modes = [selected_mode] if selected_mode else self._available_mode_names()
         for mode in modes:
             mode_dir = input_dir / mode
             for path in sorted(mode_dir.glob("*")) if mode_dir.exists() else []:
@@ -1512,6 +1639,48 @@ def _sent_row_detail(mode_name: str, row: dict[str, str]) -> str:
 def _settings_section_weight(specs: Sequence[SettingSpec]) -> int:
     """Estimates the visible height of a setting group for the column layout."""
     return sum(4 if spec.kind == "list" else 1 for spec in specs)
+
+
+def _default_new_task_prompt(label: str) -> str:
+    """Returns a strict starter research prompt for a new custom task."""
+    return f"""Find organisations that are a strong fit for the custom task "{label}".
+
+Requirements:
+- Only include companies whose official website clearly proves the fit for this task.
+- Prefer official company websites and publicly visible work email addresses.
+- Do not guess, infer, pattern-generate, or fabricate email addresses.
+- Do not include contact forms without a visible email address.
+- Include only emails that are visibly shown on a public webpage.
+- Include the exact public source URL where the email was found.
+- Exclude all emails and companies already listed in the exclusion context.
+- If you cannot verify enough results, return fewer rows instead of guessing.
+
+Return CSV only with this exact header:
+company,mail,source_url
+
+Rules:
+- one row per email
+- repeat company name for multiple emails
+- no markdown
+- no commentary
+- no extra text"""
+
+
+def _default_new_mail_template(label: str, *, spam_safe: bool = False) -> str:
+    """Returns a starter outreach mail template for a new custom task."""
+    note = "I am reaching out because your online profile looks relevant to this topic." if spam_safe else "I am reaching out because your organisation looks relevant to this topic."
+    return f"""Subject: Collaboration inquiry for {label}
+
+Hello,
+
+{note}
+
+I work as a remote freelance lecturer and trainer and would be interested in discussing whether external support could be useful for your courses, trainings, or learning programmes.
+
+Kind regards
+Carina Sophie Schoppe
+
+{{SIGNATURE}}"""
 
 
 def main() -> int:

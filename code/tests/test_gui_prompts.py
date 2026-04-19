@@ -55,3 +55,22 @@ def test_workbench_saves_prompts(workbench, tmp_path):
     from mail_sender.prompts import load_prompts
     loaded = load_prompts(workbench.project_root / "prompts.toml")
     assert loaded["PhD"] == "My New Prompt"  # Since PhD was default selected
+
+
+def test_workbench_adds_custom_task_to_prompt_template_and_mode_dropdowns(workbench):
+    """Checks that a custom task is immediately available across prompt, template, and mode controls."""
+    workbench.new_task_var.set("Custom Online Training")
+
+    workbench.add_prompt_task()
+
+    assert "Custom Online Training" in workbench.prompts
+    assert workbench.prompt_mode_var.get() == "Custom Online Training"
+    assert workbench.variables["MODE"].get() == "Custom_Online_Training"
+    assert "Custom_Online_Training" in workbench.mode_setting_combo.cget("values")
+    assert "Custom_Online_Training" in workbench.input_mode_combo.cget("values")
+    assert "Custom Online Training" in workbench.mail_template_combo.cget("values")
+    assert "Custom Online Training spam-safe" in workbench.mail_template_combo.cget("values")
+    assert (workbench.project_root / "input" / "Custom_Online_Training").exists()
+    assert (workbench.project_root / "attachments" / "Custom_Online_Training").exists()
+    assert (workbench.project_root / "templates" / "custom_online_training.txt").exists()
+    assert (workbench.project_root / "templates" / "custom_online_training_spam_safe.txt").exists()

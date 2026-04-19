@@ -356,7 +356,7 @@ def load_prompts(path: Path = PROMPTS_PATH) -> dict[str, str]:
                 data = tomllib.load(f)
                 if "prompts" in data:
                     for key, value in data["prompts"].items():
-                        if key in prompts:
+                        if isinstance(key, str) and isinstance(value, str):
                             prompts[key] = value
         except (OSError, tomllib.TOMLDecodeError):
             # Fallback to defaults on error
