@@ -238,7 +238,7 @@ def test_validate_email_address_uses_external_zerobounce(monkeypatch):
         def __exit__(self, *args):
             pass
 
-    def mock_urlopen(url, timeout=None):
+    def mock_urlopen(url):
         if "zerobounce.net" in url:
             if "invalid@example.com" in url:
                 return FakeResponse({"status": "invalid", "sub_status": "mailbox_not_found"})
@@ -310,7 +310,7 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
         def __exit__(self, *args):
             pass
 
-    def mock_urlopen(url, timeout=None):
+    def mock_urlopen(url):
         if "neverbounce.com" in url:
             if "invalid@example.com" in url:
                 return FakeResponse({"result": "invalid"})

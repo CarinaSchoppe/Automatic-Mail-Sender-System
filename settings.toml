@@ -84,19 +84,22 @@ PARALLEL_THREADS = 10
 # Mail
 
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
-VERIFY_EMAIL_SMTP = false
+VERIFY_EMAIL_SMTP = true
 
 # Require SMTP mailbox pass: Only sends to recipients whose mailbox is positively confirmed by SMTP.
-REQUIRE_EMAIL_SMTP_PASS = false
+REQUIRE_EMAIL_SMTP_PASS = true
 
 # Reject catch-all domains: Blocks domains that accept random invented mailboxes because the exact recipient cannot be proven.
 REJECT_CATCH_ALL = false
 
 # Skip DNS verification: If checked, skips MX/A record checks but still validates syntax and deduplication.
-SKIP_EMAIL_DNS_CHECK = false
+SKIP_EMAIL_DNS_CHECK = true
 
 # Verify timeout: Timeout for recipient SMTP probe.
 VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
+
+# External validation: Use services like NeverBounce or ZeroBounce to check email existence.
+EXTERNAL_VALIDATION_SERVICE = "zerobounce"
 
 # Resend existing: Allows sending to addresses already present in output logs.
 RESEND_EXISTING = false

@@ -16,7 +16,13 @@ from mail_sender.config import ConfigError, load_smtp_config
 from mail_sender.email_validation import EmailValidationResult, validate_email_address
 from mail_sender.modes import MailMode, get_available_mode_names, get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients_from_dir
-from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails
+from mail_sender.sent_log import (
+    append_invalid_email,
+    append_log,
+    deduplicate_all_output_logs,
+    read_invalid_emails,
+    read_known_output_emails,
+)
 from mail_sender.smtp_sender import SmtpMailer
 from mail_sender.templates import render_mail
 
@@ -117,6 +123,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Finished with {total_errors} total error(s).")
             return 1
 
+        # Final check for duplicate email addresses across all output files
+        _info("Performing final deduplication of output files.")
+        deduplicate_all_output_logs(base_dir / "output")
+
         print("Finished successfully.")
         return 0
     except (ConfigError, FileNotFoundError, NotADirectoryError, RuntimeError, ValueError) as exc:
@@ -171,6 +181,8 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
     _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
     if smtp_config.external_validation_service != "none":
         _verbose(args.verbose, f"External validation service: {smtp_config.external_validation_service}")
+        if not smtp_config.external_validation_api_key:
+            print(f"[WARNING] External validation service '{smtp_config.external_validation_service}' is selected, but no API key was found. External validation will be skipped.")
 
     recipients_to_process, skipped_before_send = _filter_recipients(
         args,
@@ -393,7 +405,12 @@ def _filter_recipients(
         )
         if validation_smtp_from:
             validation_kwargs["smtp_from_email"] = validation_smtp_from
-    _verbose(args.verbose, f"Validation options: {validation_kwargs}")
+
+    # Mask API key for logging
+    log_kwargs = dict(validation_kwargs)
+    if log_kwargs.get("external_api_key"):
+        log_kwargs["external_api_key"] = "***"
+    _verbose(args.verbose, f"Validation options: {log_kwargs}")
 
     def validate_one(rec):
         _verbose(args.verbose, f"Checking recipient {rec.email} ({rec.company}).")

@@ -125,6 +125,8 @@ def test_cli_strict_smtp_validation_flags_are_forwarded(monkeypatch, project: Pa
         return type("Result", (), {"is_valid": True, "reason": ""})()
 
     monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "none")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "")
 
     result = cli.main([
         "--mode",

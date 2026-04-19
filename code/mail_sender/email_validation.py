@@ -67,13 +67,18 @@ def validate_email_address(
 
     # 1. External Service check (often more reliable/expensive, so maybe first or after syntax)
     if external_service != "none" and external_api_key:
+        print(f"[VERBOSE] Using external validation service: {external_service} for {normalized}")
         ext_res = _validate_external(normalized, external_service, external_api_key, smtp_timeout, reject_catch_all)
         if ext_res is not None:
             # If the external service gives a definitive answer, we might stop here
             if not ext_res.is_valid:
+                print(f"[VERBOSE] External service {external_service} rejected {normalized}: {ext_res.reason}")
                 return ext_res
             # If valid, we might still want to do local checks or trust it
+            print(f"[VERBOSE] External service {external_service} confirmed {normalized} as valid.")
             return ext_res
+        else:
+            print(f"[VERBOSE] External service {external_service} returned unknown result or error; falling back to local checks.")
 
     # 2. DNS check
     mx_hosts = _mail_exchange_hosts(domain)

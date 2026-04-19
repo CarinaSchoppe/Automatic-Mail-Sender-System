@@ -74,7 +74,8 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         SmtpConfig: The validated configuration.
     """
     if load_dotenv is not None:
-        load_dotenv()
+        env_path = PROJECT_ROOT / ".env"
+        load_dotenv(dotenv_path=env_path)
 
     settings = _load_settings()
 

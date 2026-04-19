@@ -176,3 +176,87 @@ def _find_header_index(header: list[str], allowed_keys: set[str]) -> int | None:
 def _unique_csv_value(value: str) -> str:
     """Normalizes CSV values for robust duplicate checks."""
     return normalize_email(value).lower()
+
+
+def deduplicate_csv_file(path: Path, seen_global: set[str] | None = None) -> int:
+    """
+    Removes duplicate emails from a single CSV file.
+    If seen_global is provided, it also removes emails already present in that set.
+    Returns the number of removed rows.
+    """
+    if not path.exists():
+        return 0
+
+    rows_to_keep: list[list[str]] = []
+    seen_in_file: set[str] = set()
+    header: list[str] | None = None
+    removed_count = 0
+
+    with _CSV_WRITE_LOCK:
+        try:
+            with path.open("r", encoding="utf-8-sig", newline="") as f:
+                reader = csv.reader(f)
+                try:
+                    header = next(reader)
+                except StopIteration:
+                    return 0
+
+                # Find email index
+                email_index = _find_header_index(header, EMAIL_KEYS)
+                if email_index is None:
+                    return 0
+
+                idx = email_index - 1
+                for row in reader:
+                    if not row:
+                        continue
+                    if len(row) <= idx:
+                        rows_to_keep.append(row)
+                        continue
+
+                    email = normalize_email(row[idx]).lower()
+                    if not email:
+                        rows_to_keep.append(row)
+                        continue
+
+                    is_duplicate = email in seen_in_file
+                    if seen_global is not None:
+                        is_duplicate = is_duplicate or email in seen_global
+
+                    if is_duplicate:
+                        removed_count += 1
+                    else:
+                        seen_in_file.add(email)
+                        rows_to_keep.append(row)
+                        if seen_global is not None:
+                            seen_global.add(email)
+
+            if removed_count > 0:
+                with path.open("w", encoding="utf-8-sig", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(header)
+                    writer.writerows(rows_to_keep)
+
+        except (OSError, csv.Error):
+            pass
+
+    return removed_count
+
+
+def deduplicate_all_output_logs(output_dir: Path) -> None:
+    """
+    Scans the output directory for all CSV files and removes duplicate emails globally.
+    """
+    if not output_dir.exists() or not output_dir.is_dir():
+        return
+
+    seen_global: set[str] = set()
+    # Sort paths to ensure deterministic behavior (alphabetical)
+    paths = sorted(output_dir.glob("*.csv"))
+    for path in paths:
+        if path.name.lower() == "invalid_mails.csv":
+            continue
+        removed = deduplicate_csv_file(path, seen_global=seen_global)
+        if removed > 0:
+            from research.logging_utils import info
+            info(f"Removed {removed} duplicate email(s) from {path.name}.")
