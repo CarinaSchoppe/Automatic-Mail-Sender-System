@@ -669,8 +669,8 @@ class MailSenderWorkbench:
         if hasattr(self, "mail_template_combo"):
             self.mail_template_combo.configure(values=template_names)
 
+    @staticmethod
     def _readonly_combo(
-            self,
             parent: tk.Widget,
             variable: tk.StringVar,
             values: Sequence[str],

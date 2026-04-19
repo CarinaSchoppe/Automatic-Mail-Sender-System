@@ -155,7 +155,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
     invalid_log_path = base_dir / "output" / "invalid_mails.csv"
     _log_mode_paths(args, mode, base_dir, signature_path, signature_logo_path, invalid_log_path)
 
-    recipient_files = _scan_recipient_files(args, mode)
+    _scan_recipient_files(args, mode)
     _info("Reading recipients.")
     recipients = read_recipients_from_dir(mode.recipients_dir)
     _info(f"Recipients loaded: {len(recipients)}.")
@@ -572,7 +572,6 @@ def _process_recipients(
                     template_path=template_path,
                     signature_path=signature_path,
                     log_path=log_path,
-                    invalid_log_path=invalid_log_path,
                     recipient=recipient,
                     attachments=attachments,
                     subject_override=subject_override,
@@ -638,7 +637,6 @@ def _process_one_recipient(
         template_path: Path,
         signature_path: Path,
         log_path: Path,
-        invalid_log_path: Path,
         recipient,
         attachments: list[Path],
         subject_override: str | None,
