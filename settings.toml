@@ -69,16 +69,16 @@ SELF_VERIFY_EMAIL_SMTP = false
 # Run
 
 # Real email sending: Off means dry-run. On sends through SMTP.
-SEND = true
+SEND = false
 
 # Target new sends: Repeated research/send target. 0 disables the target loop.
-SEND_TARGET_COUNT = 100
+SEND_TARGET_COUNT = 550
 
 # Max target rounds: Safety limit for repeated target loop. 0 means unlimited.
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 5
+PARALLEL_THREADS = 25
 
 
 # Mail

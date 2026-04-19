@@ -283,6 +283,13 @@ class ThreadSafeRecipientSink:
 
             return True
 
+    def target_status(self) -> tuple[int, int, int]:
+        """Returns current global target progress as current, missing, target."""
+        with self.lock:
+            total_found = self.initial_count + len(self.recipients)
+            missing_count = max(0, self.global_target_count - total_found)
+            return total_found, missing_count, self.global_target_count
+
     def is_full(self) -> bool:
         """
         Prüft, ob das Sammlungsziel erreicht wurde.
@@ -808,6 +815,17 @@ def _generate_and_process_response(
         current_total = len(sink.recipients)
         target = sink.target_count
         missing = max(0, target - current_total)
+
+    if hasattr(sink, "target_status"):
+        global_total, global_missing, global_target = sink.target_status()
+    else:
+        global_total, global_missing, global_target = current_total, missing, target
+    thread_label = thread_id if thread_id is not None else "X"
+    _info(
+        f"Thread {thread_label} hat nun {added_count} neue Mail(s) in die Gesamt-Target-Liste aufgenommen. "
+        f"Somit haben wir {global_total} aktuell in der Gesamt-Target-Liste und es fehlen noch "
+        f"{global_missing} bis zum Target {global_target}."
+    )
 
     _info(f"Parsed {len(candidates)} candidates, added {added_count} new. Total: {current_total}/{target}, missing: {missing}")
     return added_count

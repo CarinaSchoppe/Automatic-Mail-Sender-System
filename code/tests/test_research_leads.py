@@ -472,6 +472,56 @@ def test_write_recipients_csv(project: Path) -> None:
     assert path.read_text(encoding="utf-8").splitlines() == ["company,mail,source_url", "A,a@example.com,"]
 
 
+def test_generate_response_reports_thread_target_list_progress(
+        monkeypatch: pytest.MonkeyPatch,
+        project: Path,
+        capsys,
+) -> None:
+    """Prueft die Thread-Meldung fuer neu aufgenommene Gesamt-Target-Mails."""
+    mode = research_leads.get_mode("PhD", project)
+    cfg = config(project, max_companies=5)
+    sink = research_leads.ThreadSafeRecipientSink(
+        target_count=3,
+        seen_emails=set(),
+        seen_companies=set(),
+        config=cfg,
+        mode=mode,
+        global_target_count=5,
+        initial_count=2,
+    )
+
+    monkeypatch.setattr(
+        research_leads,
+        "_generate_research_response",
+        lambda *args, **kwargs: (
+            "company,mail,source_url\n"
+            "A,a@example.com,https://a.example/contact\n"
+            "B,b@example.com,https://b.example/contact\n"
+        ),
+    )
+    monkeypatch.setattr(
+        research_leads,
+        "validate_email_address",
+        lambda *args, **kwargs: py_types.SimpleNamespace(is_valid=True, reason=""),
+    )
+
+    added = research_leads._generate_and_process_response(
+        cfg,
+        mode,
+        "prompt",
+        [],
+        sink,
+        "",
+        thread_id=7,
+    )
+
+    assert added == 2
+    output = capsys.readouterr().out
+    assert "Thread 7 hat nun 2 neue Mail(s) in die Gesamt-Target-Liste aufgenommen." in output
+    assert "Somit haben wir 4 aktuell in der Gesamt-Target-Liste" in output
+    assert "es fehlen noch 1 bis zum Target 5" in output
+
+
 def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
     """Prueft das Verhalten fuer run research writes output."""
     cv = project / "attachments/PhD/CV.pdf"
