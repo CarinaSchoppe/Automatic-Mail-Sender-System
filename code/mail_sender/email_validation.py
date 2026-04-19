@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import smtplib
 import socket
+import uuid
 from dataclasses import dataclass
 
 EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
@@ -29,6 +30,8 @@ def validate_email_address(
         smtp_from_email: str = "postmaster@localhost",
         smtp_timeout: float = 8.0,
         skip_dns_check: bool = False,
+        require_mailbox_confirmation: bool = False,
+        reject_catch_all: bool = False,
 ) -> EmailValidationResult:
     """
     Performs a multi-stage validation of an email address.
@@ -39,6 +42,8 @@ def validate_email_address(
         smtp_from_email (str): Sender address for the SMTP check.
         smtp_timeout (float): Time limit for network requests.
         skip_dns_check (bool): If True, only the syntax is checked.
+        require_mailbox_confirmation (bool): If True, unconfirmed mailboxes are rejected.
+        reject_catch_all (bool): If True, domains accepting random recipients are rejected.
 
     Returns:
         EmailValidationResult: The result of the check.
@@ -58,10 +63,21 @@ def validate_email_address(
     if not mx_hosts and not _domain_has_a_record(domain):
         return EmailValidationResult(False, "domain has no MX or A record")
 
-    if verify_mailbox:
+    if verify_mailbox or require_mailbox_confirmation or reject_catch_all:
         probe = _probe_mailbox_exists(normalized, mx_hosts or [domain], smtp_from_email, smtp_timeout)
+        if probe is not None and not probe.is_valid:
+            return probe
+        if probe is not None and probe.is_valid and reject_catch_all:
+            catch_all_probe = _probe_random_mailbox(domain, mx_hosts or [domain], smtp_from_email, smtp_timeout)
+            if catch_all_probe is not None and catch_all_probe.is_valid:
+                return EmailValidationResult(
+                    False,
+                    "domain accepts random mailboxes (catch-all); recipient existence cannot be confirmed",
+                )
         if probe is not None:
             return probe
+        if require_mailbox_confirmation:
+            return EmailValidationResult(False, "mailbox could not be confirmed by SMTP")
 
     return EmailValidationResult(True)
 
@@ -122,6 +138,12 @@ def _probe_mailbox_exists(email: str, mx_hosts: list[str], smtp_from_email: str,
             return EmailValidationResult(True)
 
     return None
+
+
+def _probe_random_mailbox(domain: str, mx_hosts: list[str], smtp_from_email: str, timeout: float) -> EmailValidationResult | None:
+    """Checks whether a domain accepts an invented random local part."""
+    random_email = f"mail-sender-validation-{uuid.uuid4().hex}@{domain}"
+    return _probe_mailbox_exists(random_email, mx_hosts, smtp_from_email, timeout)
 
 
 def _decode_smtp_message(message) -> str:

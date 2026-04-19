@@ -10,6 +10,24 @@ def test_load_defaults(tmp_path):
     assert prompts == DEFAULT_PROMPTS
 
 
+def test_default_freelance_prompts_require_online_only_providers() -> None:
+    """Checks that freelance defaults keep the strict online-only lead gate."""
+    assert "Online-only Bildungsanbieter" in DEFAULT_PROMPTS["Freelance German"]
+    assert "Keine reinen Praesenzanbieter" in DEFAULT_PROMPTS["Freelance German"]
+    assert "Australien" in DEFAULT_PROMPTS["Freelance German"]
+    assert "weltweit" in DEFAULT_PROMPTS["Freelance German"]
+    assert "offiziellen Anbieter-Website" in DEFAULT_PROMPTS["Freelance German"]
+    assert "nicht valide markierte E-Mails" in DEFAULT_PROMPTS["Freelance German"]
+    assert "online-only education or training providers" in DEFAULT_PROMPTS["Freelance English"]
+    assert "in-person-only providers" in DEFAULT_PROMPTS["Freelance English"]
+    assert "worldwide" in DEFAULT_PROMPTS["Freelance English"]
+    assert "German or English" in DEFAULT_PROMPTS["Freelance English"]
+    assert "official provider website" in DEFAULT_PROMPTS["Freelance English"]
+    assert "invalid emails" in DEFAULT_PROMPTS["Freelance English"]
+    assert "invalid_mails.csv" in DEFAULT_PROMPTS["Overseer"]
+    assert "Germany, Australia, Switzerland, Austria, Luxembourg" in DEFAULT_PROMPTS["Overseer"]
+
+
 def test_save_and_load(tmp_path):
     """Checks behavior for save and load."""
     path = tmp_path / "test_prompts.toml"

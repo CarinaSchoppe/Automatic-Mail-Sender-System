@@ -174,7 +174,17 @@ SEND_TARGET_MAX_ROUNDS = 0
 
 `SEND_TARGET_COUNT` counts newly logged sent emails in this run. The system checks the existing `output/*.csv` sent logs before it starts, then repeats research and real sending until that many new addresses have been added. The final send round is capped automatically so it does not intentionally send past the remaining target. `SEND_TARGET_MAX_ROUNDS = 0` means unlimited rounds; even then, the loop stops if a round creates no new sent-log entries.
 
-Before rendering or sending, each recipient email is also validated. The pipeline checks email syntax and whether the domain has MX or A DNS records. Invalid addresses are skipped and written to:
+Before rendering or sending, each recipient email is also validated. The pipeline checks email syntax and whether the domain has MX or A DNS records. For safer real sending, enable:
+
+```toml
+VERIFY_EMAIL_SMTP = true
+REQUIRE_EMAIL_SMTP_PASS = true
+REJECT_CATCH_ALL = true
+```
+
+With these settings, the sender only accepts recipients whose mailbox is positively confirmed by the recipient server and rejects catch-all domains that also accept random invented addresses. This is intentionally conservative: it reduces `recipient does not exist` bounces, but it may skip valid addresses when a server blocks verification or hides mailbox status.
+
+Invalid addresses are skipped and written to:
 
 ```text
 output/invalid_mails.csv

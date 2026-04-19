@@ -100,6 +100,39 @@ def test_validate_email_address_can_probe_mailbox_rejects(monkeypatch) -> None:
     assert result.reason == "user unknown"
 
 
+def test_validate_email_address_can_require_positive_smtp_confirmation(monkeypatch) -> None:
+    """Checks that strict validation rejects inconclusive SMTP mailbox probes."""
+    monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: ["mx.example.com"])
+    monkeypatch.setattr(email_validation, "_probe_mailbox_exists", lambda *args: None)
+
+    result = email_validation.validate_email_address(
+        "person@example.com",
+        require_mailbox_confirmation=True,
+    )
+
+    assert result.is_valid is False
+    assert result.reason == "mailbox could not be confirmed by SMTP"
+
+
+def test_validate_email_address_can_reject_catch_all_domains(monkeypatch) -> None:
+    """Checks that catch-all domains are rejected in conservative mode."""
+    monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: ["mx.example.com"])
+    monkeypatch.setattr(
+        email_validation,
+        "_probe_mailbox_exists",
+        lambda *args: email_validation.EmailValidationResult(True),
+    )
+
+    result = email_validation.validate_email_address(
+        "person@example.com",
+        verify_mailbox=True,
+        reject_catch_all=True,
+    )
+
+    assert result.is_valid is False
+    assert result.reason == "domain accepts random mailboxes (catch-all); recipient existence cannot be confirmed"
+
+
 def test_probe_mailbox_accepts_definitive_smtp_responses(monkeypatch) -> None:
     """Prueft das Verhalten fuer probe mailbox accepts definitive smtp responses."""
 

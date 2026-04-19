@@ -226,6 +226,37 @@ def test_mail_sender_workbench_blocks_target_pipeline_when_send_is_off(
         root.destroy()
 
 
+def test_mail_sender_workbench_formats_failed_process_log_details(tmp_path: Path) -> None:
+    """Checks that failed processes show the saved traceback in the GUI console."""
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - depends on local Tk availability
+        pytest.skip(f"Tkinter is unavailable: {exc}")
+    root.withdraw()
+    try:
+        log_path = tmp_path / "logs" / "run.log"
+        log_path.parent.mkdir()
+        log_path.write_text(
+            "[INFO] before\n"
+            "Traceback (most recent call last):\n"
+            "  File \"code/main.py\", line 1, in <module>\n"
+            "RuntimeError: boom\n",
+            encoding="utf-8",
+        )
+        app = MailSenderWorkbench(root, project_root=tmp_path)
+        app._remember_process_log_path(f"[INFO] Saving terminal log to {log_path}.\n")
+
+        details = app._format_process_failure_details(1, ["fallback\n"])
+
+        assert "PROCESS FAILED WITH EXIT CODE 1" in details
+        assert str(log_path) in details
+        assert "Traceback (most recent call last):" in details
+        assert "RuntimeError: boom" in details
+        assert "[INFO] before" not in details
+    finally:
+        root.destroy()
+
+
 def test_mail_sender_workbench_filters_settings_and_env(tmp_path: Path) -> None:
     """Checks behavior for settings and env search filters."""
     try:

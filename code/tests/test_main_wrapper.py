@@ -91,6 +91,8 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
     assert mail_args[:4] == ["--mode", "Freelance_English", "--base-dir", str(app_main.PROJECT_ROOT)]
     assert "--send" in mail_args
     assert "--parallel-threads" in mail_args
+    assert "--require-email-smtp-pass" in mail_args
+    assert "--reject-catch-all" in mail_args
 
 
 def test_main_wrapper_defaults_to_research(monkeypatch) -> None:

@@ -86,6 +86,12 @@ PARALLEL_THREADS = 25
 # Verify before send: Optional MX/SMTP recipient probe before real sending.
 VERIFY_EMAIL_SMTP = true
 
+# Require SMTP mailbox pass: Only sends to recipients whose mailbox is positively confirmed by SMTP.
+REQUIRE_EMAIL_SMTP_PASS = true
+
+# Reject catch-all domains: Blocks domains that accept random invented mailboxes because the exact recipient cannot be proven.
+REJECT_CATCH_ALL = true
+
 # Skip DNS verification: If checked, skips MX/A record checks but still validates syntax and deduplication.
 SKIP_EMAIL_DNS_CHECK = false
 

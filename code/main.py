@@ -92,6 +92,8 @@ SEND_TARGET_COUNT: int = cast(int, _setting("SEND_TARGET_COUNT", 0))
 SEND_TARGET_MAX_ROUNDS: int = cast(int, _setting("SEND_TARGET_MAX_ROUNDS", 0))
 PARALLEL_THREADS: int = cast(int, _setting("PARALLEL_THREADS", 5))
 VERIFY_EMAIL_SMTP: bool = cast(bool, _setting("VERIFY_EMAIL_SMTP", False))
+REQUIRE_EMAIL_SMTP_PASS: bool = cast(bool, _setting("REQUIRE_EMAIL_SMTP_PASS", True))
+REJECT_CATCH_ALL: bool = cast(bool, _setting("REJECT_CATCH_ALL", True))
 SKIP_EMAIL_DNS_CHECK: bool = cast(bool, _setting("SKIP_EMAIL_DNS_CHECK", False))
 VERIFY_EMAIL_SMTP_TIMEOUT: int = cast(int, _setting("VERIFY_EMAIL_SMTP_TIMEOUT", 8))
 VERBOSE: bool = cast(bool, _setting("VERBOSE", False))
@@ -211,7 +213,12 @@ def _print_effective_settings() -> None:
     _info(f"Mail sending: {'real send enabled' if SEND else 'dry-run / no mail send unless research is disabled'}.")
     _info(f"Send target: {SEND_TARGET_COUNT if SEND_TARGET_COUNT else 'disabled'}.")
     _info(f"Parallel threads: {PARALLEL_THREADS}.")
-    _info(f"SMTP mailbox verification: {'enabled' if VERIFY_EMAIL_SMTP else 'disabled'}. DNS check: {'skipped' if SKIP_EMAIL_DNS_CHECK else 'enabled'}.")
+    _info(
+        f"SMTP mailbox verification: {'enabled' if VERIFY_EMAIL_SMTP else 'disabled'}. "
+        f"Require pass: {'enabled' if REQUIRE_EMAIL_SMTP_PASS else 'disabled'}. "
+        f"Catch-all rejection: {'enabled' if REJECT_CATCH_ALL else 'disabled'}. "
+        f"DNS check: {'skipped' if SKIP_EMAIL_DNS_CHECK else 'enabled'}."
+    )
     _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
     _info(f"Spam-safe mode: {'enabled' if SPAM_SAFE_MODE else 'disabled'}.")
@@ -302,6 +309,8 @@ def _build_mail_args(max_send_count: int | None = None) -> list[str]:
         ("--no-write-sent-log", not WRITE_SENT_LOG),
         ("--delete-input-after-success", DELETE_INPUT_AFTER_SUCCESS),
         ("--verify-email-smtp", VERIFY_EMAIL_SMTP),
+        ("--require-email-smtp-pass", REQUIRE_EMAIL_SMTP_PASS),
+        ("--reject-catch-all", REJECT_CATCH_ALL),
         ("--skip-email-dns-check", SKIP_EMAIL_DNS_CHECK),
     ]:
         _add_flag(args, enabled, flag)

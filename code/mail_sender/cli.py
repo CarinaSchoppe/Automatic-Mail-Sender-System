@@ -74,6 +74,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-send-count", type=int, help="Maximum number of filtered recipients to process in this run.")
     parser.add_argument("--parallel-threads", type=int, default=1, help="Maximum number of recipients to render/send in parallel.")
     parser.add_argument("--verify-email-smtp", action="store_true", help="Probe recipient MX servers for definitive mailbox rejects before sending.")
+    parser.add_argument(
+        "--require-email-smtp-pass",
+        action="store_true",
+        help="Only accept recipients whose mailbox is positively confirmed by the SMTP probe.",
+    )
+    parser.add_argument(
+        "--reject-catch-all",
+        action="store_true",
+        help="Reject domains that accept random invented mailboxes because the real recipient cannot be confirmed.",
+    )
     parser.add_argument("--skip-email-dns-check", action="store_true", help="Skip DNS/MX record verification during email validation.")
     parser.add_argument("--verify-email-smtp-timeout", type=float, default=8.0, help="Timeout in seconds for optional SMTP mailbox probes.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed pipeline logging.")
@@ -153,12 +163,14 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
 
     attachments = _load_attachments(args, mode)
     logged_emails, invalid_emails = _load_exclusion_logs(args, base_dir, invalid_log_path)
+    validation_smtp_from = _load_validation_smtp_from(args)
     recipients_to_process, skipped_before_send = _filter_recipients(
         args,
         recipients,
         logged_emails,
         invalid_emails,
         invalid_log_path,
+        validation_smtp_from,
     )
     recipients_to_process = _apply_max_send_count(args, recipients_to_process)
     _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send, attachments, invalid_log_path)
@@ -274,7 +286,28 @@ def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[
     return logged_emails, invalid_emails
 
 
-def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails: set[str], invalid_log_path: Path):
+def _load_validation_smtp_from(args) -> str | None:
+    """Loads the configured sender address for SMTP mailbox probes."""
+    if not _smtp_mailbox_validation_enabled(args):
+        return None
+    smtp_config = load_smtp_config(require_password=False)
+    _verbose(args.verbose, f"SMTP validation MAIL FROM: {smtp_config.from_email}")
+    return smtp_config.from_email
+
+
+def _smtp_mailbox_validation_enabled(args) -> bool:
+    """Returns True when recipient validation needs live SMTP probes."""
+    return bool(args.verify_email_smtp or args.require_email_smtp_pass or args.reject_catch_all)
+
+
+def _filter_recipients(
+        args,
+        recipients,
+        logged_emails: set[str],
+        invalid_emails: set[str],
+        invalid_log_path: Path,
+        validation_smtp_from: str | None = None,
+):
     """
     Filters the loaded recipients based on duplicates, exclusion lists, and email validation.
     Parallel validation using ThreadPoolExecutor.
@@ -305,15 +338,21 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
         to_validate.append(recipient)
 
     if not to_validate:
+        _info(f"Recipient pre-filter removed all rows. Skipped before validation: {skipped_before_send}.")
         return [], skipped_before_send
 
     # 2. Parallele Validierung
     validation_kwargs = {"skip_dns_check": args.skip_email_dns_check}
-    if args.verify_email_smtp:
+    if _smtp_mailbox_validation_enabled(args):
         validation_kwargs.update(
             verify_mailbox=True,
+            require_mailbox_confirmation=args.require_email_smtp_pass,
+            reject_catch_all=args.reject_catch_all,
             smtp_timeout=args.verify_email_smtp_timeout,
         )
+        if validation_smtp_from:
+            validation_kwargs["smtp_from_email"] = validation_smtp_from
+    _verbose(args.verbose, f"Validation options: {validation_kwargs}")
 
     def validate_one(rec):
         _verbose(args.verbose, f"Checking recipient {rec.email} ({rec.company}).")
@@ -336,14 +375,20 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
         future_to_index = {executor.submit(validate_one, rec): i for i, rec in enumerate(to_validate)}
         for future in as_completed(future_to_index):
             index = future_to_index[future]
-            rec, validation = future.result()
+            rec = to_validate[index]
+            try:
+                rec, validation = future.result()
+            except Exception as exc:  # pragma: no cover - defensive around third-party DNS/SMTP libraries
+                reason = f"validation crashed: {type(exc).__name__}: {exc}"
+                validation = EmailValidationResult(False, reason)
             results[index] = (rec, validation)
             # Instant feedback for verbose users
             _verbose(args.verbose, f"Validation result for {rec.email}: {validation.is_valid} {validation.reason}")
 
     # 3. Consolidate results (in original order)
     for res in results:
-        if res is None: continue
+        if res is None:
+            continue
         recipient, validation = res
         if not validation.is_valid:
             skipped_before_send += 1
@@ -355,6 +400,11 @@ def _filter_recipients(args, recipients, logged_emails: set[str], invalid_emails
         recipients_to_process.append(recipient)
         _verbose(args.verbose, f"Recipient accepted for processing: {recipient.email}")
 
+    _info(
+        "Validation summary: "
+        f"loaded={len(recipients)}, prefiltered_or_invalid={skipped_before_send}, "
+        f"accepted={len(recipients_to_process)}, rejected={len(to_validate) - len(recipients_to_process)}."
+    )
     return recipients_to_process, skipped_before_send
 
 
@@ -390,6 +440,8 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
     print("Spam-safe mode: yes" if args.spam_safe else "Spam-safe mode: no")
     print(f"Parallel threads: {args.parallel_threads}")
     print("SMTP mailbox verification: yes" if args.verify_email_smtp else "SMTP mailbox verification: no")
+    print("Require SMTP mailbox confirmation: yes" if args.require_email_smtp_pass else "Require SMTP mailbox confirmation: no")
+    print("Reject catch-all domains: yes" if args.reject_catch_all else "Reject catch-all domains: no")
 
 
 def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config) -> int:
@@ -497,9 +549,9 @@ def _process_recipients(
                     verbose=verbose,
                     embed_signature_image=embed_signature_image,
                 )
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:
                 errors += 1
-                print(f"[ERROR] {recipient.email} | {exc}")
+                print(f"[ERROR] {recipient.email} | {type(exc).__name__}: {exc}")
         _info(f"Recipient processing finished with {errors} error(s).")
         return errors
 
@@ -530,9 +582,9 @@ def _process_recipients(
             recipient = futures[future]
             try:
                 future.result()
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:
                 errors += 1
-                print(f"[ERROR] {recipient.email} | {exc}")
+                print(f"[ERROR] {recipient.email} | {type(exc).__name__}: {exc}")
     _info(f"Recipient processing finished with {errors} error(s).")
 
     return errors

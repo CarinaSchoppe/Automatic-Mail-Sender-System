@@ -72,6 +72,8 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SEND_TARGET_MAX_ROUNDS", "Max target rounds", "int", 0, "Run", "Safety limit for repeated target loop. 0 means unlimited.", min_value=0, max_value=100),
     SettingSpec("PARALLEL_THREADS", "Parallel threads", "int", 7, "Run", "Maximum parallel research requests and mail sender workers.", min_value=1, max_value=50),
     SettingSpec("VERIFY_EMAIL_SMTP", "Verify before send", "bool", False, "Mail", "Optional MX/SMTP recipient probe before real sending."),
+    SettingSpec("REQUIRE_EMAIL_SMTP_PASS", "Require SMTP mailbox pass", "bool", True, "Mail", "Only sends to recipients whose mailbox is positively confirmed by SMTP."),
+    SettingSpec("REJECT_CATCH_ALL", "Reject catch-all domains", "bool", True, "Mail", "Blocks domains that accept random invented mailboxes because the exact recipient cannot be proven."),
     SettingSpec("SKIP_EMAIL_DNS_CHECK", "Skip DNS verification", "bool", False, "Mail", "If checked, skips MX/A record checks but still validates syntax and deduplication."),
     SettingSpec("VERIFY_EMAIL_SMTP_TIMEOUT", "Verify timeout", "float", 8.0, "Mail", "Timeout for recipient SMTP probe.", min_value=1, max_value=60),
     SettingSpec("RESEND_EXISTING", "Resend existing", "bool", False, "Mail", "Allows sending to addresses already present in output logs."),

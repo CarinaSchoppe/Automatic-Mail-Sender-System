@@ -272,7 +272,15 @@ def test_build_prompt_uses_mode_specific_instructions(project: Path) -> None:
     assert "company,mail,source_url" in phd_prompt
     assert "Example GmbH" in phd_prompt
     assert "AVGS" in german_prompt
+    assert "Online-only" in german_prompt
+    assert "Australien" in german_prompt
+    assert "offiziellen Anbieter-Website" in german_prompt
+    assert "nicht valide markierte E-Mails" in german_prompt
     assert "remote freelance lecturer" in english_prompt
+    assert "online-only provider gate" in english_prompt
+    assert "Germany, Australia, Switzerland, Austria, Luxembourg" in english_prompt
+    assert "official provider website" in english_prompt
+    assert "invalid_mails.csv" in english_prompt
 
 
 def test_build_prompt_accepts_legacy_input_context_position(project: Path) -> None:

@@ -114,6 +114,74 @@ def test_cli_skips_invalid_addresses_and_persists_invalid_log(monkeypatch, proje
         assert reader[1][:3] == ["Bad", "bad@example.invalid", "domain has no MX or A record"]
 
 
+def test_cli_strict_smtp_validation_flags_are_forwarded(monkeypatch, project: Path, capsys) -> None:
+    """Checks that conservative mailbox validation options reach the validator."""
+    write_recipient(project / "input/PhD/good.csv", "Good", "good@example.com")
+    calls = []
+
+    def fake_validate(email: str, **kwargs):
+        """Captures strict validation kwargs."""
+        calls.append((email, kwargs))
+        return type("Result", (), {"is_valid": True, "reason": ""})()
+
+    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--allow-empty-attachments",
+        "--require-email-smtp-pass",
+        "--reject-catch-all",
+        "--verify-email-smtp-timeout",
+        "3",
+    ])
+
+    assert result == 0
+    assert calls == [
+        (
+            "good@example.com",
+            {
+                "skip_dns_check": False,
+                "verify_mailbox": True,
+                "require_mailbox_confirmation": True,
+                "reject_catch_all": True,
+                "smtp_timeout": 3.0,
+                "smtp_from_email": "info@carinaschoppe.com",
+            },
+        )
+    ]
+    output = capsys.readouterr().out
+    assert "Require SMTP mailbox confirmation: yes" in output
+    assert "Reject catch-all domains: yes" in output
+    assert "Validation summary:" in output
+
+
+def test_cli_logs_validation_crashes_as_invalid(monkeypatch, project: Path, capsys) -> None:
+    """Checks that validation worker crashes become invalid rows instead of killing the run."""
+    write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.com")
+
+    def broken_validate(email: str, **kwargs):
+        """Simulates a DNS/SMTP library crash during validation."""
+        raise RuntimeError(f"validator died for {email}")
+
+    monkeypatch.setattr("mail_sender.cli.validate_email_address", broken_validate)
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "[INVALID] bad@example.com | validation crashed: RuntimeError: validator died for bad@example.com" in output
+    with (project / "output/invalid_mails.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert rows[1][:3] == [
+        "Bad",
+        "bad@example.com",
+        "validation crashed: RuntimeError: validator died for bad@example.com",
+    ]
+
+
 def test_cli_skips_addresses_already_in_invalid_log(project: Path, capsys) -> None:
     """Checks behavior for cli skips addresses already in invalid log."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.invalid")
@@ -630,7 +698,7 @@ def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project:
     result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
 
     assert result == 1
-    assert "[ERROR] phd@example.com | boom" in capsys.readouterr().out
+    assert "[ERROR] phd@example.com | ValueError: boom" in capsys.readouterr().out
 
 
 def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> None:

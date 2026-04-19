@@ -51,6 +51,8 @@ def test_setting_coercion_matches_widget_value_types() -> None:
 
     assert specs["SMTP_PORT"].slider is False
     assert specs["SPAM_SAFE_MODE"].default is False
+    assert specs["REQUIRE_EMAIL_SMTP_PASS"].default is True
+    assert specs["REJECT_CATCH_ALL"].default is True
     assert coerce_value(specs["SEND"], "true") is True
     assert coerce_value(specs["PARALLEL_THREADS"], "7.0") == 7
     assert coerce_value(specs["SELF_REQUEST_TIMEOUT"], "3.5") == 3.5

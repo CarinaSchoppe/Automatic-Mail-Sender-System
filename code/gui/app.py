@@ -150,6 +150,7 @@ class MailSenderWorkbench:
         self.autosave = tk.BooleanVar(value=True)
         self.process: subprocess.Popen[str] | None = None
         self.message_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+        self.current_process_log_path: Path | None = None
         self.current_view_path: Path | None = None
         self.current_view_kind: str | None = None
         self._last_prompt_mode: str | None = None
@@ -1314,6 +1315,8 @@ class MailSenderWorkbench:
             ("--log-dry-run", "LOG_DRY_RUN"),
             ("--delete-input-after-success", "DELETE_INPUT_AFTER_SUCCESS"),
             ("--verify-email-smtp", "VERIFY_EMAIL_SMTP"),
+            ("--require-email-smtp-pass", "REQUIRE_EMAIL_SMTP_PASS"),
+            ("--reject-catch-all", "REJECT_CATCH_ALL"),
         ]:
             if settings[key]:
                 args.append(flag)
@@ -1329,6 +1332,7 @@ class MailSenderWorkbench:
             messagebox.showwarning("Process running", "A process is already running.")
             return
         self._append_console(f"[INFO] Starting: {' '.join(command)}\n")
+        self.current_process_log_path = None
         self.process = subprocess.Popen(
             command,
             cwd=self.project_root,
@@ -1355,11 +1359,69 @@ class MailSenderWorkbench:
         """
         assert self.process is not None
         assert self.process.stdout is not None
+        output_lines: list[str] = []
         for line in self.process.stdout:
+            output_lines.append(line)
+            self._remember_process_log_path(line)
             self.message_queue.put(("log", line))
         exit_code = self.process.wait()
         self.message_queue.put(("log", f"[INFO] Process exited with code {exit_code}\n"))
+        if exit_code != 0:
+            self.message_queue.put(("log", self._format_process_failure_details(exit_code, output_lines)))
         self.message_queue.put(("refresh", ""))
+
+    def _remember_process_log_path(self, line: str) -> None:
+        """Stores the run log path announced by code/main.py."""
+        marker = "[INFO] Saving terminal log to "
+        if marker not in line:
+            return
+        raw_path = line.split(marker, 1)[1].strip()
+        if raw_path.endswith("."):
+            raw_path = raw_path[:-1]
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = self.project_root / path
+        self.current_process_log_path = path
+
+    def _format_process_failure_details(self, exit_code: int, output_lines: list[str]) -> str:
+        """Builds a visible error diagnostic block for failed child processes."""
+        details = self._read_failure_trace_from_log() or self._tail_or_traceback(output_lines)
+        if not details:
+            details = "(no process output captured)"
+        log_hint = f"\nLog file: {self.current_process_log_path}" if self.current_process_log_path else ""
+        return (
+                "\n"
+                + "!" * 72
+                + "\n"
+                + f"PROCESS FAILED WITH EXIT CODE {exit_code}"
+                + log_hint
+                + "\n"
+                + "Traceback / last error output:\n"
+                + details.rstrip()
+                + "\n"
+                + "!" * 72
+                + "\n"
+        )
+
+    def _read_failure_trace_from_log(self) -> str:
+        """Reads the latest traceback or tail from the saved run log if available."""
+        path = self.current_process_log_path
+        if path is None or not path.exists():
+            return ""
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return ""
+        return self._tail_or_traceback([f"{line}\n" for line in lines])
+
+    @staticmethod
+    def _tail_or_traceback(lines: list[str], max_lines: int = 160) -> str:
+        """Returns a traceback section when present, otherwise the latest log lines."""
+        normalized = [line.rstrip("\n") for line in lines]
+        for index in range(len(normalized) - 1, -1, -1):
+            if normalized[index].startswith("Traceback "):
+                return "\n".join(normalized[index:])
+        return "\n".join(normalized[-max_lines:])
 
     def _drain_queue(self, _=None) -> None:
         """Transfers output from the background process to the GUI console."""
