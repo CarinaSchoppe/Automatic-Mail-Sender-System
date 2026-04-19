@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Callable, Any, cast
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 
 from research.logging_utils import verbose as _verbose
 from research.provider_clients.common import (
@@ -43,11 +43,23 @@ def generate_with_openai(
     Returns:
         Das Ergebnis als String (meist CSV).
     """
-    # override=True allows reloading the API key if it's updated in the .env file during a long run
-    load_env(override=True)
-    api_key = os.getenv("OPENAI_API_KEY")
+    # Lade die .env Datei manuell, um Race-Conditions in os.environ zu vermeiden.
+    env_vars = dotenv_values(".env")
+    api_key = env_vars.get("OPENAI_API_KEY")
+
+    # Fallback auf os.environ
+    if not api_key:
+        api_key = os.getenv("OPENAI_API_KEY")
+
     if not api_key:
         raise RuntimeError("Set OPENAI_API_KEY before running OpenAI research.")
+
+    api_key = api_key.strip().strip("'").strip('"')
+
+    # Maskiertes Logging des Keys zur Diagnose
+    key_prefix = api_key[:7]
+    key_suffix = api_key[-4:] if len(api_key) > 12 else ""
+    _verbose(verbose, f"Using OpenAI API Key: {key_prefix}...{key_suffix} (Length: {len(api_key)})")
 
     try:
         import openai

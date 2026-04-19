@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Callable, Any, cast
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 
 from research.logging_utils import verbose as _verbose
 from research.provider_clients.common import (
@@ -19,6 +19,19 @@ from research.provider_clients.common import (
     verbose_gemini_candidates,
 )
 
+# Cache für Gemini-Clients, um Mehrfach-Initialisierung zu vermeiden (Thread-sicherer Zugriff)
+_client_cache: dict[str, Any] = {}
+import threading
+
+_cache_lock = threading.Lock()
+
+
+def _get_client(api_key: str) -> Any:
+    from google import genai
+    with _cache_lock:
+        if api_key not in _client_cache:
+            _client_cache[api_key] = genai.Client(api_key=api_key)
+        return _client_cache[api_key]
 
 def generate_with_gemini(
         model: str,
@@ -42,14 +55,29 @@ def generate_with_gemini(
     Returns:
         Das Ergebnis als String (meist CSV).
     """
-    # override=True allows reloading the API key if it's updated in the .env file during a long run
-    load_env(override=True)
-    api_key = os.getenv("GEMINI_API_KEY")
+    # Lade die .env Datei manuell, um Race-Conditions in os.environ zu vermeiden
+    # und um sicherzustellen, dass wir den aktuellsten Wert aus der Datei lesen.
+    env_vars = dotenv_values(".env")
+    api_key = env_vars.get("GEMINI_API_KEY")
     if not api_key:
-        # Fallback to GOOGLE_API_KEY which is standard for Google libraries
+        api_key = env_vars.get("GOOGLE_API_KEY")
+
+    # Fallback auf os.environ, falls in .env nichts gefunden wurde
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
         api_key = os.getenv("GOOGLE_API_KEY")
+
     if not api_key:
-        raise RuntimeError("Set GEMINI_API_KEY or GOOGLE_API_KEY before running research.")
+        raise RuntimeError("Set GEMINI_API_KEY or GOOGLE_API_KEY in .env before running research.")
+
+    api_key = api_key.strip().strip("'").strip('"')
+
+    # Maskiertes Logging des Keys zur Diagnose
+    key_prefix = api_key[:4]
+    key_suffix = api_key[-4:] if len(api_key) > 8 else ""
+    key_type = "Standard API Key (starts with AIza)" if api_key.startswith("AIza") else "Likely a temporary/token Key (starts with AQ.)"
+    _verbose(verbose, f"Using Gemini {key_type}: {key_prefix}...{key_suffix} (Length: {len(api_key)})")
 
     try:
         from google import genai
@@ -76,18 +104,30 @@ def generate_with_gemini(
     api_error_classes: tuple[type[BaseException], ...] = tuple(api_error_list)
 
     try:
+        client = _get_client(api_key)
+    except Exception as exc:
+        _verbose(verbose, f"Error initializing Gemini client: {exc}")
+        # Fallback auf direkten Aufruf, falls der Cache-Mechanismus Probleme macht
+        from google import genai
         client = cast(Any, genai.Client(api_key=api_key))
-    except TypeError as exc:
-        if "api_key" not in str(exc):
-            raise
-        client = cast(Any, genai.Client())
+
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to Gemini.")
     uploaded_files = []
-    with fake_txt_extensions(attachment_paths, verbose) as faked_paths:
-        for path in faked_paths:
-            _verbose(verbose, f"Uploading Gemini context file: {path}.")
-            uploaded_files.append(client.files.upload(file=path))
-    _verbose(verbose, f"Gemini uploaded file handles: {len(uploaded_files)}.")
+
+    # Da File-Uploads auch Authentifizierung brauchen, fangen wir Fehler hier ab
+    try:
+        with fake_txt_extensions(attachment_paths, verbose) as faked_paths:
+            for path in faked_paths:
+                _verbose(verbose, f"Uploading Gemini context file: {path}.")
+                uploaded_files.append(client.files.upload(file=path))
+        _verbose(verbose, f"Gemini uploaded file handles: {len(uploaded_files)}.")
+    except Exception as e:
+        msg = str(e).lower()
+        if "401" in msg or "unauthenticated" in msg:
+            _verbose(verbose, f"Gemini Upload error: 401 UNAUTHENTICATED. The API key {key_prefix}... is invalid/expired. (Error: {e})")
+        else:
+            _verbose(verbose, f"Gemini Upload error: {e}")
+        raise
 
     thinking_level = _thinking_level_for_effort(types, reasoning_effort)
 
@@ -134,7 +174,11 @@ def generate_with_gemini(
                 continue
 
             if "401" in msg or "unauthenticated" in msg:
-                _verbose(verbose, f"Gemini API error: 401 UNAUTHENTICATED. Your API key might be invalid or expired. If you are using a temporary token, please update GEMINI_API_KEY in your .env file. (Error: {e})")
+                _verbose(verbose, f"Gemini API error: 401 UNAUTHENTICATED. "
+                                  f"Hint: If the key starts with 'AQ.', it is likely a temporary access token that expires after 60 minutes. "
+                                  f"Please get a permanent API key (starting with 'AIza') from https://aistudio.google.com/app/apikey "
+                                  f"and update GEMINI_API_KEY in your .env file. "
+                                  f"(Error: {e})")
             else:
                 _verbose(verbose, f"Gemini API error (non-retryable or max retries). Error: {e}")
             raise
