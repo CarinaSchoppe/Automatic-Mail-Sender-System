@@ -240,18 +240,55 @@ def test_validate_email_address_uses_external_zerobounce(monkeypatch):
 
     def mock_urlopen(url, timeout=None):
         if "zerobounce.net" in url:
-            return FakeResponse({"status": "invalid", "sub_status": "mailbox_not_found"})
+            if "invalid@example.com" in url:
+                return FakeResponse({"status": "invalid", "sub_status": "mailbox_not_found"})
+            if "catchall@example.com" in url:
+                return FakeResponse({"status": "catch-all"})
+            if "error@example.com" in url:
+                return FakeResponse({"error": "Invalid API Key"})
+            return FakeResponse({"status": "valid"})
         return FakeResponse({"status": "valid"})
 
     monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
 
+    # Test invalid
     res = validate_email_address(
-        "test@example.com",
+        "invalid@example.com",
         external_service="zerobounce",
         external_api_key="fake_key"
     )
     assert res.is_valid is False
     assert "ZeroBounce: mailbox_not_found" in res.reason
+
+    # Test catch-all rejected
+    res = validate_email_address(
+        "catchall@example.com",
+        external_service="zerobounce",
+        external_api_key="fake_key",
+        reject_catch_all=True
+    )
+    assert res.is_valid is False
+    assert "catch-all" in res.reason
+
+    # Test catch-all accepted
+    res = validate_email_address(
+        "catchall@example.com",
+        external_service="zerobounce",
+        external_api_key="fake_key",
+        reject_catch_all=False
+    )
+    assert res.is_valid is True
+
+    # Test error fallback
+    monkeypatch.setattr("mail_sender.email_validation._mail_exchange_hosts", lambda domain: ["mx.example.com"])
+    monkeypatch.setattr("mail_sender.email_validation._domain_has_a_record", lambda domain: True)
+
+    res = validate_email_address(
+        "error@example.com",
+        external_service="zerobounce",
+        external_api_key="fake_key"
+    )
+    assert res.is_valid is True
 
 
 def test_validate_email_address_uses_external_neverbounce(monkeypatch):
@@ -275,15 +312,27 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
 
     def mock_urlopen(url, timeout=None):
         if "neverbounce.com" in url:
-            return FakeResponse({"result": "invalid"})
+            if "invalid@example.com" in url:
+                return FakeResponse({"result": "invalid"})
+            if "disposable@example.com" in url:
+                return FakeResponse({"result": "disposable"})
+            return FakeResponse({"result": "valid"})
         return FakeResponse({"result": "valid"})
 
     monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
 
     res = validate_email_address(
-        "test@example.com",
+        "invalid@example.com",
         external_service="neverbounce",
         external_api_key="fake_key"
     )
     assert res.is_valid is False
     assert "NeverBounce: invalid" in res.reason
+
+    res = validate_email_address(
+        "disposable@example.com",
+        external_service="neverbounce",
+        external_api_key="fake_key"
+    )
+    assert res.is_valid is False
+    assert "NeverBounce: disposable" in res.reason
