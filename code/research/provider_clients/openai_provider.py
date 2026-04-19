@@ -9,9 +9,9 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Callable, Any, cast
+from typing import Any, cast
 
-from dotenv import load_dotenv, dotenv_values
+from dotenv import dotenv_values
 
 from research.logging_utils import verbose as _verbose
 from research.provider_clients.common import (
@@ -27,7 +27,6 @@ def generate_with_openai(
         attachment_paths: list[Path],
         reasoning_effort: str = "middle",
         verbose: bool = False,
-        load_env: Callable[..., Any] = load_dotenv,
 ) -> str | None | Any:
     """
     Führt eine Anfrage an OpenAI durch, lädt Anhänge hoch und verarbeitet die Antwort.
@@ -38,7 +37,6 @@ def generate_with_openai(
         attachment_paths (list[Path]): Pfade zu Dateien für den Kontext.
         reasoning_effort (str): Stufe der Denk-Leistung.
         verbose (bool): Detailliertes Logging.
-        load_env (Callable): Funktion zum Laden der Umgebungsvariablen.
 
     Returns:
         Das Ergebnis als String (meist CSV).

@@ -8,9 +8,9 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Callable, Any, cast
+from typing import Any, cast
 
-from dotenv import load_dotenv, dotenv_values
+from dotenv import dotenv_values
 
 from research.logging_utils import verbose as _verbose
 from research.provider_clients.common import (
@@ -33,13 +33,13 @@ def _get_client(api_key: str) -> Any:
             _client_cache[api_key] = genai.Client(api_key=api_key)
         return _client_cache[api_key]
 
+
 def generate_with_gemini(
         model: str,
         prompt: str,
         attachment_paths: list[Path],
         reasoning_effort: str = "middle",
         verbose: bool = False,
-        load_env: Callable[..., Any] = load_dotenv,
 ) -> str | None | Any:
     """
     Führt eine Anfrage an Google Gemini durch, lädt Anhänge hoch und verarbeitet die Antwort.
@@ -50,7 +50,6 @@ def generate_with_gemini(
         attachment_paths (list[Path]): Pfade zu Dateien für den Kontext.
         reasoning_effort (str): Stufe der Denk-Leistung (ThinkingLevel).
         verbose (bool): Detailliertes Logging.
-        load_env (Callable): Funktion zum Laden der Umgebungsvariablen.
 
     Returns:
         Das Ergebnis als String (meist CSV).

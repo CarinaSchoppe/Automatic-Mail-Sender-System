@@ -6,6 +6,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+try:
+    from mail_sender.prompts import load_prompts
+except ImportError:
+    load_prompts = None
+
 MODE_NAMES = ["PhD", "Freelance_German", "Freelance_English"]
 _BUILT_IN_MODE_LABELS = {
     "phd": "PhD",
@@ -130,11 +135,8 @@ def get_available_mode_names(base_dir: Path | None = None) -> list[str]:
     """Returns built-in mode names plus user-defined task names from prompts.toml."""
     mode_names = list(MODE_NAMES)
     prompts_path = (base_dir / "prompts.toml") if base_dir is not None else None
-    try:
-        from mail_sender.prompts import load_prompts
-    except ImportError:
-        prompts = {}
-    else:
+    prompts = {}
+    if load_prompts is not None:
         prompts = load_prompts(prompts_path) if prompts_path is not None else load_prompts()
 
     seen = {mode_name_key(name) for name in mode_names}

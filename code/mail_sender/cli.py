@@ -9,12 +9,12 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 from mail_sender.attachments import list_attachments
 from mail_sender.config import ConfigError, load_smtp_config
 from mail_sender.email_validation import EmailValidationResult, validate_email_address
-from mail_sender.modes import get_available_mode_names
-from mail_sender.modes import get_mode
+from mail_sender.modes import MailMode, get_available_mode_names, get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients_from_dir
 from mail_sender.sent_log import append_invalid_email, append_log, read_invalid_emails, read_known_output_emails
 from mail_sender.smtp_sender import SmtpMailer
@@ -124,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
-def _select_modes(mode_name: str, base_dir: Path):
+def _select_modes(mode_name: str, base_dir: Path) -> list[MailMode]:
     """
     Selects the corresponding mail modes based on the mode name.
     In "Auto" mode, all modes with existing input files are selected.
@@ -137,7 +137,7 @@ def _select_modes(mode_name: str, base_dir: Path):
     return [mode for mode in modes if list_recipient_files(mode.recipients_dir)]
 
 
-def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
+def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signature_path: Path, signature_logo_path: Path) -> int:
     """
     Executes the sending process for a specific mode (e.g., PhD).
 
@@ -239,7 +239,7 @@ def _identify_completed_files(recipients: list[Recipient], logged_emails: set[st
     return completed_files
 
 
-def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:
+def _log_mode_paths(args: argparse.Namespace, mode: MailMode, base_dir: Path, signature_path: Path, signature_logo_path: Path, invalid_log_path: Path) -> None:
     """Writes the most important paths of the current mailing mode to the verbose log."""
     template_path = mode.spam_safe_template_path if args.spam_safe else mode.template_path
     _verbose(args.verbose, f"Base directory: {base_dir}")
@@ -254,7 +254,7 @@ def _log_mode_paths(args, mode, base_dir: Path, signature_path: Path, signature_
     _verbose(args.verbose, f"Invalid email log file: {invalid_log_path}")
 
 
-def _scan_recipient_files(args, mode) -> list[Path]:
+def _scan_recipient_files(args: argparse.Namespace, mode: MailMode) -> list[Path]:
     """
     Scans the mode's input directory for CSV or TXT files.
     """
@@ -270,7 +270,7 @@ def _scan_recipient_files(args, mode) -> list[Path]:
     return recipient_files
 
 
-def _load_attachments(args, mode) -> list[Path]:
+def _load_attachments(args: argparse.Namespace, mode: MailMode) -> list[Path]:
     """
     Loads all files from the attachment directory of the current mode.
     """
@@ -297,7 +297,7 @@ def _load_attachments(args, mode) -> list[Path]:
     return attachments
 
 
-def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[set[str], set[str]]:
+def _load_exclusion_logs(args: argparse.Namespace, base_dir: Path, invalid_log_path: Path) -> tuple[set[str], set[str]]:
     """
     Loads the sets of already processed (sent) and invalid email addresses.
     """
@@ -317,7 +317,7 @@ def _load_exclusion_logs(args, base_dir: Path, invalid_log_path: Path) -> tuple[
     return logged_emails, invalid_emails
 
 
-def _load_validation_smtp_from(args) -> str | None:
+def _load_validation_smtp_from(args: argparse.Namespace) -> str | None:
     """Loads the configured sender address for SMTP mailbox probes."""
     if not _smtp_mailbox_validation_enabled(args):
         return None
@@ -326,19 +326,19 @@ def _load_validation_smtp_from(args) -> str | None:
     return smtp_config.from_email
 
 
-def _smtp_mailbox_validation_enabled(args) -> bool:
+def _smtp_mailbox_validation_enabled(args: argparse.Namespace) -> bool:
     """Returns True when recipient validation needs live SMTP probes."""
     return bool(args.verify_email_smtp or args.require_email_smtp_pass or args.reject_catch_all)
 
 
 def _filter_recipients(
-        args,
-        recipients,
+        args: argparse.Namespace,
+        recipients: list[Recipient],
         logged_emails: set[str],
         invalid_emails: set[str],
         invalid_log_path: Path,
         validation_smtp_from: str | None = None,
-):
+) -> tuple[list[Recipient], int]:
     """
     Filters the loaded recipients based on duplicates, exclusion lists, and email validation.
     Parallel validation using ThreadPoolExecutor.
@@ -439,7 +439,7 @@ def _filter_recipients(
     return recipients_to_process, skipped_before_send
 
 
-def _apply_max_send_count(args, recipients_to_process):
+def _apply_max_send_count(args: argparse.Namespace, recipients_to_process: list[Recipient]) -> list[Recipient]:
     """
     Limits the number of recipients to be processed to the value of --max-send-count.
     """
@@ -453,7 +453,15 @@ def _apply_max_send_count(args, recipients_to_process):
     return limited_recipients
 
 
-def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send: int, attachments: list[Path], invalid_log_path: Path) -> None:
+def _print_mode_summary(
+        args: argparse.Namespace,
+        mode: MailMode,
+        recipients: list[Recipient],
+        recipients_to_process: list[Recipient],
+        skipped_before_send: int,
+        attachments: list[Path],
+        invalid_log_path: Path,
+) -> None:
     """Prints the summary of the current mailing mode."""
     print(f"Mode: {mode.label}")
     print(f"Recipients loaded: {len(recipients)}")
@@ -475,7 +483,16 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
     print("Reject catch-all domains: yes" if args.reject_catch_all else "Reject catch-all domains: no")
 
 
-def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config, invalid_log_path: Path) -> int:
+def _send_or_dry_run(
+        args: argparse.Namespace,
+        mode: MailMode,
+        signature_path: Path,
+        signature_logo_path: Path,
+        recipients_to_process: list[Recipient],
+        attachments: list[Path],
+        smtp_config: Any,
+        invalid_log_path: Path,
+) -> int:
     """
     Decides based on the --send flag whether a dry-run or a real mailing occurs.
     """
@@ -541,7 +558,7 @@ def _process_recipients(
         signature_path: Path,
         log_path: Path,
         invalid_log_path: Path,
-        recipients,
+        recipients: list[Recipient],
         attachments: list[Path],
         subject_override: str | None,
         signature_image_path: Path,
@@ -550,7 +567,7 @@ def _process_recipients(
         log_dry_run: bool,
         write_sent_log: bool,
         verbose: bool,
-        smtp_config=None,
+        smtp_config: Any = None,
         parallel_threads: int = 1,
         embed_signature_image: bool = True,
 ) -> int:
@@ -602,7 +619,6 @@ def _process_recipients(
                 template_path=template_path,
                 signature_path=signature_path,
                 log_path=log_path,
-                invalid_log_path=invalid_log_path,
                 recipient=recipient,
                 attachments=attachments,
                 subject_override=subject_override,
@@ -633,11 +649,11 @@ def _process_recipients(
 
 def _process_one_recipient(
         mailer: SmtpMailer | None,
-        smtp_config,
+        smtp_config: Any,
         template_path: Path,
         signature_path: Path,
         log_path: Path,
-        recipient,
+        recipient: Recipient,
         attachments: list[Path],
         subject_override: str | None,
         signature_image_path: Path,
@@ -689,7 +705,7 @@ def _process_one_recipient(
         _send_with_mailer(worker_mailer, recipient, rendered, attachments, log_path, write_sent_log, verbose)
 
 
-def _send_with_mailer(mailer: SmtpMailer, recipient, rendered, attachments: list[Path], log_path: Path, write_sent_log: bool, verbose: bool) -> None:
+def _send_with_mailer(mailer: SmtpMailer, recipient: Recipient, rendered: Any, attachments: list[Path], log_path: Path, write_sent_log: bool, verbose: bool) -> None:
     """
     Nutzt einen geöffneten Mailer, um eine bereits gerenderte Nachricht zu versenden und zu loggen.
     """

@@ -8,8 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 from research.provider_clients.common import (
     extract_gemini_response_text,
     extract_openai_response_text,
@@ -95,7 +93,7 @@ def generate_with_gemini(
     """
     Specific call for the Google Gemini provider.
     """
-    return _gemini_generate(model, prompt, attachment_paths, reasoning_effort, verbose, load_dotenv)
+    return _gemini_generate(model, prompt, attachment_paths, reasoning_effort, verbose)
 
 
 def generate_with_openai(
@@ -108,4 +106,4 @@ def generate_with_openai(
     """
     Specific call for the OpenAI provider.
     """
-    return _openai_generate(model, prompt, attachment_paths, reasoning_effort, verbose, load_dotenv)
+    return _openai_generate(model, prompt, attachment_paths, reasoning_effort, verbose)
