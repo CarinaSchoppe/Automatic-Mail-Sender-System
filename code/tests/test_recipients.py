@@ -47,19 +47,33 @@ def test_reads_csv_and_txt_from_directory(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("content", "message"),
     [
-        ("company,mail\nOne,\n", "Missing email address"),
-        ("company,mail\nOne,invalid\n", "Invalid email address"),
         ("company,email_address\nOne,one@example.com\n", "must have a mail column"),
         ("mail\none@example.com\n", "must have a company column"),
     ],
 )
-def test_recipient_validation_errors(tmp_path: Path, content: str, message: str) -> None:
-    """Checks behavior for recipient validation errors."""
+def test_recipient_structural_errors(tmp_path: Path, content: str, message: str) -> None:
+    """Checks behavior for structural errors in recipient files."""
     path = tmp_path / "recipients.csv"
     path.write_text(content, encoding="utf-8")
 
     with pytest.raises(ValueError, match=message):
         read_recipients(path)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "company,mail\nOne,\n",
+        "company,mail\nOne,invalid\n",
+    ],
+)
+def test_recipient_row_skipping(tmp_path: Path, content: str) -> None:
+    """Checks that invalid rows are skipped instead of raising error."""
+    path = tmp_path / "recipients.csv"
+    path.write_text(content, encoding="utf-8")
+
+    recipients = read_recipients(path)
+    assert len(recipients) == 0
 
 
 def test_recipient_file_errors(tmp_path: Path) -> None:
