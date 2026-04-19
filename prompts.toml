@@ -217,3 +217,25 @@ Existing company exclusion list for this mode:
 
 Mode-specific input CSV/TXT context:
 {INPUT_CONTEXT}"""
+"test" = """
+Find organisations that are a strong fit for the custom task "test".
+
+Requirements:
+- Only include companies whose official website clearly proves the fit for this task.
+- Prefer official company websites and publicly visible work email addresses.
+- Do not guess, infer, pattern-generate, or fabricate email addresses.
+- Do not include contact forms without a visible email address.
+- Include only emails that are visibly shown on a public webpage.
+- Include the exact public source URL where the email was found.
+- Exclude all emails and companies already listed in the exclusion context.
+- If you cannot verify enough results, return fewer rows instead of guessing.
+
+Return CSV only with this exact header:
+company,mail,source_url
+
+Rules:
+- one row per email
+- repeat company name for multiple emails
+- no markdown
+- no commentary
+- no extra text"""

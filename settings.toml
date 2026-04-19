@@ -117,7 +117,10 @@ LOG_DRY_RUN = false
 WRITE_SENT_LOG = true
 
 # Delete input after success: Deletes processed input CSV/TXT files after a successful send run.
-DELETE_INPUT_AFTER_SUCCESS = false
+DELETE_INPUT_AFTER_SUCCESS = true
+
+# Subject override: Optional subject line override for mail sending. Leave empty to use the selected template subject.
+SUBJECT_OVERRIDE = ""
 
 # Signature logo: Path to the inline signature image.
 SIGNATURE_LOGO = "templates/signature-logo.png"
