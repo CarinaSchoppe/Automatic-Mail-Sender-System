@@ -659,7 +659,9 @@ def test_cli_keeps_input_files_after_dry_run_and_error(monkeypatch, project: Pat
         "--delete-input-after-success",
     ])
     assert result == 1
-    assert input_file.exists()
+    # Now it is NOT kept anymore because even errors are logged to invalid_mails.csv,
+    # satisfying the "processed" definition (must be in one of the two logs).
+    assert not input_file.exists()
 
 
 def test_cli_deletes_input_files_when_everything_was_already_logged(project: Path) -> None:
@@ -703,11 +705,13 @@ def test_cli_returns_error_when_processing_recipient_fails(monkeypatch, project:
 
 def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> None:
     """Checks behavior for process recipients requires mailer when not dry run."""
+    invalid_log = project / "output/invalid_mails.csv"
     errors = cli._process_recipients(
         mailer=None,
         template_path=project / "templates/phd.txt",
         signature_path=project / "templates/signature.txt",
         log_path=project / "output/send_phd.csv",
+        invalid_log_path=invalid_log,
         recipients=[],
         attachments=[],
         subject_override=None,
@@ -725,6 +729,7 @@ def test_process_recipients_requires_mailer_when_not_dry_run(project: Path) -> N
         template_path=project / "templates/phd.txt",
         signature_path=project / "templates/signature.txt",
         log_path=project / "output/send_phd.csv",
+        invalid_log_path=invalid_log,
         recipients=[Recipient(email="a@example.com", company="A")],
         attachments=[],
         subject_override=None,

@@ -179,7 +179,10 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
         print("Nothing to process.")
         if args.send and args.delete_input_after_success:
             _info("Checking for completed input files to delete (nothing to process in this run).")
-            completed_files = _identify_completed_files(recipients, logged_emails, invalid_emails)
+            # We read all logs regardless of skip-flags to see what is really finished
+            logged_all = read_known_output_emails(base_dir / "output")
+            invalid_all = read_invalid_emails(invalid_log_path)
+            completed_files = _identify_completed_files(recipients, logged_all, invalid_all)
             if completed_files:
                 _delete_input_files(completed_files, args.verbose)
         return 0
@@ -198,6 +201,7 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
         recipients_to_process,
         attachments,
         smtp_config,
+        invalid_log_path,
     )
 
     if errors:
@@ -207,8 +211,9 @@ def _run_mode(args, mode, base_dir: Path, signature_path: Path, signature_logo_p
 
     if args.send and args.delete_input_after_success:
         _info("Checking for completed input files to delete.")
-        # Reload logs to see what was actually sent/marked invalid in this run
-        logged_emails_after, invalid_emails_after = _load_exclusion_logs(args, base_dir, invalid_log_path)
+        # We read all logs regardless of skip-flags to see what is really finished
+        logged_emails_after = read_known_output_emails(base_dir / "output")
+        invalid_emails_after = read_invalid_emails(invalid_log_path)
         completed_files = _identify_completed_files(recipients, logged_emails_after, invalid_emails_after)
         if completed_files:
             _delete_input_files(completed_files, args.verbose)
@@ -470,7 +475,7 @@ def _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_b
     print("Reject catch-all domains: yes" if args.reject_catch_all else "Reject catch-all domains: no")
 
 
-def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config) -> int:
+def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path, recipients_to_process, attachments: list[Path], smtp_config, invalid_log_path: Path) -> int:
     """
     Decides based on the --send flag whether a dry-run or a real mailing occurs.
     """
@@ -483,6 +488,7 @@ def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path
             template_path=template_path,
             signature_path=signature_path,
             log_path=mode.log_path,
+            invalid_log_path=invalid_log_path,
             recipients=recipients_to_process,
             attachments=attachments,
             subject_override=args.subject,
@@ -503,6 +509,7 @@ def _send_or_dry_run(args, mode, signature_path: Path, signature_logo_path: Path
         template_path=template_path,
         signature_path=signature_path,
         log_path=mode.log_path,
+        invalid_log_path=invalid_log_path,
         recipients=recipients_to_process,
         attachments=attachments,
         subject_override=args.subject,
@@ -533,6 +540,7 @@ def _process_recipients(
         template_path: Path,
         signature_path: Path,
         log_path: Path,
+        invalid_log_path: Path,
         recipients,
         attachments: list[Path],
         subject_override: str | None,
@@ -564,6 +572,7 @@ def _process_recipients(
                     template_path=template_path,
                     signature_path=signature_path,
                     log_path=log_path,
+                    invalid_log_path=invalid_log_path,
                     recipient=recipient,
                     attachments=attachments,
                     subject_override=subject_override,
@@ -577,7 +586,10 @@ def _process_recipients(
                 )
             except Exception as recipient_error:
                 errors += 1
-                print(f"[ERROR] {recipient.email} | {type(recipient_error).__name__}: {recipient_error}")
+                reason = f"{type(recipient_error).__name__}: {recipient_error}"
+                print(f"[ERROR] {recipient.email} | {reason}")
+                if not dry_run:
+                    append_invalid_email(invalid_log_path, recipient, f"Send error: {reason}")
         _info(f"Recipient processing finished with {errors} error(s).")
         return errors
 
@@ -591,6 +603,7 @@ def _process_recipients(
                 template_path=template_path,
                 signature_path=signature_path,
                 log_path=log_path,
+                invalid_log_path=invalid_log_path,
                 recipient=recipient,
                 attachments=attachments,
                 subject_override=subject_override,
@@ -610,7 +623,10 @@ def _process_recipients(
                 future.result()
             except Exception as recipient_error:
                 errors += 1
-                print(f"[ERROR] {recipient.email} | {type(recipient_error).__name__}: {recipient_error}")
+                reason = f"{type(recipient_error).__name__}: {recipient_error}"
+                print(f"[ERROR] {recipient.email} | {reason}")
+                if not dry_run:
+                    append_invalid_email(invalid_log_path, recipient, f"Send error: {reason}")
     _info(f"Recipient processing finished with {errors} error(s).")
 
     return errors
@@ -622,6 +638,7 @@ def _process_one_recipient(
         template_path: Path,
         signature_path: Path,
         log_path: Path,
+        invalid_log_path: Path,
         recipient,
         attachments: list[Path],
         subject_override: str | None,

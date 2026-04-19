@@ -126,7 +126,7 @@ def generate_with_gemini(
             # 401 is usually not retryable unless the key was just updated in .env
             # But we don't want to spam retries for a fundamentally broken key.
             # However, if the user sees the error and fixes .env, override=True will pick it up.
-            
+
             if is_retryable and attempt < max_retries - 1:
                 wait_time = (2 ** attempt) + 10.0  # Exponential backoff + fixed buffer
                 _verbose(verbose, f"Gemini API error (retryable). Retrying in {wait_time:.2f}s (Attempt {attempt + 1}/{max_retries}). Error: {e}")
