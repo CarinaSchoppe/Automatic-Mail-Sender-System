@@ -6,6 +6,7 @@ Unterstützt Datei-Uploads, Google Search Grounding und exponentielles Backoff b
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, cast
@@ -21,7 +22,6 @@ from research.provider_clients.common import (
 
 # Cache für Gemini-Clients, um Mehrfach-Initialisierung zu vermeiden (Thread-sicherer Zugriff)
 _client_cache: dict[str, Any] = {}
-import threading
 
 _cache_lock = threading.Lock()
 

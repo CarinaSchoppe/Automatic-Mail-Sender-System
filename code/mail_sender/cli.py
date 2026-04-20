@@ -26,6 +26,11 @@ from mail_sender.sent_log import (
 from mail_sender.smtp_sender import SmtpMailer
 from mail_sender.templates import render_mail
 
+EXTERNAL_VALIDATION_KEY_NAMES = {
+    "zerobounce": "ZEROBOUNCE_API_KEY",
+    "neverbounce": "NEVERBOUNCE_API_KEY",
+}
+
 
 def _verbose(enabled: bool, message: str) -> None:
     """Prints a verbose message if verbose mode is active."""
@@ -183,7 +188,15 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
     if smtp_config.external_validation_service != "none":
         _verbose(args.verbose, f"External validation service: {smtp_config.external_validation_service}")
         if not smtp_config.external_validation_api_key:
-            print(f"[WARNING] External validation service '{smtp_config.external_validation_service}' is selected, but no API key was found. External validation will be skipped.")
+            expected_key = EXTERNAL_VALIDATION_KEY_NAMES.get(
+                smtp_config.external_validation_service,
+                "EXTERNAL_VALIDATION_API_KEY",
+            )
+            print(
+                f"[WARNING] External validation service '{smtp_config.external_validation_service}' is selected, "
+                f"but no API key was found. Set {expected_key} in .env. External validation will be skipped."
+            )
+    args.external_validation_service = smtp_config.external_validation_service
 
     recipients_to_process, skipped_before_send = _filter_recipients(
         args,
@@ -512,6 +525,8 @@ def _print_mode_summary(
     print("SMTP mailbox verification: yes" if args.verify_email_smtp else "SMTP mailbox verification: no")
     print("Require SMTP mailbox confirmation: yes" if args.require_email_smtp_pass else "Require SMTP mailbox confirmation: no")
     print("Reject catch-all domains: yes" if args.reject_catch_all else "Reject catch-all domains: no")
+    external_validation_service = getattr(args, "external_validation_service", "none")
+    print(f"External validation: {external_validation_service}")
 
 
 def _send_or_dry_run(

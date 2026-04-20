@@ -177,6 +177,21 @@ REJECT_CATCH_ALL = true
 
 With these settings, the sender only accepts recipients whose mailbox is positively confirmed by the recipient server and rejects catch-all domains that also accept random invented addresses. This is intentionally conservative: it reduces `recipient does not exist` bounces, but it may skip valid addresses when a server blocks verification or hides mailbox status.
 
+You can also use an external validation provider before local DNS/SMTP checks:
+
+```toml
+EXTERNAL_VALIDATION_SERVICE = "zerobounce"   # or "neverbounce"
+```
+
+Put the matching secret in `.env` or in the GUI `.env` tab:
+
+```text
+ZEROBOUNCE_API_KEY=
+NEVERBOUNCE_API_KEY=
+```
+
+When `EXTERNAL_VALIDATION_SERVICE` is `zerobounce`, the sender uses `ZEROBOUNCE_API_KEY`. When it is `neverbounce`, it uses `NEVERBOUNCE_API_KEY`. The older `EXTERNAL_VALIDATION_API_KEY` is still accepted as a fallback when the service-specific key is empty.
+
 Invalid addresses are skipped and written to:
 
 ```text

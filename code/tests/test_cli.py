@@ -162,6 +162,35 @@ def test_cli_strict_smtp_validation_flags_are_forwarded(monkeypatch, project: Pa
     assert "Validation summary:" in output
 
 
+def test_cli_forwards_selected_external_validation_key(monkeypatch, project: Path, capsys) -> None:
+    """Checks that the configured validation provider and API key reach the validator."""
+    write_recipient(project / "input/PhD/good.csv", "Good", "good@example.com")
+    calls = []
+
+    def fake_validate(email: str, **kwargs):
+        calls.append((email, kwargs))
+        return type("Result", (), {"is_valid": True, "reason": ""})()
+
+    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "zerobounce")
+    monkeypatch.setenv("ZEROBOUNCE_API_KEY", "zero-key")
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "")
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--allow-empty-attachments",
+    ])
+
+    assert result == 0
+    assert calls[0][1]["external_service"] == "zerobounce"
+    assert calls[0][1]["external_api_key"] == "zero-key"
+    assert "External validation: zerobounce" in capsys.readouterr().out
+
+
 def test_cli_logs_validation_crashes_as_invalid(monkeypatch, project: Path, capsys) -> None:
     """Checks that validation worker crashes become invalid rows instead of killing the run."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.com")

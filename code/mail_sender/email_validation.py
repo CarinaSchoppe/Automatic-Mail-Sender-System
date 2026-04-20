@@ -9,6 +9,7 @@ import json
 import re
 import smtplib
 import socket
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
@@ -62,9 +63,6 @@ def validate_email_address(
     if domain.startswith("-") or domain.endswith("-") or ".." in domain:
         return EmailValidationResult(False, "invalid email domain syntax")
 
-    if skip_dns_check:
-        return EmailValidationResult(True)
-
     # 1. External Service check (often more reliable/expensive, so maybe first or after syntax)
     if external_service != "none" and external_api_key:
         print(f"[VERBOSE] Using external validation service: {external_service} for {normalized}")
@@ -79,6 +77,9 @@ def validate_email_address(
             return ext_res
         else:
             print(f"[VERBOSE] External service {external_service} returned unknown result or error; falling back to local checks.")
+
+    if skip_dns_check:
+        return EmailValidationResult(True)
 
     # 2. DNS check
     mx_hosts = _mail_exchange_hosts(domain)
@@ -186,7 +187,8 @@ def _validate_external(email: str, service: str, api_key: str, timeout: float, r
 
 def _validate_zerobounce(email: str, api_key: str, timeout: float, reject_catch_all: bool = False) -> EmailValidationResult | None:
     """Calls the ZeroBounce V2 API."""
-    url = f"https://api.zerobounce.net/v2/validate?api_key={api_key}&email={email}"
+    query = urllib.parse.urlencode({"api_key": api_key, "email": email})
+    url = f"https://api.zerobounce.net/v2/validate?{query}"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -221,7 +223,8 @@ def _validate_zerobounce(email: str, api_key: str, timeout: float, reject_catch_
 
 def _validate_neverbounce(email: str, api_key: str, timeout: float, reject_catch_all: bool = False) -> EmailValidationResult | None:
     """Calls the NeverBounce V4 API."""
-    url = f"https://api.neverbounce.com/v4/single/check?key={api_key}&email={email}"
+    query = urllib.parse.urlencode({"key": api_key, "email": email})
+    url = f"https://api.neverbounce.com/v4/single/check?{query}"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))

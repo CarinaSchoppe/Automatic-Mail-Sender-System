@@ -99,7 +99,9 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
 ENV_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SMTP_USERNAME", "SMTP username", "str", "", "SMTP Secrets", "Login username for SMTP. Keep this in .env."),
     SettingSpec("SMTP_PASSWORD", "SMTP password", "str", "", "SMTP Secrets", "Login password for SMTP. Keep this in .env."),
-    SettingSpec("EXTERNAL_VALIDATION_API_KEY", "External validation API key", "str", "", "API Secrets", "API key for ZeroBounce or NeverBounce. Keep this in .env."),
+    SettingSpec("ZEROBOUNCE_API_KEY", "ZeroBounce API key", "str", "", "Validation Secrets", "API key used when External validation is set to zerobounce."),
+    SettingSpec("NEVERBOUNCE_API_KEY", "NeverBounce API key", "str", "", "Validation Secrets", "API key used when External validation is set to neverbounce."),
+    SettingSpec("EXTERNAL_VALIDATION_API_KEY", "Fallback validation API key", "str", "", "Validation Secrets", "Optional legacy fallback key used only when the selected service-specific key is empty."),
     SettingSpec("GEMINI_API_KEY", "Gemini API key", "str", "", "AI Secrets", "Gemini API key. Keep this in .env."),
     SettingSpec("OPENAI_API_KEY", "OpenAI API key", "str", "", "AI Secrets", "OpenAI API key. Keep this in .env."),
 )

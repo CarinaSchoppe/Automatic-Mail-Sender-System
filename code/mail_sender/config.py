@@ -16,7 +16,7 @@ try:
     from dotenv import load_dotenv
 
 except ImportError:  # pragma: no cover
-    def _dotenv_load_stub():
+    def _dotenv_load_stub(*_args: Any, **_kwargs: Any) -> bool:
         """Replaces python-dotenv if the package is missing in a minimal environment."""
         return False
 
@@ -101,7 +101,10 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
     password = os.getenv("SMTP_PASSWORD", "").strip()
 
     external_validation_service = _get("EXTERNAL_VALIDATION_SERVICE", "none").lower()
-    external_validation_api_key = os.getenv("EXTERNAL_VALIDATION_API_KEY", _get("EXTERNAL_VALIDATION_API_KEY", "")).strip()
+    external_validation_api_key = _select_external_validation_api_key(
+        external_validation_service,
+        legacy_fallback=_get("EXTERNAL_VALIDATION_API_KEY", ""),
+    )
 
     if encryption != "ssl":
         raise ConfigError("Only SSL/SMTPS is supported right now. Set SMTP_ENCRYPTION=ssl.")
@@ -136,3 +139,18 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         external_validation_service=external_validation_service,
         external_validation_api_key=external_validation_api_key,
     )
+
+
+def _select_external_validation_api_key(service: str, *, legacy_fallback: str = "") -> str:
+    """Return the configured API key for the selected validation service."""
+    normalized_service = service.strip().lower()
+    service_key_names = {
+        "zerobounce": "ZEROBOUNCE_API_KEY",
+        "neverbounce": "NEVERBOUNCE_API_KEY",
+    }
+    service_key_name = service_key_names.get(normalized_service)
+    if service_key_name:
+        service_key = os.getenv(service_key_name, "").strip()
+        if service_key:
+            return service_key
+    return os.getenv("EXTERNAL_VALIDATION_API_KEY", legacy_fallback).strip()

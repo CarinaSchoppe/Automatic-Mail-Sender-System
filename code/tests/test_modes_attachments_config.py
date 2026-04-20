@@ -57,7 +57,7 @@ def test_list_attachments_filters_gitkeep_and_sorts(tmp_path: Path) -> None:
 
 def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prueft das Verhalten fuer load smtp config."""
-    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda: None)
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
     for key in [
         "SMTP_HOST",
         "SMTP_PORT",
@@ -104,3 +104,37 @@ def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "SMTP_HOST" in message
     assert "SMTP_USERNAME" in message
     assert "SMTP_FROM_EMAIL" in message
+
+
+def test_load_smtp_config_uses_selected_validation_service_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that service-specific validation keys are selected from .env."""
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "zerobounce")
+    monkeypatch.setenv("ZEROBOUNCE_API_KEY", "zero-key")
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "fallback-key")
+
+    config = load_smtp_config(require_password=False)
+
+    assert config.external_validation_service == "zerobounce"
+    assert config.external_validation_api_key == "zero-key"
+
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    config = load_smtp_config(require_password=False)
+
+    assert config.external_validation_service == "neverbounce"
+    assert config.external_validation_api_key == "never-key"
+
+
+def test_load_smtp_config_keeps_legacy_validation_key_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that the old generic validation key still works as a fallback."""
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "zerobounce")
+    monkeypatch.delenv("ZEROBOUNCE_API_KEY", raising=False)
+    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "fallback-key")
+
+    config = load_smtp_config(require_password=False)
+
+    assert config.external_validation_api_key == "fallback-key"

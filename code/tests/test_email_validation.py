@@ -223,6 +223,7 @@ def test_validate_email_address_uses_external_zerobounce(monkeypatch):
     """Checks that ZeroBounce API is called when configured."""
     from mail_sender.email_validation import validate_email_address
     import json
+    import urllib.parse
     import urllib.request
 
     class FakeResponse:
@@ -238,13 +239,14 @@ def test_validate_email_address_uses_external_zerobounce(monkeypatch):
         def __exit__(self, *args):
             pass
 
-    def mock_urlopen(url):
+    def mock_urlopen(url, timeout=None):
         if "zerobounce.net" in url:
-            if "invalid@example.com" in url:
+            email = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("email", [""])[0]
+            if email == "invalid@example.com":
                 return FakeResponse({"status": "invalid", "sub_status": "mailbox_not_found"})
-            if "catchall@example.com" in url:
+            if email == "catchall@example.com":
                 return FakeResponse({"status": "catch-all"})
-            if "error@example.com" in url:
+            if email == "error@example.com":
                 return FakeResponse({"error": "Invalid API Key"})
             return FakeResponse({"status": "valid"})
         return FakeResponse({"status": "valid"})
@@ -291,10 +293,35 @@ def test_validate_email_address_uses_external_zerobounce(monkeypatch):
     assert res.is_valid is True
 
 
+def test_validate_email_address_runs_external_service_when_dns_check_is_skipped(monkeypatch):
+    """Checks that skip_dns_check does not disable selected external validation."""
+    from mail_sender.email_validation import validate_email_address
+
+    calls = []
+
+    def fake_external(email, service, api_key, timeout, reject_catch_all):
+        calls.append((email, service, api_key, timeout, reject_catch_all))
+        return email_validation.EmailValidationResult(False, "ZeroBounce: invalid")
+
+    monkeypatch.setattr(email_validation, "_validate_external", fake_external)
+
+    res = validate_email_address(
+        "invalid@example.com",
+        skip_dns_check=True,
+        external_service="zerobounce",
+        external_api_key="zero-key",
+    )
+
+    assert res.is_valid is False
+    assert res.reason == "ZeroBounce: invalid"
+    assert calls == [("invalid@example.com", "zerobounce", "zero-key", 8.0, False)]
+
+
 def test_validate_email_address_uses_external_neverbounce(monkeypatch):
     """Checks that NeverBounce API is called when configured."""
     from mail_sender.email_validation import validate_email_address
     import json
+    import urllib.parse
     import urllib.request
 
     class FakeResponse:
@@ -310,11 +337,12 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
         def __exit__(self, *args):
             pass
 
-    def mock_urlopen(url):
+    def mock_urlopen(url, timeout=None):
         if "neverbounce.com" in url:
-            if "invalid@example.com" in url:
+            email = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("email", [""])[0]
+            if email == "invalid@example.com":
                 return FakeResponse({"result": "invalid"})
-            if "disposable@example.com" in url:
+            if email == "disposable@example.com":
                 return FakeResponse({"result": "disposable"})
             return FakeResponse({"result": "valid"})
         return FakeResponse({"result": "valid"})

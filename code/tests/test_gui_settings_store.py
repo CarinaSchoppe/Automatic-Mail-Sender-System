@@ -91,3 +91,12 @@ def test_env_store_writes_and_loads_all_env_values(tmp_path: Path) -> None:
     assert loaded["SMTP_PASSWORD"] == "secret"
     assert loaded["GEMINI_API_KEY"] == "gem"
     assert {spec.key for spec in ENV_SCHEMA}.issuperset(loaded.keys())
+
+
+def test_env_schema_exposes_service_specific_validation_keys() -> None:
+    """Checks that ZeroBounce and NeverBounce secrets can be edited in the GUI."""
+    env_keys = {spec.key for spec in ENV_SCHEMA}
+
+    assert "ZEROBOUNCE_API_KEY" in env_keys
+    assert "NEVERBOUNCE_API_KEY" in env_keys
+    assert "EXTERNAL_VALIDATION_API_KEY" in env_keys
