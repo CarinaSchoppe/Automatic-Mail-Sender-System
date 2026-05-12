@@ -8,6 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 from research.provider_clients.common import (
     extract_gemini_response_text,
     extract_openai_response_text,
@@ -93,6 +95,7 @@ def generate_with_gemini(
     """
     Specific call for the Google Gemini provider.
     """
+    _load_provider_env()
     return _gemini_generate(model, prompt, attachment_paths, reasoning_effort, verbose)
 
 
@@ -106,4 +109,13 @@ def generate_with_openai(
     """
     Specific call for the OpenAI provider.
     """
+    _load_provider_env()
     return _openai_generate(model, prompt, attachment_paths, reasoning_effort, verbose)
+
+
+def _load_provider_env() -> None:
+    """Loads current provider secrets while keeping simple test stubs compatible."""
+    try:
+        load_dotenv(override=True)
+    except TypeError:
+        load_dotenv()

@@ -11,8 +11,6 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
-from dotenv import dotenv_values
-
 from research.logging_utils import verbose as _verbose
 from research.provider_clients.common import (
     extract_gemini_response_text,
@@ -21,17 +19,29 @@ from research.provider_clients.common import (
 )
 
 # Cache für Gemini-Clients, um Mehrfach-Initialisierung zu vermeiden (Thread-sicherer Zugriff)
-_client_cache: dict[str, Any] = {}
+_client_cache: dict[tuple[str, int], Any] = {}
 
 _cache_lock = threading.Lock()
 
 
 def _get_client(api_key: str) -> Any:
     from google import genai
+    client_class = genai.Client
+    cache_key = (api_key, id(client_class))
     with _cache_lock:
-        if api_key not in _client_cache:
-            _client_cache[api_key] = genai.Client(api_key=api_key)
-        return _client_cache[api_key]
+        if cache_key not in _client_cache:
+            _client_cache[cache_key] = _create_client(client_class, api_key)
+        return _client_cache[cache_key]
+
+
+def _create_client(client_class: Any, api_key: str) -> Any:
+    """Initializes the Gemini client while tolerating simple test doubles."""
+    try:
+        return client_class(api_key=api_key)
+    except TypeError as exc:
+        if "api_key" not in str(exc):
+            raise
+        return client_class()
 
 
 def generate_with_gemini(
@@ -54,18 +64,7 @@ def generate_with_gemini(
     Returns:
         Das Ergebnis als String (meist CSV).
     """
-    # Lade die .env Datei manuell, um Race-Conditions in os.environ zu vermeiden
-    # und um sicherzustellen, dass wir den aktuellsten Wert aus der Datei lesen.
-    env_vars = dotenv_values(".env")
-    api_key = env_vars.get("GEMINI_API_KEY")
-    if not api_key:
-        api_key = env_vars.get("GOOGLE_API_KEY")
-
-    # Fallback auf os.environ, falls in .env nichts gefunden wurde
-    if not api_key:
-        api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
     if not api_key:
         raise RuntimeError("Set GEMINI_API_KEY or GOOGLE_API_KEY in .env before running research.")
@@ -108,7 +107,7 @@ def generate_with_gemini(
         _verbose(verbose, f"Error initializing Gemini client: {exc}")
         # Fallback auf direkten Aufruf, falls der Cache-Mechanismus Probleme macht
         from google import genai
-        client = cast(Any, genai.Client(api_key=api_key))
+        client = cast(Any, _create_client(genai.Client, api_key))
 
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to Gemini.")
     uploaded_files = []

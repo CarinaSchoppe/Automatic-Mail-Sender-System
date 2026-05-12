@@ -11,8 +11,6 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
-from dotenv import dotenv_values
-
 from research.logging_utils import verbose as _verbose
 from research.provider_clients.common import (
     extract_openai_response_text,
@@ -41,13 +39,7 @@ def generate_with_openai(
     Returns:
         Das Ergebnis als String (meist CSV).
     """
-    # Lade die .env Datei manuell, um Race-Conditions in os.environ zu vermeiden.
-    env_vars = dotenv_values(".env")
-    api_key = env_vars.get("OPENAI_API_KEY")
-
-    # Fallback auf os.environ
-    if not api_key:
-        api_key = os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
         raise RuntimeError("Set OPENAI_API_KEY before running OpenAI research.")
