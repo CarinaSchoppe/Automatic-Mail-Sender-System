@@ -5,8 +5,16 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from mail_sender import cli
 from mail_sender.recipients import Recipient
+
+
+@pytest.fixture(autouse=True)
+def disable_external_validation_by_default(monkeypatch) -> None:
+    """Keeps unrelated CLI tests focused on local send behavior."""
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "none")
 
 
 def write_recipient(path: Path, company: str, email: str) -> None:
@@ -42,6 +50,7 @@ def setup_fake_mailer(monkeypatch, send_callback) -> None:
             send_callback(*args, **kwargs)
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "none")
     monkeypatch.setattr("mail_sender.cli.SmtpMailer", FakeMailer)
 
 
@@ -126,7 +135,6 @@ def test_cli_strict_smtp_validation_flags_are_forwarded(monkeypatch, project: Pa
 
     monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
     monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "none")
-    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "")
 
     result = cli.main([
         "--mode",
@@ -172,10 +180,8 @@ def test_cli_forwards_selected_external_validation_key(monkeypatch, project: Pat
         return type("Result", (), {"is_valid": True, "reason": ""})()
 
     monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
-    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "zerobounce")
-    monkeypatch.setenv("ZEROBOUNCE_API_KEY", "zero-key")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
-    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "")
 
     result = cli.main([
         "--mode",
@@ -186,13 +192,13 @@ def test_cli_forwards_selected_external_validation_key(monkeypatch, project: Pat
     ])
 
     assert result == 0
-    assert calls[0][1]["external_service"] == "zerobounce"
-    assert calls[0][1]["external_api_key"] == "zero-key"
-    assert "External validation: zerobounce" in capsys.readouterr().out
+    assert calls[0][1]["external_service"] == "neverbounce"
+    assert calls[0][1]["external_api_key"] == "never-key"
+    assert "External validation: neverbounce" in capsys.readouterr().out
 
 
-def test_cli_auto_external_validation_blocks_send(monkeypatch, project: Path, capsys) -> None:
-    """Checks that auto-detected provider validation happens before real sending."""
+def test_cli_neverbounce_validation_blocks_send(monkeypatch, project: Path, capsys) -> None:
+    """Checks that NeverBounce validation happens before real sending."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.com")
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
@@ -204,10 +210,8 @@ def test_cli_auto_external_validation_blocks_send(monkeypatch, project: Path, ca
 
     setup_fake_mailer(monkeypatch, lambda *args, **kwargs: sent.append((args, kwargs)))
     monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
-    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "auto")
-    monkeypatch.delenv("ZEROBOUNCE_API_KEY", raising=False)
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
-    monkeypatch.delenv("EXTERNAL_VALIDATION_API_KEY", raising=False)
 
     result = cli.main([
         "--mode",

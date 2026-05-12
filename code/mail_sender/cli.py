@@ -26,10 +26,7 @@ from mail_sender.sent_log import (
 from mail_sender.smtp_sender import SmtpMailer
 from mail_sender.templates import render_mail
 
-EXTERNAL_VALIDATION_KEY_NAMES = {
-    "zerobounce": "ZEROBOUNCE_API_KEY",
-    "neverbounce": "NEVERBOUNCE_API_KEY",
-}
+NEVERBOUNCE_API_KEY_NAME = "NEVERBOUNCE_API_KEY"
 
 
 def _verbose(enabled: bool, message: str) -> None:
@@ -188,13 +185,9 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
     if smtp_config.external_validation_service != "none":
         _verbose(args.verbose, f"External validation service: {smtp_config.external_validation_service}")
         if not smtp_config.external_validation_api_key:
-            expected_key = EXTERNAL_VALIDATION_KEY_NAMES.get(
-                smtp_config.external_validation_service,
-                "EXTERNAL_VALIDATION_API_KEY",
-            )
             print(
                 f"[WARNING] External validation service '{smtp_config.external_validation_service}' is selected, "
-                f"but no API key was found. Set {expected_key} in .env. External validation will be skipped."
+                f"but no API key was found. Set {NEVERBOUNCE_API_KEY_NAME} in .env. External validation will be skipped."
             )
     args.external_validation_service = smtp_config.external_validation_service
 

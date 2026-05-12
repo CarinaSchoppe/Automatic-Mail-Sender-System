@@ -177,23 +177,22 @@ REJECT_CATCH_ALL = true
 
 With these settings, the sender only accepts recipients whose mailbox is positively confirmed by the recipient server and rejects catch-all domains that also accept random invented addresses. This is intentionally conservative: it reduces `recipient does not exist` bounces, but it may skip valid addresses when a server blocks verification or hides mailbox status.
 
-You can also use an external validation provider before local DNS/SMTP checks.
-For the simplest setup, leave the service on `auto` and add exactly one provider key to `.env`:
+You can also use NeverBounce as the final external validation gate before a mail is rendered or sent.
+This is the recommended setup when you want only externally confirmed addresses to leave the system:
 
 ```toml
-EXTERNAL_VALIDATION_SERVICE = "auto"
+EXTERNAL_VALIDATION_SERVICE = "neverbounce"
 ```
 
-Put the matching secret in `.env` or in the GUI `.env` tab:
+Put the NeverBounce secret in `.env` or in the GUI `.env` tab:
 
 ```text
-ZEROBOUNCE_API_KEY=
 NEVERBOUNCE_API_KEY=
 ```
 
-With `auto`, the sender uses `ZEROBOUNCE_API_KEY` when it is present, otherwise `NEVERBOUNCE_API_KEY`. If you want to force a provider, set `EXTERNAL_VALIDATION_SERVICE = "zerobounce"` or `EXTERNAL_VALIDATION_SERVICE = "neverbounce"`. The older `EXTERNAL_VALIDATION_API_KEY` is still accepted as a fallback when a selected service-specific key is empty.
+Set `EXTERNAL_VALIDATION_SERVICE = "none"` only when you intentionally want to disable NeverBounce.
 
-This validation happens after duplicate/invalid-log filtering and before rendering or sending any message. If ZeroBounce or NeverBounce rejects an address, the mail is not rendered, not sent, and the address is written to `output/invalid_mails.csv` with the provider reason.
+The sender runs this check after research output has been loaded, after duplicate and already-invalid addresses have been removed, and immediately before rendering or sending any message. Only a NeverBounce `valid` result is accepted. Results such as `invalid`, `disposable`, `spamtrap`, `catchall`, `unknown`, API errors, or connection failures are treated as invalid, the mail is not rendered, the mail is not sent, and the address is written to `output/invalid_mails.csv` with the NeverBounce reason.
 
 Invalid addresses are skipped and written to:
 

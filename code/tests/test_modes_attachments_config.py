@@ -77,6 +77,7 @@ def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setenv("SMTP_PORT", "2525")
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
     config = load_smtp_config(require_password=True)
     assert config.password == "secret"
     assert config.port == 2525
@@ -107,45 +108,29 @@ def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_load_smtp_config_uses_selected_validation_service_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Checks that service-specific validation keys are selected from .env."""
+    """Checks that the NeverBounce validation key is selected from .env."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "zerobounce")
-    monkeypatch.setenv("ZEROBOUNCE_API_KEY", "zero-key")
-    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
-    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "fallback-key")
-
-    config = load_smtp_config(require_password=False)
-
-    assert config.external_validation_service == "zerobounce"
-    assert config.external_validation_api_key == "zero-key"
-
     monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
+
     config = load_smtp_config(require_password=False)
 
     assert config.external_validation_service == "neverbounce"
     assert config.external_validation_api_key == "never-key"
 
 
-def test_load_smtp_config_auto_detects_validation_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Checks that one validation API key is enough in auto mode."""
+def test_load_smtp_config_defaults_to_neverbounce(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that NeverBounce is the default validation provider."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "auto")
-    monkeypatch.delenv("ZEROBOUNCE_API_KEY", raising=False)
+    monkeypatch.delenv("EXTERNAL_VALIDATION_SERVICE", raising=False)
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
-    monkeypatch.delenv("EXTERNAL_VALIDATION_API_KEY", raising=False)
 
     config = load_smtp_config(require_password=False)
 
     assert config.external_validation_service == "neverbounce"
     assert config.external_validation_api_key == "never-key"
-
-    monkeypatch.setenv("ZEROBOUNCE_API_KEY", "zero-key")
-    config = load_smtp_config(require_password=False)
-
-    assert config.external_validation_service == "zerobounce"
-    assert config.external_validation_api_key == "zero-key"
 
 
 def test_load_smtp_config_rejects_unknown_validation_service(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,14 +143,25 @@ def test_load_smtp_config_rejects_unknown_validation_service(monkeypatch: pytest
         load_smtp_config(require_password=False)
 
 
-def test_load_smtp_config_keeps_legacy_validation_key_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Checks that the old generic validation key still works as a fallback."""
+def test_load_smtp_config_requires_neverbounce_key_for_real_send(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that real sending does not silently skip selected NeverBounce validation."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "zerobounce")
-    monkeypatch.delenv("ZEROBOUNCE_API_KEY", raising=False)
-    monkeypatch.setenv("EXTERNAL_VALIDATION_API_KEY", "fallback-key")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.delenv("NEVERBOUNCE_API_KEY", raising=False)
+
+    with pytest.raises(ConfigError, match="NEVERBOUNCE_API_KEY"):
+        load_smtp_config(require_password=True)
+
+
+def test_load_smtp_config_allows_disabling_external_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that external validation can be disabled explicitly."""
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "none")
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
 
     config = load_smtp_config(require_password=False)
 
-    assert config.external_validation_api_key == "fallback-key"
+    assert config.external_validation_service == "none"
+    assert config.external_validation_api_key == ""

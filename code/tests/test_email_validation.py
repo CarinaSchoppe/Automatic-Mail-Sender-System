@@ -219,80 +219,6 @@ def test_domain_accepts_mail_uses_mx_and_falls_back_on_resolver_error(monkeypatc
     assert email_validation._domain_accepts_mail("example.com") is True
 
 
-def test_validate_email_address_uses_external_zerobounce(monkeypatch):
-    """Checks that ZeroBounce API is called when configured."""
-    from mail_sender.email_validation import validate_email_address
-    import json
-    import urllib.parse
-    import urllib.request
-
-    class FakeResponse:
-        def __init__(self, data):
-            self.data = data
-
-        def read(self):
-            return json.dumps(self.data).encode("utf-8")
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-    def mock_urlopen(url, timeout=None):
-        if "zerobounce.net" in url:
-            email = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("email", [""])[0]
-            if email == "invalid@example.com":
-                return FakeResponse({"status": "invalid", "sub_status": "mailbox_not_found"})
-            if email == "catchall@example.com":
-                return FakeResponse({"status": "catch-all"})
-            if email == "error@example.com":
-                return FakeResponse({"error": "Invalid API Key"})
-            return FakeResponse({"status": "valid"})
-        return FakeResponse({"status": "valid"})
-
-    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
-
-    # Test invalid
-    res = validate_email_address(
-        "invalid@example.com",
-        external_service="zerobounce",
-        external_api_key="fake_key"
-    )
-    assert res.is_valid is False
-    assert "ZeroBounce: mailbox_not_found" in res.reason
-
-    # Test catch-all rejected
-    res = validate_email_address(
-        "catchall@example.com",
-        external_service="zerobounce",
-        external_api_key="fake_key",
-        reject_catch_all=True
-    )
-    assert res.is_valid is False
-    assert "catch-all" in res.reason
-
-    # Test catch-all accepted
-    res = validate_email_address(
-        "catchall@example.com",
-        external_service="zerobounce",
-        external_api_key="fake_key",
-        reject_catch_all=False
-    )
-    assert res.is_valid is True
-
-    # Test error fallback
-    monkeypatch.setattr("mail_sender.email_validation._mail_exchange_hosts", lambda domain: ["mx.example.com"])
-    monkeypatch.setattr("mail_sender.email_validation._domain_has_a_record", lambda domain: True)
-
-    res = validate_email_address(
-        "error@example.com",
-        external_service="zerobounce",
-        external_api_key="fake_key"
-    )
-    assert res.is_valid is True
-
-
 def test_validate_email_address_runs_external_service_when_dns_check_is_skipped(monkeypatch):
     """Checks that skip_dns_check does not disable selected external validation."""
     from mail_sender.email_validation import validate_email_address
@@ -301,20 +227,20 @@ def test_validate_email_address_runs_external_service_when_dns_check_is_skipped(
 
     def fake_external(email, service, api_key, timeout, reject_catch_all):
         calls.append((email, service, api_key, timeout, reject_catch_all))
-        return email_validation.EmailValidationResult(False, "ZeroBounce: invalid")
+        return email_validation.EmailValidationResult(False, "NeverBounce: invalid")
 
     monkeypatch.setattr(email_validation, "_validate_external", fake_external)
 
     res = validate_email_address(
         "invalid@example.com",
         skip_dns_check=True,
-        external_service="zerobounce",
-        external_api_key="zero-key",
+        external_service="neverbounce",
+        external_api_key="never-key",
     )
 
     assert res.is_valid is False
-    assert res.reason == "ZeroBounce: invalid"
-    assert calls == [("invalid@example.com", "zerobounce", "zero-key", 8.0, False)]
+    assert res.reason == "NeverBounce: invalid"
+    assert calls == [("invalid@example.com", "neverbounce", "never-key", 8.0, False)]
 
 
 def test_validate_email_address_uses_external_neverbounce(monkeypatch):
@@ -344,6 +270,14 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
                 return FakeResponse({"result": "invalid"})
             if email == "disposable@example.com":
                 return FakeResponse({"result": "disposable"})
+            if email == "spamtrap@example.com":
+                return FakeResponse({"result": "spamtrap"})
+            if email == "catchall@example.com":
+                return FakeResponse({"result": "catchall"})
+            if email == "unknown@example.com":
+                return FakeResponse({"result": "unknown"})
+            if email == "error@example.com":
+                return FakeResponse({"status": "error", "message": "Invalid API key"})
             return FakeResponse({"result": "valid"})
         return FakeResponse({"result": "valid"})
 
@@ -364,3 +298,17 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
     )
     assert res.is_valid is False
     assert "NeverBounce: disposable" in res.reason
+
+    for address, reason in (
+            ("spamtrap@example.com", "NeverBounce: spamtrap"),
+            ("catchall@example.com", "NeverBounce: catchall"),
+            ("unknown@example.com", "NeverBounce: unknown"),
+            ("error@example.com", "NeverBounce API error: Invalid API key"),
+    ):
+        res = validate_email_address(
+            address,
+            external_service="neverbounce",
+            external_api_key="fake_key",
+        )
+        assert res.is_valid is False
+        assert reason in res.reason

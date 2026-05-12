@@ -93,18 +93,16 @@ def test_env_store_writes_and_loads_all_env_values(tmp_path: Path) -> None:
     assert {spec.key for spec in ENV_SCHEMA}.issuperset(loaded.keys())
 
 
-def test_env_schema_exposes_service_specific_validation_keys() -> None:
-    """Checks that ZeroBounce and NeverBounce secrets can be edited in the GUI."""
+def test_env_schema_exposes_neverbounce_validation_key() -> None:
+    """Checks that the NeverBounce secret can be edited in the GUI."""
     env_keys = {spec.key for spec in ENV_SCHEMA}
 
-    assert "ZEROBOUNCE_API_KEY" in env_keys
     assert "NEVERBOUNCE_API_KEY" in env_keys
-    assert "EXTERNAL_VALIDATION_API_KEY" in env_keys
 
 
-def test_settings_schema_allows_auto_external_validation() -> None:
-    """Checks that the GUI can select automatic validation provider detection."""
+def test_settings_schema_allows_neverbounce_or_none() -> None:
+    """Checks that the GUI can select NeverBounce or disable external validation."""
     spec = next(item for item in SETTINGS_SCHEMA if item.key == "EXTERNAL_VALIDATION_SERVICE")
 
-    assert spec.default == "auto"
-    assert spec.choices == ("auto", "none", "zerobounce", "neverbounce")
+    assert spec.default == "neverbounce"
+    assert spec.choices == ("neverbounce", "none")

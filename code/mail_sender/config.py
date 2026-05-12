@@ -25,10 +25,8 @@ except ImportError:  # pragma: no cover
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
-VALIDATION_SERVICE_KEY_NAMES = {
-    "zerobounce": "ZEROBOUNCE_API_KEY",
-    "neverbounce": "NEVERBOUNCE_API_KEY",
-}
+NEVERBOUNCE_SERVICE = "neverbounce"
+NEVERBOUNCE_API_KEY = "NEVERBOUNCE_API_KEY"
 
 
 class ConfigError(RuntimeError):
@@ -105,8 +103,7 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
     password = os.getenv("SMTP_PASSWORD", "").strip()
 
     external_validation_service, external_validation_api_key = _select_external_validation_provider(
-        _get("EXTERNAL_VALIDATION_SERVICE", "auto").lower(),
-        legacy_fallback=_get("EXTERNAL_VALIDATION_API_KEY", ""),
+        _get("EXTERNAL_VALIDATION_SERVICE", NEVERBOUNCE_SERVICE).lower(),
     )
 
     if encryption != "ssl":
@@ -126,6 +123,8 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         missing.append("SMTP_FROM_EMAIL")
     if require_password and not password:
         missing.append("SMTP_PASSWORD")
+    if require_password and external_validation_service != "none" and not external_validation_api_key:
+        missing.append(NEVERBOUNCE_API_KEY)
 
     if missing:
         joined = ", ".join(missing)
@@ -144,27 +143,13 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
     )
 
 
-def _select_external_validation_provider(service: str, *, legacy_fallback: str = "") -> tuple[str, str]:
-    """Return the active external validation service and its configured API key."""
+def _select_external_validation_provider(service: str) -> tuple[str, str]:
+    """Return the active NeverBounce validation mode and its configured API key."""
     normalized_service = service.strip().lower()
     if normalized_service == "none":
         return "none", ""
 
-    if normalized_service == "auto":
-        for provider, key_name in VALIDATION_SERVICE_KEY_NAMES.items():
-            key = os.getenv(key_name, "").strip()
-            if key:
-                return provider, key
+    if normalized_service != NEVERBOUNCE_SERVICE:
+        raise ConfigError("EXTERNAL_VALIDATION_SERVICE must be one of: none, neverbounce.")
 
-        fallback_key = os.getenv("EXTERNAL_VALIDATION_API_KEY", legacy_fallback).strip()
-        return ("zerobounce", fallback_key) if fallback_key else ("none", "")
-
-    service_key_name = VALIDATION_SERVICE_KEY_NAMES.get(normalized_service)
-    if service_key_name is None:
-        valid_values = ", ".join(("auto", "none", *VALIDATION_SERVICE_KEY_NAMES))
-        raise ConfigError(f"EXTERNAL_VALIDATION_SERVICE must be one of: {valid_values}.")
-
-    service_key = os.getenv(service_key_name, "").strip()
-    if service_key:
-        return normalized_service, service_key
-    return normalized_service, os.getenv("EXTERNAL_VALIDATION_API_KEY", legacy_fallback).strip()
+    return NEVERBOUNCE_SERVICE, os.getenv(NEVERBOUNCE_API_KEY, "").strip()

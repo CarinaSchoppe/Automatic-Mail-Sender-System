@@ -49,7 +49,7 @@ def validate_email_address(
         skip_dns_check (bool): If True, only the syntax is checked.
         require_mailbox_confirmation (bool): If True, unconfirmed mailboxes are rejected.
         reject_catch_all (bool): If True, domains accepting random recipients are rejected.
-        external_service (str): "zerobounce", "neverbounce", or "none".
+        external_service (str): "neverbounce" or "none".
         external_api_key (str): API key for the external service.
 
     Returns:
@@ -63,16 +63,14 @@ def validate_email_address(
     if domain.startswith("-") or domain.endswith("-") or ".." in domain:
         return EmailValidationResult(False, "invalid email domain syntax")
 
-    # 1. External Service check (often more reliable/expensive, so maybe first or after syntax)
+    # 1. External service check.
     if external_service != "none" and external_api_key:
         print(f"[VERBOSE] Using external validation service: {external_service} for {normalized}")
         ext_res = _validate_external(normalized, external_service, external_api_key, smtp_timeout, reject_catch_all)
         if ext_res is not None:
-            # If the external service gives a definitive answer, we might stop here
             if not ext_res.is_valid:
                 print(f"[VERBOSE] External service {external_service} rejected {normalized}: {ext_res.reason}")
                 return ext_res
-            # If valid, we might still want to do local checks or trust it
             print(f"[VERBOSE] External service {external_service} confirmed {normalized} as valid.")
             return ext_res
         else:
@@ -177,60 +175,23 @@ def _decode_smtp_message(message) -> str:
 
 
 def _validate_external(email: str, service: str, api_key: str, timeout: float, reject_catch_all: bool = False) -> EmailValidationResult | None:
-    """Uses an external API (ZeroBounce or NeverBounce) to validate the email."""
-    if service == "zerobounce":
-        return _validate_zerobounce(email, api_key, timeout, reject_catch_all)
+    """Uses NeverBounce to validate the email."""
     if service == "neverbounce":
         return _validate_neverbounce(email, api_key, timeout, reject_catch_all)
-    return None
-
-
-def _validate_zerobounce(email: str, api_key: str, timeout: float, reject_catch_all: bool = False) -> EmailValidationResult | None:
-    """Calls the ZeroBounce V2 API."""
-    query = urllib.parse.urlencode({"api_key": api_key, "email": email})
-    url = f"https://api.zerobounce.net/v2/validate?{query}"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            if "error" in data:
-                print(f"[ERROR] ZeroBounce API error: {data['error']}")
-                return None
-
-            status = data.get("status", "").lower()
-            sub_status = data.get("sub_status", "").lower()
-
-            if status == "valid":
-                return EmailValidationResult(True)
-            if status == "invalid":
-                reason = sub_status or "invalid"
-                return EmailValidationResult(False, f"ZeroBounce: {reason}")
-            if status == "catch-all":
-                if reject_catch_all:
-                    return EmailValidationResult(False, "ZeroBounce: catch-all (rejected by settings)")
-                return EmailValidationResult(True, "ZeroBounce: catch-all (accepted)")
-            if status in ("spamtrap", "abuse", "do_not_mail"):
-                reason = sub_status or status
-                return EmailValidationResult(False, f"ZeroBounce: {reason}")
-            if status == "unknown":
-                # Fallback to local checks for unknown status
-                return None
-
-    except Exception as e:
-        print(f"[ERROR] ZeroBounce connection failed: {e}")
-        return None
     return None
 
 
 def _validate_neverbounce(email: str, api_key: str, timeout: float, reject_catch_all: bool = False) -> EmailValidationResult | None:
     """Calls the NeverBounce V4 API."""
     query = urllib.parse.urlencode({"key": api_key, "email": email})
-    url = f"https://api.neverbounce.com/v4/single/check?{query}"
+    url = f"https://api.neverbounce.com/v4.2/single/check?{query}"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
             if data.get("status") == "error":
-                print(f"[ERROR] NeverBounce API error: {data.get('message', 'unknown error')}")
-                return None
+                message = data.get("message", "unknown error")
+                print(f"[ERROR] NeverBounce API error: {message}")
+                return EmailValidationResult(False, f"NeverBounce API error: {message}")
 
             result = data.get("result", "").lower()
             if result == "valid":
@@ -241,14 +202,13 @@ def _validate_neverbounce(email: str, api_key: str, timeout: float, reject_catch
                 return EmailValidationResult(False, "NeverBounce: disposable")
             if result == "spamtrap":
                 return EmailValidationResult(False, "NeverBounce: spamtrap")
-            if result == "catch-all":
-                if reject_catch_all:
-                    return EmailValidationResult(False, "NeverBounce: catch-all (rejected by settings)")
-                return EmailValidationResult(True, "NeverBounce: catch-all (accepted)")
+            if result in {"catchall", "catch-all"}:
+                suffix = " (rejected by settings)" if reject_catch_all else ""
+                return EmailValidationResult(False, f"NeverBounce: catchall{suffix}")
             if result == "unknown":
-                return None
+                return EmailValidationResult(False, "NeverBounce: unknown")
 
     except Exception as e:
         print(f"[ERROR] NeverBounce connection failed: {e}")
-        return None
-    return None
+        return EmailValidationResult(False, f"NeverBounce connection failed: {e}")
+    return EmailValidationResult(False, "NeverBounce: empty response")
