@@ -63,6 +63,7 @@ RESUME_ATTACHMENT_PATTERN = re.compile(
 EMAIL_KEYS = {"mail", "email", "recipient", "recipients", "target", "recipient", "receiver"}
 COMPANY_KEYS = {"company", "firm", "organization", "organization", "name"}
 PROVIDER_PREFIXES = ("gemini", "openai", "ollama", "self")
+RESEARCH_CONTEXT_DELIVERY_CHOICES = ("upload_files", "paste_in_prompt")
 OLLAMA_MODEL_PREFIXES = (
     "llama",
     "mistral",
@@ -427,6 +428,7 @@ def default_config() -> ResearchConfig:
         write_output=cast(bool, _get("RESEARCH_WRITE_OUTPUT", True)),
         verbose=cast(bool, _get("RESEARCH_VERBOSE", False)),
         upload_attachments=cast(bool, _get("RESEARCH_UPLOAD_ATTACHMENTS", True)),
+        research_context_delivery=cast(str, _get("RESEARCH_CONTEXT_DELIVERY", "upload_files")),
         reasoning_effort=cast(str, _get("RESEARCH_REASONING_EFFORT", "middle")),
         send_target_count=cast(int, _get("SEND_TARGET_COUNT", 0)),
         max_iterations=cast(int, _get("SEND_TARGET_MAX_ROUNDS", 5)),
@@ -481,6 +483,12 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--base-dir", default=str(env_config.base_dir))
     parser.add_argument("--no-write-output", action="store_true", help="Do not write the generated CSV file.")
     parser.add_argument("--no-upload-attachments", action="store_true", help="Do not upload CV/resume context files to the AI provider.")
+    parser.add_argument(
+        "--research-context-delivery",
+        default=env_config.research_context_delivery,
+        choices=RESEARCH_CONTEXT_DELIVERY_CHOICES,
+        help="How known sent/invalid/input context is provided: upload_files or paste_in_prompt.",
+    )
     parser.add_argument("--send-target-count", type=int, default=env_config.send_target_count, help="Total target count for the send loop.")
     parser.add_argument("--max-iterations", type=int, default=env_config.max_iterations, help="Maximum number of research iterations (0 for unlimited).")
     parser.add_argument("--parallel-threads", type=int, default=env_config.parallel_threads, help="Maximum number of AI research requests to run in parallel.")
@@ -525,6 +533,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         write_output=env_config.write_output and not args.no_write_output,
         verbose=env_config.verbose or args.verbose,
         upload_attachments=env_config.upload_attachments and not args.no_upload_attachments,
+        research_context_delivery=args.research_context_delivery,
         reasoning_effort=args.reasoning_effort,
         send_target_count=args.send_target_count,
         max_iterations=args.max_iterations,
@@ -578,6 +587,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Person emails per company target: {config.person_emails_per_company}")
     _verbose(config.verbose, f"Write output CSV: {config.write_output}")
     _verbose(config.verbose, f"Upload attachment context to AI provider: {config.upload_attachments}")
+    _verbose(config.verbose, f"Research context delivery: {config.research_context_delivery}")
     _verbose(config.verbose, f"Parallel research threads: {config.parallel_threads}")
     _verbose(config.verbose, f"Self research keywords: {list(config.self_search_keywords)}")
 
@@ -588,27 +598,54 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Mode attachment directory: {mode.attachments_dir}")
     _verbose(config.verbose, f"Mode output CSV log: {mode.log_path}")
 
-    _info("Preparing CV/resume and sent-log context for AI upload.")
-    attachments = list_research_context_files(mode, config.verbose) if config.upload_attachments else []
+    if config.research_context_delivery not in RESEARCH_CONTEXT_DELIVERY_CHOICES:
+        raise ValueError(
+            "research_context_delivery must be one of: "
+            + ", ".join(RESEARCH_CONTEXT_DELIVERY_CHOICES)
+        )
+
+    _info(f"Preparing research context via {config.research_context_delivery}.")
+    attachments = (
+        list_research_context_files(mode, config.verbose)
+        if config.upload_attachments and config.research_context_delivery == "upload_files"
+        else []
+    )
     if not config.upload_attachments:
         _info("Research context upload disabled; AI will use prompt, input context, and web search only.")
         _verbose(config.verbose, "Attachment upload disabled; the provider will use prompt, input context, and web search only.")
+    elif config.research_context_delivery == "paste_in_prompt":
+        _info("Known sent/invalid/input context will be pasted directly into the AI prompt.")
+        _verbose(config.verbose, "Research context delivery paste_in_prompt selected; no context files will be uploaded.")
     if attachments:
         _info(f"Research context files queued: {len(attachments)}.")
         for attachment in attachments:
             _verbose(config.verbose, f"Attachment context queued for provider upload: {attachment}")
-    elif config.upload_attachments:
-        _info("No CV/resume or sent-log context files found for this mode.")
-        _verbose(config.verbose, "No CV/resume or sent-log attachment context files found for this mode.")
+    elif config.upload_attachments and config.research_context_delivery == "upload_files":
+        _info("No CV/resume or known sent/invalid context files found for this mode.")
+        _verbose(config.verbose, "No CV/resume or known sent/invalid attachment context files found for this mode.")
 
     _info("Loading existing email and company exclusions from input files and output logs.")
     existing_emails = collect_existing_emails(config.base_dir, config.verbose)
     existing_companies = collect_mode_existing_companies(mode, config.verbose)
+    context_counts = count_known_context_rows(config.base_dir)
     _verbose(config.verbose, f"Existing email exclusions loaded: {len(existing_emails)}")
     _verbose(config.verbose, f"Existing company exclusions loaded for this mode: {len(existing_companies)}")
+    _verbose(
+        config.verbose,
+        "Known context row counts: "
+        f"{context_counts['sent']} sent mail(s), "
+        f"{context_counts['invalid']} invalid mail(s), "
+        f"{context_counts['input']} input mail(s).",
+    )
 
     _info("Reading mode-specific input context.")
     input_context = read_input_context(mode.recipients_dir, verbose=config.verbose)
+    if config.upload_attachments and config.research_context_delivery == "paste_in_prompt":
+        known_context = read_known_exclusion_context(config.base_dir, mode, verbose=config.verbose)
+        if known_context:
+            input_context = "\n\n".join(part for part in [input_context, known_context] if part.strip())
+            _info("Known sent/invalid/input context pasted into the AI prompt.")
+            _verbose(config.verbose, f"Known pasted exclusion context characters: {len(known_context)}")
     _verbose(config.verbose, f"Mode-specific input context characters: {len(input_context)}")
 
     if config.provider.strip().lower() == "self":
@@ -681,7 +718,17 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         _info(f"Progress: {len(all_recipients)}/{target_count} recipients found. {remaining_target} missing.")
 
         prompt = build_prompt(config, mode, seen_emails_in_run, seen_companies_in_run, input_context)
+        _verbose(
+            config.verbose,
+            "Built AI prompt with known context: "
+            f"{context_counts['sent']} sent mail(s), "
+            f"{context_counts['invalid']} invalid mail(s), "
+            f"{context_counts['input']} input mail(s), "
+            f"{len(seen_emails_in_run)} email exclusion(s), "
+            f"{len(seen_companies_in_run)} company exclusion(s).",
+        )
         _verbose(config.verbose, f"AI prompt characters: {len(prompt)}")
+        _verbose(config.verbose, f"Built AI prompt message:\n{prompt}")
 
         _info(f"Calling AI provider with up to {batch_size} parallel request(s).")
 
@@ -865,9 +912,9 @@ def _generate_research_response(
         return raw_response
 
     if _needs_retry(raw_response, existing_emails, config.verbose):
-        retry_prompt = build_prompt(config, mode, set(), set(), input_context)
-        _info("AI response still was not usable; retrying once with a smaller prompt.")
-        _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once with a smaller prompt and local post-filtering.")
+        retry_prompt = prompt
+        _info("AI response still was not usable; retrying once with a smaller prompt that keeps the same exclusions.")
+        _verbose(config.verbose, "AI provider still returned no usable CSV; retrying once without attachments while keeping the same exclusions.")
         _verbose(config.verbose, f"Lite AI prompt characters: {len(retry_prompt)}")
         if stop_event and stop_event.is_set():
             return raw_response
@@ -952,15 +999,28 @@ def list_resume_attachments(directory: Path, verbose: bool = False) -> list[Path
     return resume_attachments
 
 
+def _base_dir_from_mode(mode: MailMode) -> Path:
+    """Returns the project base directory for a resolved mail mode."""
+    return mode.recipients_dir.parent.parent
+
+
+def _list_output_context_files(output_dir: Path) -> list[Path]:
+    """Lists sent and invalid CSV logs that describe already known recipients."""
+    if not output_dir.exists():
+        return []
+    return sorted(path for path in output_dir.glob("*.csv") if path.is_file())
+
+
 def list_research_context_files(mode: MailMode, verbose: bool = False) -> list[Path]:
     """
-    Collects files that should be provided to the AI as context (CVs, sent logs).
+    Collects files that should be provided to the AI as context.
     """
     context_files = list_resume_attachments(mode.attachments_dir, verbose)
-    if mode.log_path.exists():
-        context_files.append(mode.log_path)
-        _verbose(verbose, f"Sent-log context queued for provider upload: {mode.log_path}")
-    else:
+    output_files = _list_output_context_files(_base_dir_from_mode(mode) / "output")
+    context_files.extend(output_files)
+    if output_files:
+        _verbose(verbose, f"Known sent/invalid output context files queued for provider upload: {len(output_files)}.")
+    elif not mode.log_path.exists():
         _verbose(verbose, f"Sent-log context file does not exist yet and will not be uploaded: {mode.log_path}")
     return context_files
 
@@ -1028,21 +1088,53 @@ def collect_existing_emails(base_dir: Path, verbose: bool = False) -> set[str]:
     return emails
 
 
+def count_known_context_rows(base_dir: Path) -> dict[str, int]:
+    """
+    Counts known sent, invalid, and input recipient rows used as AI context.
+    """
+    output_dir = base_dir / "output"
+    sent_count = 0
+    invalid_count = 0
+    for path in _list_output_context_files(output_dir):
+        row_count = len(read_logged_rows(path))
+        if path.name.lower() == "invalid_mails.csv":
+            invalid_count += row_count
+        else:
+            sent_count += row_count
+
+    input_count = 0
+    for path in _list_all_input_context_files(base_dir):
+        input_count += len(read_recipients(path))
+
+    return {"sent": sent_count, "invalid": invalid_count, "input": input_count}
+
+
 def collect_mode_existing_companies(mode: MailMode, verbose: bool = False) -> set[str]:
     """
-    Collects all already contacted company names for a specific mode.
+    Collects already known company names from output logs and input files.
     """
-    companies = {
-        _normalize_company(row["company"])
-        for row in read_logged_rows(mode.log_path)
-        if _normalize_company(row["company"])
-    }
-    _verbose(verbose, f"Loaded {len(companies)} logged company exclusion(s) from {mode.log_path}.")
-    recipient_files = list_recipient_files(mode.recipients_dir)
-    for path in recipient_files:
-        recipients = read_recipients(path)
-        companies.update(_normalize_company(recipient.company) for recipient in recipients if _normalize_company(recipient.company))
-        _verbose(verbose, f"Loaded company exclusions from input file: {path}.")
+    companies: set[str] = set()
+    base_dir = _base_dir_from_mode(mode)
+    for path in _list_output_context_files(base_dir / "output"):
+        before = len(companies)
+        companies.update(
+            _normalize_company(row["company"])
+            for row in read_logged_rows(path)
+            if _normalize_company(row["company"])
+        )
+        _verbose(verbose, f"Loaded {len(companies) - before} logged company exclusion(s) from {path}.")
+
+    for mode_name in get_available_mode_names(base_dir):
+        input_mode = get_mode(mode_name, base_dir)
+        recipient_files = list_recipient_files(input_mode.recipients_dir)
+        for path in recipient_files:
+            recipients = read_recipients(path)
+            companies.update(
+                _normalize_company(recipient.company)
+                for recipient in recipients
+                if _normalize_company(recipient.company)
+            )
+            _verbose(verbose, f"Loaded company exclusions from input file: {path}.")
     return companies
 
 
@@ -1076,6 +1168,62 @@ def read_input_context(directory: Path, max_chars: int = 6000, verbose: bool = F
     context = "\n\n".join(parts)
     if len(context) > max_chars:
         _verbose(verbose, f"Input context truncated from {len(context)} to {max_chars} characters.")
+        return context[:max_chars].rstrip() + "\n...[truncated]"
+    return context
+
+
+def _read_context_text(path: Path, verbose: bool = False) -> str:
+    """Reads a context file with tolerant text decoding."""
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+        _verbose(verbose, f"Read context file with utf-8-sig: {path}.")
+        return text
+    except UnicodeDecodeError:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        _verbose(verbose, f"Read context file with replacement decoding: {path}.")
+        return text
+
+
+def _list_all_input_context_files(base_dir: Path) -> list[Path]:
+    """Lists recipient CSV/TXT files from every configured mode."""
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for mode_name in get_available_mode_names(base_dir):
+        mode = get_mode(mode_name, base_dir)
+        for path in list_recipient_files(mode.recipients_dir):
+            resolved = path.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                files.append(path)
+    return sorted(files)
+
+
+def read_known_exclusion_context(
+        base_dir: Path,
+        mode: MailMode,
+        max_chars: int | None = None,
+        verbose: bool = False,
+) -> str:
+    """
+    Builds prompt-ready context from sent logs, invalid logs, and existing inputs.
+    """
+    context_files = _list_output_context_files(base_dir / "output") + _list_all_input_context_files(base_dir)
+    parts = [
+        "DIESE INHALTE WURDEN BEREITS GEFUNDEN; DIESE UNTERNEHMEN UND MAILS NICHT AUSSUCHEN.",
+        f"Active mode: {mode.label}",
+    ]
+    for path in context_files:
+        text = _read_context_text(path, verbose).strip()
+        if text:
+            parts.append(f"File: {path.relative_to(base_dir) if path.is_relative_to(base_dir) else path}\n{text}")
+            _verbose(verbose, f"Added known exclusion context from {path}: {len(text)} characters.")
+
+    if len(parts) == 2:
+        return ""
+
+    context = "\n\n".join(parts)
+    if max_chars is not None and len(context) > max_chars:
+        _verbose(verbose, f"Known exclusion context truncated from {len(context)} to {max_chars} characters.")
         return context[:max_chars].rstrip() + "\n...[truncated]"
     return context
 

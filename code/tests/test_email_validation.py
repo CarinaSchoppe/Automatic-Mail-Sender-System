@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import json
 import socket
 import sys
 import types as py_types
@@ -312,3 +313,55 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
         )
         assert res.is_valid is False
         assert reason in res.reason
+
+
+def test_validate_email_addresses_with_neverbounce_uses_batch_job_flow(monkeypatch) -> None:
+    """Checks that final NeverBounce validation uses the jobs API and maps CSV results."""
+    requests: list[tuple[str, str]] = []
+
+    class FakeResponse:
+        def __init__(self, payload: str) -> None:
+            self._payload = payload
+
+        def read(self) -> bytes:
+            return self._payload.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+    def fake_urlopen(request, timeout=None):
+        url = request.full_url if hasattr(request, "full_url") else request
+        method = request.get_method() if hasattr(request, "get_method") else "GET"
+        requests.append((method, url))
+        if url.endswith("/jobs/create"):
+            body = json.loads(request.data.decode("utf-8"))
+            assert body["key"] == "never-key"
+            assert body["input_location"] == "supplied"
+            assert body["auto_parse"] == 1
+            assert body["auto_start"] == 1
+            assert body["input"] == [["good@example.com"], ["bad@example.com"]]
+            return FakeResponse('{"status":"success","job_id":42}')
+        if "/jobs/status" in url:
+            return FakeResponse('{"status":"success","job_status":"complete","percent_complete":100}')
+        if "/jobs/download" in url:
+            return FakeResponse('"good@example.com",valid\n"bad@example.com",invalid\n')
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(email_validation.urllib.request, "urlopen", fake_urlopen)
+
+    results = email_validation.validate_email_addresses_with_neverbounce(
+        ["good@example.com", "bad@example.com"],
+        "never-key",
+        request_timeout=5.0,
+    )
+
+    assert results["good@example.com"].is_valid is True
+    assert results["bad@example.com"].reason == "NeverBounce: invalid"
+    assert [entry[1] for entry in requests] == [
+        "https://api.neverbounce.com/v4.2/jobs/create",
+        "https://api.neverbounce.com/v4.2/jobs/status?key=never-key&job_id=42",
+        "https://api.neverbounce.com/v4.2/jobs/download?key=never-key&job_id=42",
+    ]

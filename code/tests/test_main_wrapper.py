@@ -72,6 +72,7 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "RESEARCH_PERSON_EMAILS_PER_COMPANY": 1,
                 "RESEARCH_WRITE_OUTPUT": False,
                 "RESEARCH_UPLOAD_ATTACHMENTS": False,
+                "RESEARCH_CONTEXT_DELIVERY": "paste_in_prompt",
                 "SEND": True,
                 "SEND_TARGET_COUNT": 0,
                 "REJECT_CATCH_ALL": True,
@@ -88,6 +89,8 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
     assert "gpt-5.4" in research_args
     assert "--no-write-output" in research_args
     assert "--no-upload-attachments" in research_args
+    assert "--research-context-delivery" in research_args
+    assert "paste_in_prompt" in research_args
     assert "--parallel-threads" in research_args
     assert mail_args[:4] == ["--mode", "Freelance_English", "--base-dir", str(app_main.PROJECT_ROOT)]
     assert "--send" in mail_args

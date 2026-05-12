@@ -5,10 +5,13 @@ Checks syntax (regex), DNS records (MX/A), and optionally offers an SMTP check (
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 import smtplib
 import socket
+import time
 import urllib.parse
 import urllib.request
 import uuid
@@ -16,6 +19,8 @@ from dataclasses import dataclass
 
 EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 DEFINITE_MAILBOX_REJECT_CODES = {550, 551, 553}
+NEVERBOUNCE_JOB_POLL_INTERVAL_SECONDS = 2.0
+NEVERBOUNCE_MAX_BATCH_WAIT_SECONDS = 600.0
 
 
 @dataclass(frozen=True)
@@ -25,6 +30,14 @@ class EmailValidationResult:
     """
     is_valid: bool
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class NeverBounceJobStatus:
+    """Structured subset of NeverBounce job status data."""
+    job_id: int
+    job_status: str
+    percent_complete: float = 0.0
 
 
 def validate_email_address(
@@ -103,6 +116,30 @@ def validate_email_address(
     return EmailValidationResult(True)
 
 
+def validate_email_addresses_with_neverbounce(
+        emails: list[str],
+        api_key: str,
+        request_timeout: float = 15.0,
+) -> dict[str, EmailValidationResult]:
+    """
+    Validates a filtered recipient batch via NeverBounce's list-verification job flow.
+
+    The caller is expected to pass only the final deduplicated emails that are still
+    eligible for sending. Every returned key is a normalized lower-case email address.
+    """
+    normalized_emails = [email.strip().lower() for email in emails if email.strip()]
+    if not normalized_emails:
+        return {}
+
+    job_id = _create_neverbounce_job(normalized_emails, api_key, request_timeout)
+    job_status = _wait_for_neverbounce_job(job_id, api_key, request_timeout, len(normalized_emails))
+    if job_status.job_status != "complete":
+        reason = f"NeverBounce batch job ended with status '{job_status.job_status}'"
+        return {email: EmailValidationResult(False, reason) for email in normalized_emails}
+
+    return _download_neverbounce_results(job_id, normalized_emails, api_key, request_timeout)
+
+
 def _domain_accepts_mail(domain: str) -> bool:
     """Checks if a domain can generally accept mail via MX or A record."""
     return bool(_mail_exchange_hosts(domain)) or _domain_has_a_record(domain)
@@ -174,6 +211,106 @@ def _decode_smtp_message(message) -> str:
     return str(message or "").strip()
 
 
+def _create_neverbounce_job(emails: list[str], api_key: str, timeout: float) -> int:
+    """Create a NeverBounce list-verification job and return its job id."""
+    payload = {
+        "key": api_key,
+        "input_location": "supplied",
+        "filename": "MailSenderSystem.csv",
+        "auto_parse": 1,
+        "auto_start": 1,
+        "input": [[email] for email in emails],
+    }
+    request = urllib.request.Request(
+        "https://api.neverbounce.com/v4.2/jobs/create",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    data = _read_json_response(request, timeout)
+    if data.get("status") != "success":
+        raise RuntimeError(f"NeverBounce job creation failed: {data}")
+    job_id = data.get("job_id")
+    if not isinstance(job_id, int):
+        raise RuntimeError(f"NeverBounce job creation returned no job_id: {data}")
+    return job_id
+
+
+def _wait_for_neverbounce_job(job_id: int, api_key: str, timeout: float, email_count: int) -> NeverBounceJobStatus:
+    """Poll a NeverBounce verification job until it reaches a terminal state."""
+    max_wait_seconds = min(
+        NEVERBOUNCE_MAX_BATCH_WAIT_SECONDS,
+        max(60.0, float(email_count) * 3.0),
+    )
+    deadline = time.monotonic() + max_wait_seconds
+
+    while True:
+        query = urllib.parse.urlencode({"key": api_key, "job_id": job_id})
+        request = urllib.request.Request(
+            f"https://api.neverbounce.com/v4.2/jobs/status?{query}",
+            method="GET",
+        )
+        data = _read_json_response(request, timeout)
+        if data.get("status") != "success":
+            raise RuntimeError(f"NeverBounce job status failed: {data}")
+
+        status = str(data.get("job_status", "")).strip().lower()
+        percent_complete = float(data.get("percent_complete", 0.0) or 0.0)
+        job_status = NeverBounceJobStatus(job_id=job_id, job_status=status, percent_complete=percent_complete)
+
+        if status == "complete":
+            return job_status
+        if status in {"failed", "under_review"}:
+            return job_status
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"NeverBounce job {job_id} did not complete within {max_wait_seconds:.0f} seconds "
+                f"(last status: {status or 'unknown'} at {percent_complete:.1f}%)."
+            )
+        time.sleep(NEVERBOUNCE_JOB_POLL_INTERVAL_SECONDS)
+
+
+def _download_neverbounce_results(
+        job_id: int,
+        expected_emails: list[str],
+        api_key: str,
+        timeout: float,
+) -> dict[str, EmailValidationResult]:
+    """Download and parse NeverBounce CSV results for a completed job."""
+    query = urllib.parse.urlencode({"key": api_key, "job_id": job_id})
+    request = urllib.request.Request(
+        f"https://api.neverbounce.com/v4.2/jobs/download?{query}",
+        method="GET",
+    )
+    raw_text = _read_text_response(request, timeout)
+    rows = csv.reader(io.StringIO(raw_text))
+
+    results: dict[str, EmailValidationResult] = {}
+    for row in rows:
+        if len(row) < 2:
+            continue
+        email = row[0].strip().lower()
+        if not email or email == "email":
+            continue
+        results[email] = _neverbounce_result_to_validation(row[-1].strip().lower())
+
+    for email in expected_emails:
+        results.setdefault(email, EmailValidationResult(False, "NeverBounce: missing result"))
+    return results
+
+
+def _read_json_response(request: urllib.request.Request, timeout: float) -> dict:
+    """Open an HTTP request and decode the JSON body."""
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _read_text_response(request: urllib.request.Request, timeout: float) -> str:
+    """Open an HTTP request and decode the text body."""
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read().decode("utf-8")
+
+
 def _validate_external(email: str, service: str, api_key: str, timeout: float, reject_catch_all: bool = False) -> EmailValidationResult | None:
     """Uses NeverBounce to validate the email."""
     if service == "neverbounce":
@@ -194,21 +331,22 @@ def _validate_neverbounce(email: str, api_key: str, timeout: float, reject_catch
                 return EmailValidationResult(False, f"NeverBounce API error: {message}")
 
             result = data.get("result", "").lower()
-            if result == "valid":
-                return EmailValidationResult(True)
-            if result == "invalid":
-                return EmailValidationResult(False, "NeverBounce: invalid")
-            if result == "disposable":
-                return EmailValidationResult(False, "NeverBounce: disposable")
-            if result == "spamtrap":
-                return EmailValidationResult(False, "NeverBounce: spamtrap")
-            if result in {"catchall", "catch-all"}:
-                suffix = " (rejected by settings)" if reject_catch_all else ""
-                return EmailValidationResult(False, f"NeverBounce: catchall{suffix}")
-            if result == "unknown":
-                return EmailValidationResult(False, "NeverBounce: unknown")
+            validation = _neverbounce_result_to_validation(result)
+            if result in {"catchall", "catch-all"} and reject_catch_all and validation.reason:
+                return EmailValidationResult(False, f"{validation.reason} (rejected by settings)")
+            return validation
 
     except Exception as e:
         print(f"[ERROR] NeverBounce connection failed: {e}")
         return EmailValidationResult(False, f"NeverBounce connection failed: {e}")
     return EmailValidationResult(False, "NeverBounce: empty response")
+
+
+def _neverbounce_result_to_validation(result: str) -> EmailValidationResult:
+    """Map a NeverBounce result code to the sender's strict valid-or-invalid policy."""
+    normalized = result.strip().lower()
+    if normalized == "valid":
+        return EmailValidationResult(True)
+    if not normalized:
+        return EmailValidationResult(False, "NeverBounce: empty result")
+    return EmailValidationResult(False, f"NeverBounce: {normalized}")

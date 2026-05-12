@@ -55,7 +55,8 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("RESEARCH_MAX_COMPANIES", "Maximum companies", "int", 35, "Research", "Upper bound requested from the AI research prompt.", min_value=1, max_value=1000),
     SettingSpec("RESEARCH_PERSON_EMAILS_PER_COMPANY", "Person emails/company", "int", 3, "Research", "Target person/work emails per company where the mode allows it.", min_value=1, max_value=10),
     SettingSpec("RESEARCH_WRITE_OUTPUT", "Write research CSV", "bool", True, "Research", "Writes generated leads into input/<mode>."),
-    SettingSpec("RESEARCH_UPLOAD_ATTACHMENTS", "Upload research context", "bool", True, "Research", "Uploads CV/resume files and sent logs as provider context."),
+    SettingSpec("RESEARCH_UPLOAD_ATTACHMENTS", "Use research context", "bool", True, "Research", "Adds CV/resume files plus known sent, invalid, and input leads as AI context."),
+    SettingSpec("RESEARCH_CONTEXT_DELIVERY", "Research context delivery", "choice", "upload_files", "Research", "upload_files sends context as provider files; paste_in_prompt pastes known sent, invalid, and input lead contents directly into the AI prompt.", ("upload_files", "paste_in_prompt")),
     SettingSpec("SELF_SEARCH_KEYWORDS", "Self search keywords", "list", [
         "\"industry phd\" \"contact\" email Australia",
         "\"research partnership\" \"contact\" email Australia",
@@ -76,7 +77,7 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("REJECT_CATCH_ALL", "Reject catch-all domains", "bool", True, "Mail", "Blocks domains that accept random invented mailboxes because the exact recipient cannot be proven."),
     SettingSpec("SKIP_EMAIL_DNS_CHECK", "Skip DNS verification", "bool", False, "Mail", "If checked, skips MX/A record checks but still validates syntax and deduplication."),
     SettingSpec("VERIFY_EMAIL_SMTP_TIMEOUT", "Verify timeout", "float", 8.0, "Mail", "Timeout for recipient SMTP probe.", min_value=1, max_value=60),
-    SettingSpec("EXTERNAL_VALIDATION_SERVICE", "External validation", "choice", "neverbounce", "Mail", "Uses NeverBounce as the final validation gate directly before mail rendering and sending. Choose none to disable the external check.", ("neverbounce", "none")),
+    SettingSpec("EXTERNAL_VALIDATION_SERVICE", "NeverBounce validation", "choice", "neverbounce", "Mail", "neverbounce = enabled as the final check before rendering/sending; none = disabled.", ("neverbounce", "none")),
     SettingSpec("RESEND_EXISTING", "Resend existing", "bool", False, "Mail", "Allows sending to addresses already present in output logs."),
     SettingSpec("SKIP_INVALID_CHECK", "Skip invalid check", "bool", True, "Mail", "If checked, ignores invalid_mails.csv so listed recipients can be sent again."),
     SettingSpec("ALLOW_EMPTY_ATTACHMENTS", "Allow empty attachments", "bool", False, "Mail", "Allows running a mode even when the attachment folder is empty."),

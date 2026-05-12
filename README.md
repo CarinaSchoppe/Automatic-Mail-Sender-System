@@ -190,7 +190,10 @@ Put the NeverBounce secret in `.env` or in the GUI `.env` tab:
 NEVERBOUNCE_API_KEY=
 ```
 
+Use the API key from a NeverBounce Custom Integration. MailSenderSystem verifies the final filtered recipient list through the NeverBounce jobs API and only lets `valid` rows proceed to rendering and sending.
+
 Set `EXTERNAL_VALIDATION_SERVICE = "none"` only when you intentionally want to disable NeverBounce.
+In the GUI this setting is shown as `NeverBounce validation`: `neverbounce` means enabled, `none` means disabled. There is no extra checkbox.
 
 The sender runs this check after research output has been loaded, after duplicate and already-invalid addresses have been removed, and immediately before rendering or sending any message. Only a NeverBounce `valid` result is accepted. Results such as `invalid`, `disposable`, `spamtrap`, `catchall`, `unknown`, API errors, or connection failures are treated as invalid, the mail is not rendered, the mail is not sent, and the address is written to `output/invalid_mails.csv` with the NeverBounce reason.
 
@@ -236,11 +239,11 @@ The invalid email log writes:
 
 ## Research
 
-The research tool is in `code/research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, reads existing addresses from `output/send_*.csv` and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
+The research tool is in `code/research/research_leads.py`. Depending on your setting, it uses Gemini or OpenAI with web search, reads existing addresses from `output/send_*.csv`, `output/invalid_mails.csv`, and existing `input` files as an exclusion list, and writes new leads as CSV to the matching `input/<Mode>` folder.
 
-For AI research context upload, only CV/resume/Lebenslauf files from `attachments/<Mode>` plus the matching sent CSV log are uploaded. PhD research uploads `output/send_phd.csv` when it exists. Freelance research uploads `output/send_freelance.csv` when it exists. Mail sending is separate and still uses the normal attachment folder behavior.
+For AI research context, set `RESEARCH_CONTEXT_DELIVERY = "upload_files"` to upload CV/resume/Lebenslauf files from `attachments/<Mode>` plus all output CSV logs, including sent and invalid logs. Set `RESEARCH_CONTEXT_DELIVERY = "paste_in_prompt"` to paste the known sent, invalid, and input lead contents directly into the prompt with an explicit "do not pick these companies or emails again" block. Mail sending is separate and still uses the normal attachment folder behavior.
 
-The prompt also tells the AI not to search for or return companies or email addresses already present in the mode-specific sent CSV list. The local parser still filters existing email addresses and mode-specific company names after the AI response.
+The prompt also tells the AI not to search for or return companies or email addresses already present in sent logs, invalid logs, or input files. The local parser still filters existing email addresses and known company names after the AI response.
 
 Gemini research is configured with Google Search grounding, automatic tool use, and high thinking/reasoning. OpenAI research uses the Responses API with `web_search`, automatic tool choice, and high reasoning effort. The research provider is detected from `RESEARCH_MODEL`; use `gemini-*`, `gpt*`, `self`, an Ollama-style local model such as `llama3.1:8b`, or an explicit prefix like `ollama:qwen2.5:7b`.
 
@@ -257,6 +260,7 @@ RUN_AI_RESEARCH = true
 MODE = "PhD"
 RESEARCH_MODEL = "gpt-5.4"
 RESEARCH_UPLOAD_ATTACHMENTS = false
+RESEARCH_CONTEXT_DELIVERY = "paste_in_prompt"
 ```
 
 Set `GEMINI_API_KEY` or `OPENAI_API_KEY` in `.env`, depending on the selected model/provider. The layout is documented in `.env.example`.
@@ -267,7 +271,7 @@ Direct research examples:
 python code\research\research_leads.py --mode PhD
 python code\research\research_leads.py --mode Freelance_German
 python code\research\research_leads.py --mode Freelance_English
-python code\research\research_leads.py --model gpt-5.4 --mode PhD --no-upload-attachments
+python code\research\research_leads.py --model gpt-5.4 --mode PhD --research-context-delivery paste_in_prompt
 ```
 
 Test without writing output:

@@ -106,3 +106,11 @@ def test_settings_schema_allows_neverbounce_or_none() -> None:
 
     assert spec.default == "neverbounce"
     assert spec.choices == ("neverbounce", "none")
+
+
+def test_settings_schema_allows_research_context_delivery_choice() -> None:
+    """Checks that the GUI can choose how research context is sent to the AI."""
+    spec = next(item for item in SETTINGS_SCHEMA if item.key == "RESEARCH_CONTEXT_DELIVERY")
+
+    assert spec.default == "upload_files"
+    assert spec.choices == ("upload_files", "paste_in_prompt")

@@ -57,6 +57,7 @@ def config(
         write_output: bool = True,
         verbose: bool = False,
         upload_attachments: bool = True,
+        research_context_delivery: str = "upload_files",
         provider: str = "gemini",
         model: str = "gemini-2.5-flash-lite",
         gemini_model: str = "gemini-2.5-flash-lite",
@@ -85,6 +86,7 @@ def config(
         gemini_model=gemini_model,
         openai_model=openai_model,
         ollama_model=ollama_model,
+        research_context_delivery=research_context_delivery,
         reasoning_effort=reasoning_effort,
         send_target_count=send_target_count,
         max_iterations=max_iterations,
@@ -109,6 +111,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "RESEARCH_PERSON_EMAILS_PER_COMPANY",
         "RESEARCH_WRITE_OUTPUT",
         "RESEARCH_UPLOAD_ATTACHMENTS",
+        "RESEARCH_CONTEXT_DELIVERY",
         "RESEARCH_VERBOSE",
         "RESEARCH_BASE_DIR",
         "SELF_SEARCH_KEYWORDS",
@@ -135,6 +138,8 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "1",
         "--no-write-output",
         "--no-upload-attachments",
+        "--research-context-delivery",
+        "paste_in_prompt",
         "--send-target-count",
         "100",
         "--max-iterations",
@@ -155,6 +160,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.write_output is False
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
+    assert parsed.research_context_delivery == "paste_in_prompt"
     assert parsed.reasoning_effort == "high"
     assert parsed.send_target_count == 100
     assert parsed.max_iterations == 10
@@ -174,6 +180,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     monkeypatch.setenv("RESEARCH_PERSON_EMAILS_PER_COMPANY", "1")
     monkeypatch.setenv("RESEARCH_WRITE_OUTPUT", "false")
     monkeypatch.setenv("RESEARCH_UPLOAD_ATTACHMENTS", "false")
+    monkeypatch.setenv("RESEARCH_CONTEXT_DELIVERY", "paste_in_prompt")
     monkeypatch.setenv("RESEARCH_VERBOSE", "true")
     monkeypatch.setenv("RESEARCH_REASONING_EFFORT", "high")
     monkeypatch.setenv("RESEARCH_BASE_DIR", str(project))
@@ -189,6 +196,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     assert cfg.write_output is False
     assert cfg.verbose is True
     assert cfg.upload_attachments is False
+    assert cfg.research_context_delivery == "paste_in_prompt"
     assert cfg.reasoning_effort == "high"
     assert cfg.base_dir == project
 
@@ -340,9 +348,37 @@ def test_list_research_context_files_adds_matching_sent_log(project: Path) -> No
     cv.write_text("cv", encoding="utf-8")
     other.write_text("certificate", encoding="utf-8")
     append_log(project / "output/send_phd.csv", Recipient(email="old@example.com", company="Old"))
+    append_log(project / "output/invalid_mails.csv", Recipient(email="bad@example.com", company="Bad"))
     mode = research_leads.get_mode("PhD", project)
 
-    assert research_leads.list_research_context_files(mode) == [cv, project / "output/send_phd.csv"]
+    assert research_leads.list_research_context_files(mode) == [
+        cv,
+        project / "output/invalid_mails.csv",
+        project / "output/send_phd.csv",
+    ]
+
+
+def test_read_known_exclusion_context_pastes_sent_invalid_and_input(project: Path) -> None:
+    """Checks behavior for read known exclusion context pastes known rows."""
+    append_log(project / "output/send_phd.csv", Recipient(email="sent@example.com", company="Sent Co"))
+    append_log(project / "output/invalid_mails.csv", Recipient(email="bad@example.com", company="Bad Co"))
+    (project / "input/PhD/current.csv").write_text(
+        "company,mail,source_url\nInput Co,input@example.com,https://input.example/contact\n",
+        encoding="utf-8",
+    )
+
+    context = research_leads.read_known_exclusion_context(
+        project,
+        research_leads.get_mode("PhD", project),
+    )
+
+    assert "DIESE INHALTE WURDEN BEREITS GEFUNDEN" in context
+    assert "Sent Co" in context
+    assert "Bad Co" in context
+    assert "Input Co" in context
+    assert "sent@example.com" in context
+    assert "bad@example.com" in context
+    assert "input@example.com" in context
 
 
 def test_parse_recipients_filters_duplicates_existing_bad_email_and_company_limit() -> None:
@@ -784,6 +820,43 @@ def test_run_research_can_skip_attachment_upload(monkeypatch: pytest.MonkeyPatch
 
     assert recipients == [Recipient(email="a@example.com", company="A", source_url="https://a.example/contact")]
     assert "Attachment upload disabled" in capsys.readouterr().out
+
+
+def test_run_research_pastes_known_context_when_configured(
+        monkeypatch: pytest.MonkeyPatch,
+        project: Path,
+        capsys,
+) -> None:
+    """Checks behavior for run research pastes known context when configured."""
+    (project / "attachments/PhD/CV.pdf").write_text("cv", encoding="utf-8")
+    append_log(project / "output/send_phd.csv", Recipient(email="sent@example.com", company="Sent Co"))
+    append_log(project / "output/invalid_mails.csv", Recipient(email="bad@example.com", company="Bad Co"))
+    (project / "input/PhD/current.csv").write_text(
+        "company,mail,source_url\nInput Co,input@example.com,https://input.example/contact\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+        """Kapselt den Hilfsschritt fake_generate."""
+        seen["prompt"] = prompt
+        seen["attachments"] = attachments
+        return "company,mail,source_url\nA,a@example.com,https://a.example/contact\n"
+
+    monkeypatch.setattr(providers, "generate_with_gemini", fake_generate)
+
+    _, recipients = research_leads.run_research(
+        config(project, verbose=True, research_context_delivery="paste_in_prompt")
+    )
+
+    assert recipients == [Recipient(email="a@example.com", company="A", source_url="https://a.example/contact")]
+    assert seen["attachments"] == []
+    assert "DIESE INHALTE WURDEN BEREITS GEFUNDEN" in seen["prompt"]
+    assert "Sent Co" in seen["prompt"]
+    assert "Bad Co" in seen["prompt"]
+    output = capsys.readouterr().out
+    assert "Built AI prompt with known context: 1 sent mail(s), 1 invalid mail(s), 1 input mail(s)" in output
+    assert "Built AI prompt message:" in output
 
 
 def test_run_research_retries_without_attachments_after_empty_response(

@@ -78,6 +78,7 @@ RESEARCH_MAX_COMPANIES: int = cast(int, _setting("RESEARCH_MAX_COMPANIES", 50))
 RESEARCH_PERSON_EMAILS_PER_COMPANY: int = cast(int, _setting("RESEARCH_PERSON_EMAILS_PER_COMPANY", 3))
 RESEARCH_WRITE_OUTPUT: bool = cast(bool, _setting("RESEARCH_WRITE_OUTPUT", True))
 RESEARCH_UPLOAD_ATTACHMENTS: bool = cast(bool, _setting("RESEARCH_UPLOAD_ATTACHMENTS", True))
+RESEARCH_CONTEXT_DELIVERY: str = cast(str, _setting("RESEARCH_CONTEXT_DELIVERY", "upload_files"))
 OLLAMA_BASE_URL: str = cast(str, _setting("OLLAMA_BASE_URL", "http://localhost:11434"))
 RESEARCH_REASONING_EFFORT: str = cast(str, _setting("RESEARCH_REASONING_EFFORT", "middle"))
 SELF_SEARCH_KEYWORDS: list[str] = cast(list[str], _setting("SELF_SEARCH_KEYWORDS", []))
@@ -219,7 +220,7 @@ def _print_effective_settings() -> None:
         f"Catch-all rejection: {'enabled' if REJECT_CATCH_ALL else 'disabled'}. "
         f"DNS check: {'skipped' if SKIP_EMAIL_DNS_CHECK else 'enabled'}."
     )
-    _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, CV/resume upload {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'}.")
+    _info(f"Output: research CSV {'enabled' if RESEARCH_WRITE_OUTPUT else 'disabled'}, research context {'enabled' if RESEARCH_UPLOAD_ATTACHMENTS else 'disabled'} via {RESEARCH_CONTEXT_DELIVERY}.")
     _info(f"Log file saving: {'enabled' if SAVE_VERBOSE_LOG else 'disabled'}.")
     _info(f"Spam-safe mode: {'enabled' if SPAM_SAFE_MODE else 'disabled'}.")
     _verbose(VERBOSE, f"Effective research target: {RESEARCH_MIN_COMPANIES}-{RESEARCH_MAX_COMPANIES} companies, person emails per company={RESEARCH_PERSON_EMAILS_PER_COMPANY}.")
@@ -253,6 +254,8 @@ def _build_research_args() -> list[str]:
         str(OLLAMA_BASE_URL),
         "--reasoning-effort",
         str(RESEARCH_REASONING_EFFORT),
+        "--research-context-delivery",
+        str(RESEARCH_CONTEXT_DELIVERY),
     ]
     for flag, value in [
         ("--min-companies", RESEARCH_MIN_COMPANIES),

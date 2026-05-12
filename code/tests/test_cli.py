@@ -154,8 +154,6 @@ def test_cli_strict_smtp_validation_flags_are_forwarded(monkeypatch, project: Pa
             "good@example.com",
             {
                 "skip_dns_check": False,
-                "external_service": "none",
-                "external_api_key": "",
                 "verify_mailbox": True,
                 "require_mailbox_confirmation": True,
                 "reject_catch_all": True,
@@ -171,15 +169,15 @@ def test_cli_strict_smtp_validation_flags_are_forwarded(monkeypatch, project: Pa
 
 
 def test_cli_forwards_selected_external_validation_key(monkeypatch, project: Path, capsys) -> None:
-    """Checks that the configured validation provider and API key reach the validator."""
+    """Checks that the configured NeverBounce API key reaches the final batch validator."""
     write_recipient(project / "input/PhD/good.csv", "Good", "good@example.com")
     calls = []
 
-    def fake_validate(email: str, **kwargs):
-        calls.append((email, kwargs))
-        return type("Result", (), {"is_valid": True, "reason": ""})()
+    def fake_batch_validate(emails: list[str], api_key: str, request_timeout: float):
+        calls.append((emails, api_key, request_timeout))
+        return {"good@example.com": type("Result", (), {"is_valid": True, "reason": ""})()}
 
-    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
+    monkeypatch.setattr("mail_sender.cli.validate_email_addresses_with_neverbounce", fake_batch_validate)
     monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
 
@@ -192,8 +190,7 @@ def test_cli_forwards_selected_external_validation_key(monkeypatch, project: Pat
     ])
 
     assert result == 0
-    assert calls[0][1]["external_service"] == "neverbounce"
-    assert calls[0][1]["external_api_key"] == "never-key"
+    assert calls == [(["good@example.com"], "never-key", 8.0)]
     assert "External validation: neverbounce" in capsys.readouterr().out
 
 
@@ -203,13 +200,18 @@ def test_cli_neverbounce_validation_blocks_send(monkeypatch, project: Path, caps
     (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
     sent = []
 
-    def fake_validate(email: str, **kwargs):
-        assert kwargs["external_service"] == "neverbounce"
-        assert kwargs["external_api_key"] == "never-key"
-        return type("Result", (), {"is_valid": False, "reason": "NeverBounce: invalid"})()
+    def fake_local_validate(email: str, **kwargs):
+        return type("Result", (), {"is_valid": True, "reason": ""})()
+
+    def fake_batch_validate(emails: list[str], api_key: str, request_timeout: float):
+        assert emails == ["bad@example.com"]
+        assert api_key == "never-key"
+        assert request_timeout == 8.0
+        return {"bad@example.com": type("Result", (), {"is_valid": False, "reason": "NeverBounce: invalid"})()}
 
     setup_fake_mailer(monkeypatch, lambda *args, **kwargs: sent.append((args, kwargs)))
-    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
+    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_local_validate)
+    monkeypatch.setattr("mail_sender.cli.validate_email_addresses_with_neverbounce", fake_batch_validate)
     monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
 
@@ -229,6 +231,49 @@ def test_cli_neverbounce_validation_blocks_send(monkeypatch, project: Path, caps
     with (project / "output/invalid_mails.csv").open("r", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
     assert rows[1][:3] == ["Bad", "bad@example.com", "NeverBounce: invalid"]
+
+
+def test_cli_runs_neverbounce_as_final_batch_gate(monkeypatch, project: Path, capsys) -> None:
+    """Checks that NeverBounce sees only locally accepted final recipients."""
+    (project / "input/PhD/phd.csv").write_text(
+        "company,mail\nGood,good@example.com\nBad,bad@example.com\nLogged,logged@example.com\n",
+        encoding="utf-8",
+    )
+    with (project / "output/send_phd.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["company", "mail", "sent_at"])
+        writer.writerow(["Logged", "logged@example.com", "2026-04-14T10:00+10:00"])
+
+    local_calls = []
+    neverbounce_calls = []
+
+    def fake_local_validate(email: str, **kwargs):
+        local_calls.append((email, kwargs))
+        if email == "bad@example.com":
+            return type("Result", (), {"is_valid": True, "reason": ""})()
+        return type("Result", (), {"is_valid": True, "reason": ""})()
+
+    def fake_batch_validate(emails: list[str], api_key: str, request_timeout: float):
+        neverbounce_calls.append((emails, api_key, request_timeout))
+        return {
+            "good@example.com": type("Result", (), {"is_valid": True, "reason": ""})(),
+            "bad@example.com": type("Result", (), {"is_valid": False, "reason": "NeverBounce: invalid"})(),
+        }
+
+    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_local_validate)
+    monkeypatch.setattr("mail_sender.cli.validate_email_addresses_with_neverbounce", fake_batch_validate)
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
+
+    result = cli.main(["--mode", "PhD", "--base-dir", str(project), "--allow-empty-attachments"])
+
+    assert result == 0
+    assert [email for email, _kwargs in local_calls] == ["good@example.com", "bad@example.com"]
+    assert neverbounce_calls == [(["good@example.com", "bad@example.com"], "never-key", 8.0)]
+    output = capsys.readouterr().out
+    assert "already present in an output CSV log" in output
+    assert "[INVALID] bad@example.com | NeverBounce: invalid" in output
+    assert "[DRY_RUN] good@example.com" in output
 
 
 def test_cli_logs_validation_crashes_as_invalid(monkeypatch, project: Path, capsys) -> None:

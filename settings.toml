@@ -14,7 +14,7 @@ MODE = "Freelance_German"
 # Research
 
 # Research model: Model used for research. The provider is detected from this value; use prefixes like openai:, gemini:, or ollama: for custom names.
-RESEARCH_MODEL = "gemini-3.1-pro-preview"
+RESEARCH_MODEL = "gemini-3-flash-preview"
 
 # Ollama base URL: Local Ollama HTTP endpoint.
 OLLAMA_BASE_URL = "http://localhost:11434"
@@ -34,8 +34,11 @@ RESEARCH_PERSON_EMAILS_PER_COMPANY = 3
 # Write research CSV: Writes generated leads into input/<mode>.
 RESEARCH_WRITE_OUTPUT = true
 
-# Upload research context: Uploads CV/resume files and sent logs as provider context.
+# Use research context: Adds CV/resume files plus known sent, invalid, and input leads as AI context.
 RESEARCH_UPLOAD_ATTACHMENTS = true
+
+# Research context delivery: upload_files sends context as provider files; paste_in_prompt pastes known sent, invalid, and input lead contents directly into the AI prompt.
+RESEARCH_CONTEXT_DELIVERY = "paste_in_prompt"
 
 
 # Self Search
@@ -96,9 +99,9 @@ REJECT_CATCH_ALL = false
 SKIP_EMAIL_DNS_CHECK = true
 
 # Verify timeout: Timeout for recipient SMTP probe.
-VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
+VERIFY_EMAIL_SMTP_TIMEOUT = 15.0
 
-# External validation: Uses NeverBounce as the final validation gate directly before mail rendering and sending. Choose none to disable the external check.
+# NeverBounce validation: neverbounce = enabled as the final check before rendering/sending; none = disabled.
 EXTERNAL_VALIDATION_SERVICE = "neverbounce"
 
 # Resend existing: Allows sending to addresses already present in output logs.
@@ -120,7 +123,7 @@ LOG_DRY_RUN = false
 WRITE_SENT_LOG = true
 
 # Delete input after success: Deletes processed input CSV/TXT files after a successful send run.
-DELETE_INPUT_AFTER_SUCCESS = true
+DELETE_INPUT_AFTER_SUCCESS = false
 
 # Subject override: Optional subject line override for mail sending. Leave empty to use the selected template subject.
 SUBJECT_OVERRIDE = ""

@@ -185,7 +185,8 @@ Task:
 Requirements:
 - Find leads from {MIN_COMPANIES} to {MAX_COMPANIES} relevant companies.
 - Do not include any email address already listed in the exclusion list. This list contains already sent emails, previously found emails, input CSV emails, output log emails, and invalid_mails.csv entries.
-- Do not search for or return a company if the company name or email address already appears in the mode-specific sent CSV list, uploaded sent-log file, current input files, or exclusions.
+- Do not search for or return a company if the company name or email address already appears in any sent CSV, invalid_mails.csv, input CSV/TXT file, uploaded sent-log file, uploaded context file, pasted context block, or exclusion list.
+- If the context says "DIESE INHALTE WURDEN BEREITS GEFUNDEN", treat every listed company and email as blocked and do not select them again.
 - For Freelance modes, apply the online-only provider gate strictly: the company must visibly offer pure online courses or remote course delivery, not just in-person, on-site, or hybrid classes.
 - For Freelance modes, omit any company whose online-only course fit is uncertain.
 - For Freelance modes, global companies are allowed when they clearly work in German or English and offer international online course delivery. Prefer Germany, Australia, Switzerland, Austria, Luxembourg, and strong worldwide providers.
@@ -212,10 +213,10 @@ Output format:
 Existing email exclusion list:
 {EXCLUDED_EMAILS}
 
-Existing company exclusion list for this mode:
+Existing company exclusion list for this mode and global logs:
 {EXCLUDED_COMPANIES}
 
-Mode-specific input CSV/TXT context:
+Mode-specific input CSV/TXT context and known sent/invalid CSV/TXT context:
 {INPUT_CONTEXT}"""
 "test" = """
 Find organisations that are a strong fit for the custom task "test".

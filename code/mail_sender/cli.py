@@ -13,7 +13,11 @@ from typing import Any
 
 from mail_sender.attachments import list_attachments
 from mail_sender.config import ConfigError, load_smtp_config
-from mail_sender.email_validation import EmailValidationResult, validate_email_address
+from mail_sender.email_validation import (
+    EmailValidationResult,
+    validate_email_address,
+    validate_email_addresses_with_neverbounce,
+)
 from mail_sender.modes import MailMode, get_available_mode_names, get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients_from_dir
 from mail_sender.sent_log import (
@@ -184,11 +188,6 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
     _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
     if smtp_config.external_validation_service != "none":
         _verbose(args.verbose, f"External validation service: {smtp_config.external_validation_service}")
-        if not smtp_config.external_validation_api_key:
-            print(
-                f"[WARNING] External validation service '{smtp_config.external_validation_service}' is selected, "
-                f"but no API key was found. Set {NEVERBOUNCE_API_KEY_NAME} in .env. External validation will be skipped."
-            )
     args.external_validation_service = smtp_config.external_validation_service
 
     recipients_to_process, skipped_before_send = _filter_recipients(
@@ -403,8 +402,6 @@ def _filter_recipients(
     # 2. Parallele Validierung
     validation_kwargs = {
         "skip_dns_check": args.skip_email_dns_check,
-        "external_service": external_service,
-        "external_api_key": external_api_key,
     }
     if _smtp_mailbox_validation_enabled(args):
         validation_kwargs.update(
@@ -418,8 +415,6 @@ def _filter_recipients(
 
     # Mask API key for logging
     log_kwargs = dict(validation_kwargs)
-    if log_kwargs.get("external_api_key"):
-        log_kwargs["external_api_key"] = "***"
     _verbose(args.verbose, f"Validation options: {log_kwargs}")
 
     def validate_one(rec):
@@ -435,7 +430,7 @@ def _filter_recipients(
     max_workers = args.parallel_threads
     _info(f"Validating {len(to_validate)} recipients using {max_workers} threads...")
 
-    recipients_to_process = []
+    locally_accepted = []
     # We collect the results in the original order
     results: list[tuple[Recipient, EmailValidationResult] | None] = [None] * len(to_validate)
 
@@ -465,8 +460,18 @@ def _filter_recipients(
             print(f"[INVALID] {recipient.email} | {validation.reason}; logged to {invalid_log_path.name}.")
             continue
 
-        recipients_to_process.append(recipient)
+        locally_accepted.append(recipient)
         _verbose(args.verbose, f"Recipient accepted for processing: {recipient.email}")
+
+    recipients_to_process = _apply_external_validation_final_gate(
+        args,
+        locally_accepted,
+        invalid_emails,
+        invalid_log_path,
+        external_service,
+        external_api_key,
+    )
+    skipped_before_send += len(locally_accepted) - len(recipients_to_process)
 
     _info(
         "Validation summary: "
@@ -474,6 +479,49 @@ def _filter_recipients(
         f"accepted={len(recipients_to_process)}, rejected={len(to_validate) - len(recipients_to_process)}."
     )
     return recipients_to_process, skipped_before_send
+
+
+def _apply_external_validation_final_gate(
+        args: argparse.Namespace,
+        recipients: list[Recipient],
+        invalid_emails: set[str],
+        invalid_log_path: Path,
+        external_service: str,
+        external_api_key: str,
+) -> list[Recipient]:
+    """Run the external provider as the last validation gate after all local filters."""
+    if external_service != "neverbounce" or not external_api_key or not recipients:
+        return recipients
+
+    _info(f"Running NeverBounce final validation for {len(recipients)} filtered recipient(s).")
+    try:
+        results = validate_email_addresses_with_neverbounce(
+            [recipient.email for recipient in recipients],
+            external_api_key,
+            request_timeout=args.verify_email_smtp_timeout,
+        )
+    except Exception as validation_error:
+        reason = f"NeverBounce batch validation failed: {type(validation_error).__name__}: {validation_error}"
+        print(f"[ERROR] {reason}")
+        results = {
+            recipient.email.lower(): EmailValidationResult(False, reason)
+            for recipient in recipients
+        }
+
+    accepted: list[Recipient] = []
+    for recipient in recipients:
+        validation = results.get(
+            recipient.email.lower(),
+            EmailValidationResult(False, "NeverBounce: missing result"),
+        )
+        if not validation.is_valid:
+            invalid_emails.add(recipient.email.lower())
+            append_invalid_email(invalid_log_path, recipient, validation.reason)
+            print(f"[INVALID] {recipient.email} | {validation.reason}; logged to {invalid_log_path.name}.")
+            continue
+        accepted.append(recipient)
+        _verbose(args.verbose, f"NeverBounce accepted recipient {recipient.email}.")
+    return accepted
 
 
 def _apply_max_send_count(args: argparse.Namespace, recipients_to_process: list[Recipient]) -> list[Recipient]:

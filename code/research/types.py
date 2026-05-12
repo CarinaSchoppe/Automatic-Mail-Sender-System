@@ -30,6 +30,7 @@ class ResearchConfig:
     upload_attachments: bool
     gemini_model: str
     openai_model: str
+    research_context_delivery: str = "upload_files"
     ollama_model: str = "llama3.1:8b"
     ollama_base_url: str = "http://localhost:11434"
     reasoning_effort: str = "middle"
