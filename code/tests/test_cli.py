@@ -191,7 +191,9 @@ def test_cli_forwards_selected_external_validation_key(monkeypatch, project: Pat
 
     assert result == 0
     assert calls == [(["good@example.com"], "never-key", 8.0)]
-    assert "External validation: neverbounce" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "External validation: neverbounce" in output
+    assert "NeverBounce final validation accepted 1 valid recipient(s) and rejected 0 recipient(s)." in output
 
 
 def test_cli_neverbounce_validation_blocks_send(monkeypatch, project: Path, capsys) -> None:
@@ -227,6 +229,7 @@ def test_cli_neverbounce_validation_blocks_send(monkeypatch, project: Path, caps
     assert sent == []
     output = capsys.readouterr().out
     assert "[INVALID] bad@example.com | NeverBounce: invalid" in output
+    assert "NeverBounce final validation accepted 0 valid recipient(s) and rejected 1 recipient(s)." in output
     assert "[SENT]" not in output
     with (project / "output/invalid_mails.csv").open("r", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
@@ -273,6 +276,7 @@ def test_cli_runs_neverbounce_as_final_batch_gate(monkeypatch, project: Path, ca
     output = capsys.readouterr().out
     assert "already present in an output CSV log" in output
     assert "[INVALID] bad@example.com | NeverBounce: invalid" in output
+    assert "NeverBounce final validation accepted 1 valid recipient(s) and rejected 1 recipient(s)." in output
     assert "[DRY_RUN] good@example.com" in output
 
 

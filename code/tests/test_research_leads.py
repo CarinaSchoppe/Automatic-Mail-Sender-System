@@ -857,6 +857,8 @@ def test_run_research_pastes_known_context_when_configured(
     output = capsys.readouterr().out
     assert "Built AI prompt with known context: 1 sent mail(s), 1 invalid mail(s), 1 input mail(s)" in output
     assert "Built AI prompt message:" in output
+    assert "Thread 0 sending AI prompt with known context: 1 sent/valid mail(s), 1 invalid mail(s), 1 input mail(s)." in output
+    assert "Thread 0 AI prompt sent:" in output
 
 
 def test_run_research_retries_without_attachments_after_empty_response(

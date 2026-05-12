@@ -202,6 +202,8 @@ CSV rules:
 "Freelance English" = """
 Find only online-only education or training providers that may realistically hire or collaborate with a remote freelance lecturer or trainer in IT, business, AI, software, data, or cybersecurity.
 
+Use an online-only provider gate for this mode.
+
 Hard exclusion rules:
 - Only include providers whose official website clearly shows pure online courses, live online classes, virtual classrooms, e-learning, remote training, or fully online course delivery.
 - Do not include in-person-only providers.
@@ -211,6 +213,7 @@ Hard exclusion rules:
 - Only include companies whose website clearly shows they operate in German or English and can deliver online courses internationally or beyond one local city.
 
 Allowed geography:
+Prefer Germany, Australia, Switzerland, Austria, Luxembourg.
 - Germany
 - Australia
 - Switzerland
@@ -295,7 +298,7 @@ Requirements:
   and do not select them again.
 
 Freelance mode provider gate:
-- For Freelance modes, apply an online-capable provider gate, not an online-only gate.
+- For Freelance modes, apply an online-capable provider gate, not an Online-only gate.
 - A company is eligible when it clearly offers at least one of the following:
   online courses, live-online training, virtual classroom, remote learning, webinars, e-learning,
   blended learning, distance learning, online academy, digital classroom, online coaching,
@@ -308,7 +311,7 @@ Freelance mode provider gate:
 - Omit any company whose online/remote/blended/digital delivery fit is uncertain.
 - Global companies are allowed when they clearly work in German or English and offer online, remote,
   virtual, blended, or international course delivery.
-- Prefer Germany, Switzerland, Austria, Luxembourg, Australia, and strong international providers.
+- Prefer Germany, Switzerland, Austria, Luxembourg, Australia/Australien, and strong international providers.
 
 Relevant provider types:
 - Online education providers
@@ -336,6 +339,8 @@ project management, agile, Scrum, leadership, management, coaching, digital educ
 instructional design, online teaching, corporate training, or professional development.
 
 Email verification rules:
+- Verwende nur E-Mail-Adressen von der offiziellen Anbieter-Website oder einer eindeutig offiziellen Unternehmensseite.
+- Bereits nicht valide markierte E-Mails aus invalid_mails.csv duerfen nicht erneut ausgewaehlt werden.
 - Treat an email as usable only when it is clearly visible on an official provider website or clearly attributable
   official company page.
 - Prefer official company websites and publicly visible work email addresses.

@@ -749,7 +749,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
             futures = {
                 executor.submit(
                     _generate_and_process_response,
-                    config, mode, prompt, attachments, sink, input_context, stop_event, i
+                    config, mode, prompt, attachments, sink, input_context, stop_event, i, context_counts
                 ): i
                 for i in range(batch_size)
             }
@@ -823,6 +823,7 @@ def _generate_and_process_response(
         input_context: str,
         stop_event: threading.Event | None = None,
         thread_id: int | None = None,
+        context_counts: dict[str, int] | None = None,
 ) -> int:
     """
     Internal worker method: Generates an AI response and processes the contained 
@@ -833,8 +834,18 @@ def _generate_and_process_response(
     if sink.is_full():
         return 0
 
-    _set_thread_id(f"Thread-{thread_id if thread_id is not None else 'X'}")
+    thread_label = thread_id if thread_id is not None else "X"
+    _set_thread_id(f"Thread-{thread_label}")
     _info("Starting new search analysis...")
+    counts = context_counts or {"sent": 0, "invalid": 0, "input": 0}
+    _verbose(
+        config.verbose,
+        f"Thread {thread_label} sending AI prompt with known context: "
+        f"{counts.get('sent', 0)} sent/valid mail(s), "
+        f"{counts.get('invalid', 0)} invalid mail(s), "
+        f"{counts.get('input', 0)} input mail(s).",
+    )
+    _verbose(config.verbose, f"Thread {thread_label} AI prompt sent:\n{prompt}")
     # We use a placeholder for existing_emails because the sink handles the actual checking.
     # However, _needs_retry needs it for a quick heuristic.
     raw_response = _generate_research_response(config, mode, prompt, attachments, set(), input_context, stop_event)
@@ -867,7 +878,6 @@ def _generate_and_process_response(
         global_total, global_missing, global_target = sink.target_status()
     else:
         global_total, global_missing, global_target = current_total, missing, target
-    thread_label = thread_id if thread_id is not None else "X"
     _info(
         f"Thread {thread_label} added {added_count} new email(s) to the global target list. "
         f"The global target list now has {global_total} email(s); "

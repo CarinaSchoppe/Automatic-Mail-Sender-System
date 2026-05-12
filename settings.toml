@@ -81,7 +81,7 @@ SEND_TARGET_COUNT = 550
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 7
+PARALLEL_THREADS = 10
 
 
 # Mail

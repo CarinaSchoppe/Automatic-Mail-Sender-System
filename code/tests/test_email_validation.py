@@ -315,16 +315,16 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
         assert reason in res.reason
 
 
-def test_validate_email_addresses_with_neverbounce_uses_batch_job_flow(monkeypatch) -> None:
-    """Checks that final NeverBounce validation uses the jobs API and maps CSV results."""
+def test_validate_email_addresses_with_neverbounce_uses_single_check_flow(monkeypatch) -> None:
+    """Checks that final NeverBounce validation checks each recipient sequentially."""
     requests: list[tuple[str, str]] = []
 
     class FakeResponse:
-        def __init__(self, payload: str) -> None:
+        def __init__(self, payload: dict[str, str]) -> None:
             self._payload = payload
 
         def read(self) -> bytes:
-            return self._payload.encode("utf-8")
+            return json.dumps(self._payload).encode("utf-8")
 
         def __enter__(self):
             return self
@@ -336,18 +336,13 @@ def test_validate_email_addresses_with_neverbounce_uses_batch_job_flow(monkeypat
         url = request.full_url if hasattr(request, "full_url") else request
         method = request.get_method() if hasattr(request, "get_method") else "GET"
         requests.append((method, url))
-        if url.endswith("/jobs/create"):
-            body = json.loads(request.data.decode("utf-8"))
-            assert body["key"] == "never-key"
-            assert body["input_location"] == "supplied"
-            assert body["auto_parse"] == 1
-            assert body["auto_start"] == 1
-            assert body["input"] == [["good@example.com"], ["bad@example.com"]]
-            return FakeResponse('{"status":"success","job_id":42}')
-        if "/jobs/status" in url:
-            return FakeResponse('{"status":"success","job_status":"complete","percent_complete":100}')
-        if "/jobs/download" in url:
-            return FakeResponse('"good@example.com",valid\n"bad@example.com",invalid\n')
+        if "/single/check" in url:
+            query = email_validation.urllib.parse.parse_qs(email_validation.urllib.parse.urlparse(url).query)
+            assert query["key"] == ["never-key"]
+            if query["email"] == ["good@example.com"]:
+                return FakeResponse({"result": "valid"})
+            if query["email"] == ["bad@example.com"]:
+                return FakeResponse({"result": "invalid"})
         raise AssertionError(f"Unexpected URL: {url}")
 
     monkeypatch.setattr(email_validation.urllib.request, "urlopen", fake_urlopen)
@@ -360,8 +355,12 @@ def test_validate_email_addresses_with_neverbounce_uses_batch_job_flow(monkeypat
 
     assert results["good@example.com"].is_valid is True
     assert results["bad@example.com"].reason == "NeverBounce: invalid"
-    assert [entry[1] for entry in requests] == [
-        "https://api.neverbounce.com/v4.2/jobs/create",
-        "https://api.neverbounce.com/v4.2/jobs/status?key=never-key&job_id=42",
-        "https://api.neverbounce.com/v4.2/jobs/download?key=never-key&job_id=42",
-    ]
+    assert len(requests) == 2
+    assert all("/single/check" in url for _method, url in requests)
+
+
+def test_neverbounce_only_valid_result_is_accepted() -> None:
+    """Checks that non-valid NeverBounce result names never pass the send gate."""
+    assert email_validation._neverbounce_result_to_validation("valid").is_valid is True
+    for result in ["accepted", "invalid", "disposable", "spamtrap", "catchall", "unknown", ""]:
+        assert email_validation._neverbounce_result_to_validation(result).is_valid is False

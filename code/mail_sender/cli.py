@@ -493,7 +493,7 @@ def _apply_external_validation_final_gate(
     if external_service != "neverbounce" or not external_api_key or not recipients:
         return recipients
 
-    _info(f"Running NeverBounce final validation for {len(recipients)} filtered recipient(s).")
+    _info(f"Running NeverBounce final validation single-threaded for {len(recipients)} filtered recipient(s).")
     try:
         results = validate_email_addresses_with_neverbounce(
             [recipient.email for recipient in recipients],
@@ -501,7 +501,7 @@ def _apply_external_validation_final_gate(
             request_timeout=args.verify_email_smtp_timeout,
         )
     except Exception as validation_error:
-        reason = f"NeverBounce batch validation failed: {type(validation_error).__name__}: {validation_error}"
+        reason = f"NeverBounce validation failed: {type(validation_error).__name__}: {validation_error}"
         print(f"[ERROR] {reason}")
         results = {
             recipient.email.lower(): EmailValidationResult(False, reason)
@@ -520,7 +520,8 @@ def _apply_external_validation_final_gate(
             print(f"[INVALID] {recipient.email} | {validation.reason}; logged to {invalid_log_path.name}.")
             continue
         accepted.append(recipient)
-        _verbose(args.verbose, f"NeverBounce accepted recipient {recipient.email}.")
+        _verbose(args.verbose, f"NeverBounce confirmed {recipient.email} as valid.")
+    _info(f"NeverBounce final validation accepted {len(accepted)} valid recipient(s) and rejected {len(recipients) - len(accepted)} recipient(s).")
     return accepted
 
 
