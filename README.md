@@ -177,8 +177,8 @@ REJECT_CATCH_ALL = true
 
 With these settings, the sender only accepts recipients whose mailbox is positively confirmed by the recipient server and rejects catch-all domains that also accept random invented addresses. This is intentionally conservative: it reduces `recipient does not exist` bounces, but it may skip valid addresses when a server blocks verification or hides mailbox status.
 
-You can also use NeverBounce as the final external validation gate before a mail is rendered or sent.
-This is the recommended setup when you want only externally confirmed addresses to leave the system:
+You can also use NeverBounce as the external validation gate. With `neverbounce` enabled, research leads are checked before they are saved into `input/<Mode>`, and the sender checks the filtered list again before any mail is rendered or sent.
+This is the recommended setup when you want only externally confirmed addresses to enter or leave the system:
 
 ```toml
 EXTERNAL_VALIDATION_SERVICE = "neverbounce"
@@ -190,12 +190,12 @@ Put the NeverBounce secret in `.env` or in the GUI `.env` tab:
 NEVERBOUNCE_API_KEY=
 ```
 
-Use the API key from a NeverBounce Custom Integration. MailSenderSystem verifies the final filtered recipient list through the NeverBounce jobs API and only lets `valid` rows proceed to rendering and sending.
+Use the API key from a NeverBounce Custom Integration. MailSenderSystem checks each final research/send recipient through NeverBounce single validation and only lets `valid` results proceed.
 
 Set `EXTERNAL_VALIDATION_SERVICE = "none"` only when you intentionally want to disable NeverBounce.
 In the GUI this setting is shown as `NeverBounce validation`: `neverbounce` means enabled, `none` means disabled. There is no extra checkbox.
 
-The sender runs this check after research output has been loaded, after duplicate and already-invalid addresses have been removed, and immediately before rendering or sending any message. Only a NeverBounce `valid` result is accepted. Results such as `invalid`, `disposable`, `spamtrap`, `catchall`, `unknown`, API errors, or connection failures are treated as invalid, the mail is not rendered, the mail is not sent, and the address is written to `output/invalid_mails.csv` with the NeverBounce reason.
+Research runs this check before a newly discovered lead is saved. The sender runs it again after research output has been loaded, after duplicate and already-invalid addresses have been removed, and immediately before rendering or sending any message. Only a NeverBounce `valid` result is accepted. Results such as `invalid`, `disposable`, `spamtrap`, `catchall`, `unknown`, API errors, or connection failures are treated as invalid, the mail is not rendered, the mail is not sent, and the address is written to `output/invalid_mails.csv` with the NeverBounce reason.
 
 Invalid addresses are skipped and written to:
 

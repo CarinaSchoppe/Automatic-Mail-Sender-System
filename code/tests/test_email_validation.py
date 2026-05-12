@@ -244,6 +244,48 @@ def test_validate_email_address_runs_external_service_when_dns_check_is_skipped(
     assert calls == [("invalid@example.com", "neverbounce", "never-key", 8.0, False)]
 
 
+def test_validate_email_address_checks_dns_before_external_service(monkeypatch) -> None:
+    """Checks that NeverBounce runs only after the MX/A gate."""
+    events: list[str] = []
+
+    def fake_mx(domain: str) -> list[str]:
+        events.append("mx")
+        return ["mx.example.com"]
+
+    def fake_external(email, service, api_key, timeout, reject_catch_all):
+        events.append("external")
+        return email_validation.EmailValidationResult(True)
+
+    monkeypatch.setattr(email_validation, "_mail_exchange_hosts", fake_mx)
+    monkeypatch.setattr(email_validation, "_validate_external", fake_external)
+
+    res = email_validation.validate_email_address(
+        "valid@example.com",
+        external_service="neverbounce",
+        external_api_key="never-key",
+    )
+
+    assert res.is_valid is True
+    assert events == ["mx", "external"]
+
+
+def test_validate_email_address_does_not_call_external_when_dns_fails(monkeypatch) -> None:
+    """Checks that NeverBounce is not called for domains without MX or A records."""
+    calls: list[str] = []
+    monkeypatch.setattr(email_validation, "_mail_exchange_hosts", lambda domain: [])
+    monkeypatch.setattr(email_validation, "_domain_has_a_record", lambda domain: False)
+    monkeypatch.setattr(email_validation, "_validate_external", lambda *args: calls.append("external"))
+
+    res = email_validation.validate_email_address(
+        "bad@example.invalid",
+        external_service="neverbounce",
+        external_api_key="never-key",
+    )
+
+    assert res == email_validation.EmailValidationResult(False, "domain has no MX or A record")
+    assert calls == []
+
+
 def test_validate_email_address_uses_external_neverbounce(monkeypatch):
     """Checks that NeverBounce API is called when configured."""
     from mail_sender.email_validation import validate_email_address

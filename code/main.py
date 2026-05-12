@@ -79,6 +79,7 @@ RESEARCH_PERSON_EMAILS_PER_COMPANY: int = cast(int, _setting("RESEARCH_PERSON_EM
 RESEARCH_WRITE_OUTPUT: bool = cast(bool, _setting("RESEARCH_WRITE_OUTPUT", True))
 RESEARCH_UPLOAD_ATTACHMENTS: bool = cast(bool, _setting("RESEARCH_UPLOAD_ATTACHMENTS", True))
 RESEARCH_CONTEXT_DELIVERY: str = cast(str, _setting("RESEARCH_CONTEXT_DELIVERY", "upload_files"))
+EXTERNAL_VALIDATION_SERVICE: str = cast(str, _setting("EXTERNAL_VALIDATION_SERVICE", "neverbounce"))
 OLLAMA_BASE_URL: str = cast(str, _setting("OLLAMA_BASE_URL", "http://localhost:11434"))
 RESEARCH_REASONING_EFFORT: str = cast(str, _setting("RESEARCH_REASONING_EFFORT", "middle"))
 SELF_SEARCH_KEYWORDS: list[str] = cast(list[str], _setting("SELF_SEARCH_KEYWORDS", []))
@@ -256,6 +257,8 @@ def _build_research_args() -> list[str]:
         str(RESEARCH_REASONING_EFFORT),
         "--research-context-delivery",
         str(RESEARCH_CONTEXT_DELIVERY),
+        "--external-validation-service",
+        str(EXTERNAL_VALIDATION_SERVICE),
     ]
     for flag, value in [
         ("--min-companies", RESEARCH_MIN_COMPANIES),

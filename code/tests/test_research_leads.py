@@ -70,6 +70,8 @@ def config(
         parallel_threads: int = 1,
         self_search_keywords: tuple[str, ...] = ("query",),
         self_crawl_depth: int = 2,
+        external_validation_service: str = "none",
+        external_validation_api_key: str = "",
 ) -> ResearchConfig:
     """Encapsulates the helper step config."""
     return ResearchConfig(
@@ -93,6 +95,8 @@ def config(
         parallel_threads=parallel_threads,
         self_search_keywords=self_search_keywords,
         self_crawl_depth=self_crawl_depth,
+        external_validation_service=external_validation_service,
+        external_validation_api_key=external_validation_api_key,
     )
 
 
@@ -112,6 +116,8 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "RESEARCH_WRITE_OUTPUT",
         "RESEARCH_UPLOAD_ATTACHMENTS",
         "RESEARCH_CONTEXT_DELIVERY",
+        "EXTERNAL_VALIDATION_SERVICE",
+        "NEVERBOUNCE_API_KEY",
         "RESEARCH_VERBOSE",
         "RESEARCH_BASE_DIR",
         "SELF_SEARCH_KEYWORDS",
@@ -140,6 +146,10 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "--no-upload-attachments",
         "--research-context-delivery",
         "paste_in_prompt",
+        "--external-validation-service",
+        "neverbounce",
+        "--external-validation-api-key",
+        "never-key",
         "--send-target-count",
         "100",
         "--max-iterations",
@@ -161,6 +171,8 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.verbose is True
     assert parsed.upload_attachments is False
     assert parsed.research_context_delivery == "paste_in_prompt"
+    assert parsed.external_validation_service == "neverbounce"
+    assert parsed.external_validation_api_key == "never-key"
     assert parsed.reasoning_effort == "high"
     assert parsed.send_target_count == 100
     assert parsed.max_iterations == 10
@@ -181,6 +193,8 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     monkeypatch.setenv("RESEARCH_WRITE_OUTPUT", "false")
     monkeypatch.setenv("RESEARCH_UPLOAD_ATTACHMENTS", "false")
     monkeypatch.setenv("RESEARCH_CONTEXT_DELIVERY", "paste_in_prompt")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
     monkeypatch.setenv("RESEARCH_VERBOSE", "true")
     monkeypatch.setenv("RESEARCH_REASONING_EFFORT", "high")
     monkeypatch.setenv("RESEARCH_BASE_DIR", str(project))
@@ -197,6 +211,8 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     assert cfg.verbose is True
     assert cfg.upload_attachments is False
     assert cfg.research_context_delivery == "paste_in_prompt"
+    assert cfg.external_validation_service == "neverbounce"
+    assert cfg.external_validation_api_key == "never-key"
     assert cfg.reasoning_effort == "high"
     assert cfg.base_dir == project
 
@@ -564,6 +580,47 @@ def test_generate_response_reports_thread_target_list_progress(
     assert "Thread 7 added 2 new email(s) to the global target list." in output
     assert "The global target list now has 4 email(s)" in output
     assert "1 still missing to reach target 5" in output
+
+
+def test_research_sink_checks_neverbounce_before_saving(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Checks that Research only saves NeverBounce-valid leads."""
+    mode = research_leads.get_mode("PhD", project)
+    cfg = config(
+        project,
+        external_validation_service="neverbounce",
+        external_validation_api_key="never-key",
+    )
+    sink = research_leads.ThreadSafeRecipientSink(
+        target_count=2,
+        seen_emails=set(),
+        seen_companies=set(),
+        config=cfg,
+        mode=mode,
+    )
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_validate(email: str, **kwargs):
+        calls.append((email, kwargs))
+        return py_types.SimpleNamespace(
+            is_valid=email == "valid@example.com",
+            reason="" if email == "valid@example.com" else "NeverBounce: invalid",
+        )
+
+    monkeypatch.setattr(research_leads, "validate_email_address", fake_validate)
+
+    assert sink.add_recipient(Recipient(email="valid@example.com", company="Valid"), thread_id=0) is True
+    assert sink.add_recipient(Recipient(email="bad@example.com", company="Bad"), thread_id=0) is False
+
+    assert [recipient.email for recipient in sink.recipients] == ["valid@example.com"]
+    saved_files = list((project / "input/PhD").glob("leads_*.csv"))
+    assert len(saved_files) == 1
+    saved_text = saved_files[0].read_text(encoding="utf-8")
+    assert "valid@example.com" in saved_text
+    assert "bad@example.com" not in saved_text
+    invalid_rows = (project / "output/invalid_mails.csv").read_text(encoding="utf-8-sig")
+    assert "bad@example.com" in invalid_rows
+    assert calls[0][1]["external_service"] == "neverbounce"
+    assert calls[0][1]["external_api_key"] == "never-key"
 
 
 def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:

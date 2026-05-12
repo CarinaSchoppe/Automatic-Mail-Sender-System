@@ -46,7 +46,7 @@ def validate_email_address(
         verify_mailbox (bool): Whether an SMTP request should be made to the mail server.
         smtp_from_email (str): Sender address for the SMTP check.
         smtp_timeout (float): Time limit for network requests.
-        skip_dns_check (bool): If True, only the syntax is checked.
+    skip_dns_check (bool): If True, skips MX/A DNS checks but still runs external validation when configured.
         require_mailbox_confirmation (bool): If True, unconfirmed mailboxes are rejected.
         reject_catch_all (bool): If True, domains accepting random recipients are rejected.
         external_service (str): "neverbounce" or "none".
@@ -63,7 +63,12 @@ def validate_email_address(
     if domain.startswith("-") or domain.endswith("-") or ".." in domain:
         return EmailValidationResult(False, "invalid email domain syntax")
 
-    # 1. External service check.
+    # 1. DNS check
+    mx_hosts = _mail_exchange_hosts(domain)
+    if not skip_dns_check and not mx_hosts and not _domain_has_a_record(domain):
+        return EmailValidationResult(False, "domain has no MX or A record")
+
+    # 2. External service check after syntax and MX/A checks.
     if external_service != "none" and external_api_key:
         print(f"[VERBOSE] Using external validation service: {external_service} for {normalized}")
         ext_res = _validate_external(normalized, external_service, external_api_key, smtp_timeout, reject_catch_all)
@@ -72,17 +77,11 @@ def validate_email_address(
                 print(f"[VERBOSE] External service {external_service} rejected {normalized}: {ext_res.reason}")
                 return ext_res
             print(f"[VERBOSE] External service {external_service} confirmed {normalized} as valid.")
-            return ext_res
         else:
             print(f"[VERBOSE] External service {external_service} returned unknown result or error; falling back to local checks.")
 
     if skip_dns_check:
         return EmailValidationResult(True)
-
-    # 2. DNS check
-    mx_hosts = _mail_exchange_hosts(domain)
-    if not mx_hosts and not _domain_has_a_record(domain):
-        return EmailValidationResult(False, "domain has no MX or A record")
 
     if verify_mailbox or require_mailbox_confirmation or reject_catch_all:
         probe = _probe_mailbox_exists(normalized, mx_hosts or [domain], smtp_from_email, smtp_timeout)

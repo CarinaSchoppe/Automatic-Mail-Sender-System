@@ -44,6 +44,8 @@ class ResearchConfig:
     self_crawl_depth: int = 2
     self_request_timeout: float = 10.0
     self_verify_email_smtp: bool = False
+    external_validation_service: str = "none"
+    external_validation_api_key: str = ""
 
 
 @runtime_checkable

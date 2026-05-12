@@ -101,7 +101,7 @@ SKIP_EMAIL_DNS_CHECK = true
 # Verify timeout: Timeout for recipient SMTP probe.
 VERIFY_EMAIL_SMTP_TIMEOUT = 15.0
 
-# NeverBounce validation: neverbounce = enabled as the final check before rendering/sending; none = disabled.
+# NeverBounce validation: neverbounce = validates research leads before saving and checks again before rendering/sending; none = disabled.
 EXTERNAL_VALIDATION_SERVICE = "neverbounce"
 
 # Resend existing: Allows sending to addresses already present in output logs.
