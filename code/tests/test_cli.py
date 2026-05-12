@@ -191,6 +191,42 @@ def test_cli_forwards_selected_external_validation_key(monkeypatch, project: Pat
     assert "External validation: zerobounce" in capsys.readouterr().out
 
 
+def test_cli_auto_external_validation_blocks_send(monkeypatch, project: Path, capsys) -> None:
+    """Checks that auto-detected provider validation happens before real sending."""
+    write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.com")
+    (project / "attachments/PhD/file.txt").write_text("attachment", encoding="utf-8")
+    sent = []
+
+    def fake_validate(email: str, **kwargs):
+        assert kwargs["external_service"] == "neverbounce"
+        assert kwargs["external_api_key"] == "never-key"
+        return type("Result", (), {"is_valid": False, "reason": "NeverBounce: invalid"})()
+
+    setup_fake_mailer(monkeypatch, lambda *args, **kwargs: sent.append((args, kwargs)))
+    monkeypatch.setattr("mail_sender.cli.validate_email_address", fake_validate)
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "auto")
+    monkeypatch.delenv("ZEROBOUNCE_API_KEY", raising=False)
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
+    monkeypatch.delenv("EXTERNAL_VALIDATION_API_KEY", raising=False)
+
+    result = cli.main([
+        "--mode",
+        "PhD",
+        "--base-dir",
+        str(project),
+        "--send",
+    ])
+
+    assert result == 0
+    assert sent == []
+    output = capsys.readouterr().out
+    assert "[INVALID] bad@example.com | NeverBounce: invalid" in output
+    assert "[SENT]" not in output
+    with (project / "output/invalid_mails.csv").open("r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert rows[1][:3] == ["Bad", "bad@example.com", "NeverBounce: invalid"]
+
+
 def test_cli_logs_validation_crashes_as_invalid(monkeypatch, project: Path, capsys) -> None:
     """Checks that validation worker crashes become invalid rows instead of killing the run."""
     write_recipient(project / "input/PhD/bad.csv", "Bad", "bad@example.com")

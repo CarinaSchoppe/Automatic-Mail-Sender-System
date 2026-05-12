@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--subject", help="Optional subject override. Supports template placeholders like {company}.")
     parser.add_argument(
         "--signature-html",
-        default=r"C:\Users\Carina\OneDrive\Work\Allgemein\Logo\signature.html",
+        default="templates/signature.html",
         help="HTML signature file appended to every rendered mail.",
     )
     parser.add_argument("--max-send-count", type=int, help="Maximum number of filtered recipients to process in this run.")

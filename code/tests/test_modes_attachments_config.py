@@ -127,6 +127,37 @@ def test_load_smtp_config_uses_selected_validation_service_key(monkeypatch: pyte
     assert config.external_validation_api_key == "never-key"
 
 
+def test_load_smtp_config_auto_detects_validation_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that one validation API key is enough in auto mode."""
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "auto")
+    monkeypatch.delenv("ZEROBOUNCE_API_KEY", raising=False)
+    monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
+    monkeypatch.delenv("EXTERNAL_VALIDATION_API_KEY", raising=False)
+
+    config = load_smtp_config(require_password=False)
+
+    assert config.external_validation_service == "neverbounce"
+    assert config.external_validation_api_key == "never-key"
+
+    monkeypatch.setenv("ZEROBOUNCE_API_KEY", "zero-key")
+    config = load_smtp_config(require_password=False)
+
+    assert config.external_validation_service == "zerobounce"
+    assert config.external_validation_api_key == "zero-key"
+
+
+def test_load_smtp_config_rejects_unknown_validation_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that mistyped validation providers fail loudly."""
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "mail-wizard")
+
+    with pytest.raises(ConfigError, match="EXTERNAL_VALIDATION_SERVICE"):
+        load_smtp_config(require_password=False)
+
+
 def test_load_smtp_config_keeps_legacy_validation_key_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """Checks that the old generic validation key still works as a fallback."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)

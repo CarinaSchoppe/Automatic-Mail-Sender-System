@@ -98,8 +98,8 @@ SKIP_EMAIL_DNS_CHECK = true
 # Verify timeout: Timeout for recipient SMTP probe.
 VERIFY_EMAIL_SMTP_TIMEOUT = 10.0
 
-# External validation: Use services like NeverBounce or ZeroBounce to check email existence.
-EXTERNAL_VALIDATION_SERVICE = "zerobounce"
+# External validation: Auto uses ZeroBounce or NeverBounce when exactly one matching API key is present; choose a provider explicitly to force one service.
+EXTERNAL_VALIDATION_SERVICE = "auto"
 
 # Resend existing: Allows sending to addresses already present in output logs.
 RESEND_EXISTING = false

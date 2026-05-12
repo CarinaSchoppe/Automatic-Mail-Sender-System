@@ -177,10 +177,11 @@ REJECT_CATCH_ALL = true
 
 With these settings, the sender only accepts recipients whose mailbox is positively confirmed by the recipient server and rejects catch-all domains that also accept random invented addresses. This is intentionally conservative: it reduces `recipient does not exist` bounces, but it may skip valid addresses when a server blocks verification or hides mailbox status.
 
-You can also use an external validation provider before local DNS/SMTP checks:
+You can also use an external validation provider before local DNS/SMTP checks.
+For the simplest setup, leave the service on `auto` and add exactly one provider key to `.env`:
 
 ```toml
-EXTERNAL_VALIDATION_SERVICE = "zerobounce"   # or "neverbounce"
+EXTERNAL_VALIDATION_SERVICE = "auto"
 ```
 
 Put the matching secret in `.env` or in the GUI `.env` tab:
@@ -190,7 +191,9 @@ ZEROBOUNCE_API_KEY=
 NEVERBOUNCE_API_KEY=
 ```
 
-When `EXTERNAL_VALIDATION_SERVICE` is `zerobounce`, the sender uses `ZEROBOUNCE_API_KEY`. When it is `neverbounce`, it uses `NEVERBOUNCE_API_KEY`. The older `EXTERNAL_VALIDATION_API_KEY` is still accepted as a fallback when the service-specific key is empty.
+With `auto`, the sender uses `ZEROBOUNCE_API_KEY` when it is present, otherwise `NEVERBOUNCE_API_KEY`. If you want to force a provider, set `EXTERNAL_VALIDATION_SERVICE = "zerobounce"` or `EXTERNAL_VALIDATION_SERVICE = "neverbounce"`. The older `EXTERNAL_VALIDATION_API_KEY` is still accepted as a fallback when a selected service-specific key is empty.
+
+This validation happens after duplicate/invalid-log filtering and before rendering or sending any message. If ZeroBounce or NeverBounce rejects an address, the mail is not rendered, not sent, and the address is written to `output/invalid_mails.csv` with the provider reason.
 
 Invalid addresses are skipped and written to:
 
