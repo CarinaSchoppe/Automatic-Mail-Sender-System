@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .coverage
 .pytest_cache/
+/emergency
 .idea
 logs/
 *.log
