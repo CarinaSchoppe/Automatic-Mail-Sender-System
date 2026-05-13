@@ -9,7 +9,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from research.logging_utils import verbose as _verbose
 from research.provider_clients.common import (
@@ -107,7 +107,7 @@ def generate_with_gemini(
         _verbose(verbose, f"Error initializing Gemini client: {exc}")
         # Fallback auf direkten Aufruf, falls der Cache-Mechanismus Probleme macht
         from google import genai
-        client = cast(Any, _create_client(genai.Client, api_key))
+        client = _create_client(genai.Client, api_key)
 
     _verbose(verbose, f"Uploading {len(attachment_paths)} attachment context file(s) to Gemini.")
     uploaded_files = []

@@ -16,7 +16,6 @@ from mail_sender.config import ConfigError, load_smtp_config
 from mail_sender.email_validation import (
     EmailValidationResult,
     validate_email_address,
-    validate_email_addresses_with_neverbounce,
 )
 from mail_sender.modes import MailMode, get_available_mode_names, get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients_from_dir
@@ -29,8 +28,12 @@ from mail_sender.sent_log import (
 )
 from mail_sender.smtp_sender import SmtpMailer
 from mail_sender.templates import render_mail
-
-NEVERBOUNCE_API_KEY_NAME = "NEVERBOUNCE_API_KEY"
+from mail_sender.validation_policy import (
+    EXTERNAL_VALIDATION_DISABLED,
+    NEVERBOUNCE_SERVICE,
+    VALIDATION_STAGE_RESEARCH,
+    VALIDATION_STAGE_SEND,
+)
 
 
 def _verbose(enabled: bool, message: str) -> None:
@@ -186,9 +189,11 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
     _verbose(args.verbose, f"SMTP host: {smtp_config.host}:{smtp_config.port}")
     _verbose(args.verbose, f"SMTP username: {smtp_config.username}")
     _verbose(args.verbose, f"SMTP from: {smtp_config.from_name} <{smtp_config.from_email}>")
-    if smtp_config.external_validation_service != "none":
+    if smtp_config.external_validation_service != EXTERNAL_VALIDATION_DISABLED:
         _verbose(args.verbose, f"External validation service: {smtp_config.external_validation_service}")
+        _verbose(args.verbose, f"External validation stage: {smtp_config.external_validation_stage}")
     args.external_validation_service = smtp_config.external_validation_service
+    args.external_validation_stage = smtp_config.external_validation_stage
 
     recipients_to_process, skipped_before_send = _filter_recipients(
         args,
@@ -197,8 +202,6 @@ def _run_mode(args: argparse.Namespace, mode: MailMode, base_dir: Path, signatur
         invalid_emails,
         invalid_log_path,
         smtp_config.from_email,
-        external_service=smtp_config.external_validation_service,
-        external_api_key=smtp_config.external_validation_api_key,
     )
     recipients_to_process = _apply_max_send_count(args, recipients_to_process)
     _print_mode_summary(args, mode, recipients, recipients_to_process, skipped_before_send, attachments, invalid_log_path)
@@ -356,6 +359,11 @@ def _smtp_mailbox_validation_enabled(args: argparse.Namespace) -> bool:
     return bool(args.verify_email_smtp or args.require_email_smtp_pass or args.reject_catch_all)
 
 
+def _local_email_validation_enabled(args: argparse.Namespace) -> bool:
+    """Returns True when the local syntax/DNS/SMTP validation gate should run."""
+    return bool(not args.skip_email_dns_check or _smtp_mailbox_validation_enabled(args))
+
+
 def _filter_recipients(
         args: argparse.Namespace,
         recipients: list[Recipient],
@@ -363,14 +371,12 @@ def _filter_recipients(
         invalid_emails: set[str],
         invalid_log_path: Path,
         validation_smtp_from: str | None = None,
-        external_service: str = "none",
-        external_api_key: str = "",
 ) -> tuple[list[Recipient], int]:
     """
     Filters the loaded recipients based on duplicates, exclusion lists, and email validation.
     Parallel validation using ThreadPoolExecutor.
     """
-    _info("Validating and filtering recipients.")
+    _info("Filtering recipients.")
 
     # 1. Pre-filtering (duplicates and already known logs)
     to_validate = []
@@ -398,6 +404,15 @@ def _filter_recipients(
     if not to_validate:
         _info(f"Recipient pre-filter removed all rows. Skipped before validation: {skipped_before_send}.")
         return [], skipped_before_send
+
+    if not _local_email_validation_enabled(args):
+        _info(
+            "Local email validation is disabled; "
+            f"{len(to_validate)} recipient(s) accepted after duplicate/log filtering."
+        )
+        for recipient in to_validate:
+            _verbose(args.verbose, f"Recipient accepted for processing without local email validation: {recipient.email}")
+        return to_validate, skipped_before_send
 
     # 2. Parallele Validierung
     validation_kwargs = {
@@ -463,15 +478,7 @@ def _filter_recipients(
         locally_accepted.append(recipient)
         _verbose(args.verbose, f"Recipient accepted for processing: {recipient.email}")
 
-    recipients_to_process = _apply_external_validation_final_gate(
-        args,
-        locally_accepted,
-        invalid_emails,
-        invalid_log_path,
-        external_service,
-        external_api_key,
-    )
-    skipped_before_send += len(locally_accepted) - len(recipients_to_process)
+    recipients_to_process = locally_accepted
 
     _info(
         "Validation summary: "
@@ -479,50 +486,6 @@ def _filter_recipients(
         f"accepted={len(recipients_to_process)}, rejected={len(to_validate) - len(recipients_to_process)}."
     )
     return recipients_to_process, skipped_before_send
-
-
-def _apply_external_validation_final_gate(
-        args: argparse.Namespace,
-        recipients: list[Recipient],
-        invalid_emails: set[str],
-        invalid_log_path: Path,
-        external_service: str,
-        external_api_key: str,
-) -> list[Recipient]:
-    """Run the external provider as the last validation gate after all local filters."""
-    if external_service != "neverbounce" or not external_api_key or not recipients:
-        return recipients
-
-    _info(f"Running NeverBounce final validation single-threaded for {len(recipients)} filtered recipient(s).")
-    try:
-        results = validate_email_addresses_with_neverbounce(
-            [recipient.email for recipient in recipients],
-            external_api_key,
-            request_timeout=args.verify_email_smtp_timeout,
-        )
-    except Exception as validation_error:
-        reason = f"NeverBounce validation failed: {type(validation_error).__name__}: {validation_error}"
-        print(f"[ERROR] {reason}")
-        results = {
-            recipient.email.lower(): EmailValidationResult(False, reason)
-            for recipient in recipients
-        }
-
-    accepted: list[Recipient] = []
-    for recipient in recipients:
-        validation = results.get(
-            recipient.email.lower(),
-            EmailValidationResult(False, "NeverBounce: missing result"),
-        )
-        if not validation.is_valid:
-            invalid_emails.add(recipient.email.lower())
-            append_invalid_email(invalid_log_path, recipient, validation.reason)
-            print(f"[INVALID] {recipient.email} | {validation.reason}; logged to {invalid_log_path.name}.")
-            continue
-        accepted.append(recipient)
-        _verbose(args.verbose, f"NeverBounce confirmed {recipient.email} as valid.")
-    _info(f"NeverBounce final validation accepted {len(accepted)} valid recipient(s) and rejected {len(recipients) - len(accepted)} recipient(s).")
-    return accepted
 
 
 def _apply_max_send_count(args: argparse.Namespace, recipients_to_process: list[Recipient]) -> list[Recipient]:
@@ -567,8 +530,10 @@ def _print_mode_summary(
     print("SMTP mailbox verification: yes" if args.verify_email_smtp else "SMTP mailbox verification: no")
     print("Require SMTP mailbox confirmation: yes" if args.require_email_smtp_pass else "Require SMTP mailbox confirmation: no")
     print("Reject catch-all domains: yes" if args.reject_catch_all else "Reject catch-all domains: no")
-    external_validation_service = getattr(args, "external_validation_service", "none")
+    external_validation_service = getattr(args, "external_validation_service", EXTERNAL_VALIDATION_DISABLED)
     print(f"External validation: {external_validation_service}")
+    if external_validation_service != EXTERNAL_VALIDATION_DISABLED:
+        print(f"External validation stage: {getattr(args, 'external_validation_stage', VALIDATION_STAGE_RESEARCH)}")
 
 
 def _send_or_dry_run(
@@ -601,6 +566,10 @@ def _send_or_dry_run(
             verbose=args.verbose,
             smtp_config=None,
             parallel_threads=args.parallel_threads,
+            external_validation_service=smtp_config.external_validation_service,
+            external_validation_api_key=smtp_config.external_validation_api_key,
+            external_validation_stage=smtp_config.external_validation_stage,
+            validation_timeout=args.verify_email_smtp_timeout,
         )
 
     _info("Opening SMTP connection and sending real emails.")
@@ -619,6 +588,10 @@ def _send_or_dry_run(
         verbose=args.verbose,
         smtp_config=smtp_config,
         parallel_threads=args.parallel_threads,
+        external_validation_service=smtp_config.external_validation_service,
+        external_validation_api_key=smtp_config.external_validation_api_key,
+        external_validation_stage=smtp_config.external_validation_stage,
+        validation_timeout=args.verify_email_smtp_timeout,
     )
 
 
@@ -647,6 +620,10 @@ def _process_recipients(
         verbose: bool,
         smtp_config: Any = None,
         parallel_threads: int = 1,
+        external_validation_service: str = EXTERNAL_VALIDATION_DISABLED,
+        external_validation_api_key: str = "",
+        external_validation_stage: str = VALIDATION_STAGE_RESEARCH,
+        validation_timeout: float = 8.0,
 ) -> int:
     """
     Verarbeitet die Liste der Empfänger (Rendern und Senden/Dry-Run).
@@ -673,13 +650,15 @@ def _process_recipients(
                     log_dry_run=log_dry_run,
                     write_sent_log=write_sent_log,
                     verbose=verbose,
+                    external_validation_service=external_validation_service,
+                    external_validation_api_key=external_validation_api_key,
+                    external_validation_stage=external_validation_stage,
+                    validation_timeout=validation_timeout,
                 )
             except Exception as recipient_error:
                 errors += 1
                 reason = f"{type(recipient_error).__name__}: {recipient_error}"
                 print(f"[ERROR] {recipient.email} | {reason}")
-                if not dry_run:
-                    append_invalid_email(invalid_log_path, recipient, f"Send error: {reason}")
         _info(f"Recipient processing finished with {errors} error(s).")
         return errors
 
@@ -700,6 +679,10 @@ def _process_recipients(
                 log_dry_run=log_dry_run,
                 write_sent_log=write_sent_log,
                 verbose=verbose,
+                external_validation_service=external_validation_service,
+                external_validation_api_key=external_validation_api_key,
+                external_validation_stage=external_validation_stage,
+                validation_timeout=validation_timeout,
             ): recipient
             for recipient in recipients
         }
@@ -711,8 +694,6 @@ def _process_recipients(
                 errors += 1
                 reason = f"{type(recipient_error).__name__}: {recipient_error}"
                 print(f"[ERROR] {recipient.email} | {reason}")
-                if not dry_run:
-                    append_invalid_email(invalid_log_path, recipient, f"Send error: {reason}")
     _info(f"Recipient processing finished with {errors} error(s).")
 
     return errors
@@ -731,11 +712,29 @@ def _process_one_recipient(
         log_dry_run: bool,
         write_sent_log: bool,
         verbose: bool,
+        external_validation_service: str = EXTERNAL_VALIDATION_DISABLED,
+        external_validation_api_key: str = "",
+        external_validation_stage: str = VALIDATION_STAGE_RESEARCH,
+        validation_timeout: float = 8.0,
 ) -> None:
     """
     Führt den kompletten Workflow für einen einzelnen Empfänger aus.
     """
     _info(f"Preparing mail for {recipient.email}.")
+    if external_validation_service == NEVERBOUNCE_SERVICE and external_validation_stage == VALIDATION_STAGE_SEND:
+        validation = validate_email_address(
+            recipient.email,
+            skip_dns_check=True,
+            external_service=external_validation_service,
+            external_api_key=external_validation_api_key,
+            smtp_timeout=validation_timeout,
+        )
+        if not validation.is_valid:
+            append_invalid_email(log_path.parent / "invalid_mails.csv", recipient, validation.reason)
+            print(f"[INVALID] {recipient.email} | {validation.reason}; logged to invalid_mails.csv.")
+            return
+        _verbose(verbose, f"NeverBounce confirmed {recipient.email} as valid in send thread.")
+
     _verbose(verbose, f"Rendering mail for {recipient.email}.")
     rendered = render_mail(
         template_path,

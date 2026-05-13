@@ -74,8 +74,10 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
                 "RESEARCH_UPLOAD_ATTACHMENTS": False,
                 "RESEARCH_CONTEXT_DELIVERY": "paste_in_prompt",
                 "EXTERNAL_VALIDATION_SERVICE": "neverbounce",
+                "EXTERNAL_VALIDATION_STAGE": "send",
                 "SEND": True,
                 "SEND_TARGET_COUNT": 0,
+                "REQUIRE_EMAIL_SMTP_PASS": True,
                 "REJECT_CATCH_ALL": True,
                 "VERBOSE": True,
             },
@@ -94,6 +96,8 @@ def test_main_wrapper_can_run_research(monkeypatch) -> None:
     assert "paste_in_prompt" in research_args
     assert "--external-validation-service" in research_args
     assert "neverbounce" in research_args
+    assert "--external-validation-stage" in research_args
+    assert "send" in research_args
     assert "--parallel-threads" in research_args
     assert mail_args[:4] == ["--mode", "Freelance_English", "--base-dir", str(app_main.PROJECT_ROOT)]
     assert "--send" in mail_args

@@ -16,6 +16,7 @@ import pytest
 from mail_sender.recipients import Recipient
 from mail_sender.sent_log import append_log
 from research import providers
+from research import logging_utils
 from research import research_leads
 from research import self_research
 from research.research_leads import ResearchConfig
@@ -72,6 +73,7 @@ def config(
         self_crawl_depth: int = 2,
         external_validation_service: str = "none",
         external_validation_api_key: str = "",
+        external_validation_stage: str = "research",
 ) -> ResearchConfig:
     """Encapsulates the helper step config."""
     return ResearchConfig(
@@ -97,6 +99,7 @@ def config(
         self_crawl_depth=self_crawl_depth,
         external_validation_service=external_validation_service,
         external_validation_api_key=external_validation_api_key,
+        external_validation_stage=external_validation_stage,
     )
 
 
@@ -117,6 +120,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "RESEARCH_UPLOAD_ATTACHMENTS",
         "RESEARCH_CONTEXT_DELIVERY",
         "EXTERNAL_VALIDATION_SERVICE",
+        "EXTERNAL_VALIDATION_STAGE",
         "NEVERBOUNCE_API_KEY",
         "RESEARCH_VERBOSE",
         "RESEARCH_BASE_DIR",
@@ -128,6 +132,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert default.mode_name == "PhD"
     assert default.provider == "gemini"
     assert default.model == "gemini-3-flash-preview"
+    assert default.external_validation_stage == "research"
 
     parsed = research_leads.parse_args([
         "--provider",
@@ -150,6 +155,8 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
         "neverbounce",
         "--external-validation-api-key",
         "never-key",
+        "--external-validation-stage",
+        "send",
         "--send-target-count",
         "100",
         "--max-iterations",
@@ -173,6 +180,7 @@ def test_default_config_and_parse_args(monkeypatch: pytest.MonkeyPatch, project:
     assert parsed.research_context_delivery == "paste_in_prompt"
     assert parsed.external_validation_service == "neverbounce"
     assert parsed.external_validation_api_key == "never-key"
+    assert parsed.external_validation_stage == "send"
     assert parsed.reasoning_effort == "high"
     assert parsed.send_target_count == 100
     assert parsed.max_iterations == 10
@@ -194,6 +202,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     monkeypatch.setenv("RESEARCH_UPLOAD_ATTACHMENTS", "false")
     monkeypatch.setenv("RESEARCH_CONTEXT_DELIVERY", "paste_in_prompt")
     monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_STAGE", "send")
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
     monkeypatch.setenv("RESEARCH_VERBOSE", "true")
     monkeypatch.setenv("RESEARCH_REASONING_EFFORT", "high")
@@ -213,6 +222,7 @@ def test_default_config_reads_env(monkeypatch: pytest.MonkeyPatch, project: Path
     assert cfg.research_context_delivery == "paste_in_prompt"
     assert cfg.external_validation_service == "neverbounce"
     assert cfg.external_validation_api_key == "never-key"
+    assert cfg.external_validation_stage == "send"
     assert cfg.reasoning_effort == "high"
     assert cfg.base_dir == project
 
@@ -448,6 +458,48 @@ def test_parse_recipients_no_longer_requires_headers() -> None:
     assert research_leads._detect_dialect("") == research_leads.DefaultCsvDialect
 
 
+def test_parse_recipients_legacy_verbose_bool_paths(capsys) -> None:
+    """Covers legacy positional verbose compatibility branches."""
+    assert research_leads.parse_recipients("Company,legacy@example.com", set(), True) == [
+        Recipient(email="legacy@example.com", company="Company")
+    ]
+    assert "Parsing AI response" in capsys.readouterr().out
+
+    assert research_leads._parse_headerless_csv_recipients("Company,headerless@example.com", set(), True) == [
+        Recipient(email="headerless@example.com", company="Company")
+    ]
+    assert "Headerless CSV row count" in capsys.readouterr().out
+
+    payload = '{"leads": [{"company": "Json Co", "mail": "json@example.com", "source_url": "https://json.example"}]}'
+    assert research_leads._parse_json_recipients(payload, set(), True) == [
+        Recipient(email="json@example.com", company="Json Co", source_url="https://json.example")
+    ]
+    assert "JSON lead row count" in capsys.readouterr().out
+
+
+def test_logging_utils_main_thread_has_no_prefix(capsys) -> None:
+    """Checks the main-thread logging prefix branch."""
+    logging_utils.set_thread_id(None)
+    assert logging_utils.get_thread_id() == ""
+    logging_utils.info("hello")
+    assert capsys.readouterr().out == "[INFO] hello\n"
+
+
+def test_logging_utils_worker_thread_uses_thread_name() -> None:
+    """Checks the fallback prefix branch for unnamed worker contexts."""
+    values: list[str] = []
+
+    def read_prefix() -> None:
+        logging_utils.set_thread_id(None)
+        values.append(logging_utils.get_thread_id())
+
+    worker = threading.Thread(target=read_prefix, name="worker-1")
+    worker.start()
+    worker.join()
+
+    assert values == ["[worker-1] "]
+
+
 def test_parse_recipients_handles_gemini_dump_and_company_commas() -> None:
     """Checks behavior for parse recipients handles gemini dump and company commas."""
     raw = (
@@ -621,6 +673,46 @@ def test_research_sink_checks_neverbounce_before_saving(monkeypatch: pytest.Monk
     assert "bad@example.com" in invalid_rows
     assert calls[0][1]["external_service"] == "neverbounce"
     assert calls[0][1]["external_api_key"] == "never-key"
+
+
+def test_research_sink_send_stage_skips_neverbounce_before_saving(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Checks that send-stage NeverBounce leaves research saving to local validation only."""
+    mode = research_leads.get_mode("PhD", project)
+    cfg = config(
+        project,
+        external_validation_service="neverbounce",
+        external_validation_api_key="never-key",
+        external_validation_stage="send",
+    )
+    sink = research_leads.ThreadSafeRecipientSink(
+        target_count=1,
+        seen_emails=set(),
+        seen_companies=set(),
+        config=cfg,
+        mode=mode,
+    )
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_validate(email: str, **kwargs):
+        calls.append((email, kwargs))
+        return py_types.SimpleNamespace(is_valid=True, reason="")
+
+    monkeypatch.setattr(research_leads, "validate_email_address", fake_validate)
+
+    assert sink.add_recipient(Recipient(email="valid@example.com", company="Valid"), thread_id=0) is True
+
+    assert calls == [
+        (
+            "valid@example.com",
+            {
+                "verify_mailbox": False,
+                "smtp_timeout": 10.0,
+                "external_service": "none",
+                "external_api_key": "",
+            },
+        )
+    ]
+    assert [recipient.email for recipient in sink.recipients] == ["valid@example.com"]
 
 
 def test_run_research_writes_output(monkeypatch: pytest.MonkeyPatch, project: Path, capsys) -> None:
@@ -894,7 +986,7 @@ def test_run_research_pastes_known_context_when_configured(
     )
     seen: dict[str, Any] = {}
 
-    def fake_generate(model, prompt, attachments, reasoning_effort="middle", verbose=False):
+    def fake_generate(_model, prompt, attachments, **_kwargs):
         """Kapselt den Hilfsschritt fake_generate."""
         seen["prompt"] = prompt
         seen["attachments"] = attachments

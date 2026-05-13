@@ -108,6 +108,14 @@ def test_settings_schema_allows_neverbounce_or_none() -> None:
     assert spec.choices == ("neverbounce", "none")
 
 
+def test_settings_schema_allows_neverbounce_timing_choice() -> None:
+    """Checks that the GUI can choose where NeverBounce validation runs."""
+    spec = next(item for item in SETTINGS_SCHEMA if item.key == "EXTERNAL_VALIDATION_STAGE")
+
+    assert spec.default == "research"
+    assert spec.choices == ("research", "send")
+
+
 def test_settings_schema_allows_research_context_delivery_choice() -> None:
     """Checks that the GUI can choose how research context is sent to the AI."""
     spec = next(item for item in SETTINGS_SCHEMA if item.key == "RESEARCH_CONTEXT_DELIVERY")

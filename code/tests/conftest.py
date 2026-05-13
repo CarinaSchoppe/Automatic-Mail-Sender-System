@@ -24,6 +24,7 @@ if importlib.util.find_spec("google.genai") is None:
     sys.modules["google"] = MagicMock()
     sys.modules["google.genai"] = mock_google
 
+
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     """Encapsulates the helper step project."""

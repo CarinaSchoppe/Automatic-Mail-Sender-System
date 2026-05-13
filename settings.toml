@@ -63,7 +63,7 @@ SELF_CRAWL_MAX_PAGES_PER_SITE = 8
 SELF_CRAWL_DEPTH = 2
 
 # Request timeout: HTTP timeout for local crawling and optional mailbox probes.
-SELF_REQUEST_TIMEOUT = 10.0
+SELF_REQUEST_TIMEOUT = 5.0
 
 # Verify self emails via SMTP: Optionally probes found addresses before accepting self-research leads.
 SELF_VERIFY_EMAIL_SMTP = false
@@ -81,7 +81,7 @@ SEND_TARGET_COUNT = 550
 SEND_TARGET_MAX_ROUNDS = 0
 
 # Parallel threads: Maximum parallel research requests and mail sender workers.
-PARALLEL_THREADS = 10
+PARALLEL_THREADS = 5
 
 
 # Mail
@@ -90,19 +90,22 @@ PARALLEL_THREADS = 10
 VERIFY_EMAIL_SMTP = true
 
 # Require SMTP mailbox pass: Only sends to recipients whose mailbox is positively confirmed by SMTP.
-REQUIRE_EMAIL_SMTP_PASS = true
+REQUIRE_EMAIL_SMTP_PASS = false
 
 # Reject catch-all domains: Blocks domains that accept random invented mailboxes because the exact recipient cannot be proven.
 REJECT_CATCH_ALL = false
 
-# Skip DNS verification: If checked, skips MX/A record checks but still validates syntax and deduplication.
+# Skip DNS verification: If checked while Verify before send is off, skips local email validation entirely; deduplication still runs.
 SKIP_EMAIL_DNS_CHECK = true
 
 # Verify timeout: Timeout for recipient SMTP probe.
-VERIFY_EMAIL_SMTP_TIMEOUT = 15.0
+VERIFY_EMAIL_SMTP_TIMEOUT = 24.997752808988764
 
-# NeverBounce validation: neverbounce = validates research leads before saving and checks again before rendering/sending; none = disabled.
+# NeverBounce validation: neverbounce = enabled; none = disabled.
 EXTERNAL_VALIDATION_SERVICE = "neverbounce"
+
+# NeverBounce timing: research = check each found lead before saving; send = check each recipient in its send thread directly before rendering/sending.
+EXTERNAL_VALIDATION_STAGE = "send"
 
 # Resend existing: Allows sending to addresses already present in output logs.
 RESEND_EXISTING = false
@@ -123,7 +126,7 @@ LOG_DRY_RUN = false
 WRITE_SENT_LOG = true
 
 # Delete input after success: Deletes processed input CSV/TXT files after a successful send run.
-DELETE_INPUT_AFTER_SUCCESS = false
+DELETE_INPUT_AFTER_SUCCESS = true
 
 # Subject override: Optional subject line override for mail sending. Leave empty to use the selected template subject.
 SUBJECT_OVERRIDE = ""

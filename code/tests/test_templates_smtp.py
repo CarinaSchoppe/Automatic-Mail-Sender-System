@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import smtplib
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ import pytest
 from mail_sender.config import SmtpConfig
 from mail_sender.recipients import Recipient
 from mail_sender.smtp_sender import SmtpMailer, guess_content_type
-from mail_sender.templates import render_mail
+from mail_sender.templates import InlineImage, _HtmlTextExtractor, _append_signature_html, _html_to_text, render_mail
 
 
 def test_render_mail_with_html_signature(project: Path) -> None:
@@ -55,6 +56,27 @@ def test_render_mail_subject_fallback_and_override(tmp_path: Path) -> None:
     rendered = render_mail(template, signature, Recipient(email="a@example.com"), subject_override="Hi {mail}")
     assert rendered.subject == "Hi a@example.com"
     assert rendered.inline_images == []
+
+
+def test_render_mail_without_signature_and_html_text_edge_cases(tmp_path: Path) -> None:
+    """Covers no-signature rendering and HTML-to-text helper edge cases."""
+    template = tmp_path / "template.txt"
+    signature = tmp_path / "signature.html"
+    template.write_text("Subject: Hello {company}\n\nPlain body", encoding="utf-8")
+    signature.write_text("", encoding="utf-8")
+
+    rendered = render_mail(template, signature, Recipient(email="a@example.com", company="ACME"))
+
+    assert rendered.text_body == "Plain body"
+    assert rendered.html_body == "<html><body>Plain body</body></html>"
+    assert _append_signature_html(rendered.html_body, "") == rendered.html_body
+    assert _html_to_text('<div>Hello<img alt="Logo"><br></div>') == "Hello Logo"
+    assert _html_to_text("<div>Hello<img></div>") == "Hello"
+    assert _html_to_text("<p>One</p>\n\n<p>Two</p>") == "One\nTwo"
+    assert _html_to_text("<br><p> </p>") == ""
+    extractor = _HtmlTextExtractor()
+    extractor._chunks = ["\n", "Kept"]
+    assert extractor.text() == "Kept"
 
 
 def test_render_mail_errors(project: Path, tmp_path: Path) -> None:
@@ -129,6 +151,51 @@ def test_smtp_mailer_sends_message_with_attachment(monkeypatch: pytest.MonkeyPat
     assert server.sent_messages[0]["To"] == "to@example.com"
     assert server.quit_called is True
     assert guess_content_type(Path("unknown.abcxyz"), ("application", "octet-stream")) == ("application", "octet-stream")
+
+
+def test_smtp_mailer_embeds_inline_images(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Checks the MIME path that embeds CID images in HTML mail."""
+    monkeypatch.setattr("mail_sender.smtp_sender.smtplib.SMTP_SSL", FakeSMTP)
+    FakeSMTP.instances.clear()
+    image = project / "inline.png"
+    image.write_bytes(b"fake image")
+    config = SmtpConfig("smtp.example.com", 465, "user", "pass", "from@example.com", "From Name")
+
+    with SmtpMailer(config) as mailer:
+        mailer.send(
+            Recipient(email="to@example.com", company="ACME"),
+            "Subject",
+            "text",
+            '<html><body><img src="cid:logo"></body></html>',
+            [],
+            [InlineImage(path=image, cid="logo", width=100)],
+        )
+
+    html_part = FakeSMTP.instances[0].sent_messages[0].get_payload()[-1]
+    assert any(part.get_filename() == "inline.png" for part in html_part.iter_attachments())
+
+
+def test_smtp_mailer_rejects_refused_recipient_response(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Checks that SMTP refusal dictionaries are treated as failed sends."""
+
+    class RefusingSMTP(FakeSMTP):
+        """Simulates an SMTP server that reports a rate-limited recipient."""
+
+        def send_message(self, message):
+            """Records the message, then reports the recipient as refused."""
+            super().send_message(message)
+            return {"to@example.com": (450, b"4.7.0 too many requests")}
+
+    monkeypatch.setattr("mail_sender.smtp_sender.smtplib.SMTP_SSL", RefusingSMTP)
+    FakeSMTP.instances.clear()
+    config = SmtpConfig("smtp.example.com", 465, "user", "pass", "from@example.com", "From Name")
+
+    with pytest.raises(smtplib.SMTPRecipientsRefused) as error:
+        with SmtpMailer(config) as mailer:
+            mailer.send(Recipient(email="to@example.com"), "Subject", "text", "<p>text</p>", [], [])
+
+    assert "to@example.com" in error.value.recipients
+    assert FakeSMTP.instances[0].quit_called is True
 
 
 def test_smtp_mailer_requires_open_connection() -> None:

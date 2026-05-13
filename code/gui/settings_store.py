@@ -11,6 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from mail_sender.validation_policy import (
+    EXTERNAL_VALIDATION_SERVICES,
+    EXTERNAL_VALIDATION_STAGES,
+    NEVERBOUNCE_SERVICE,
+    VALIDATION_STAGE_RESEARCH,
+)
+
 SettingKind = Literal["bool", "int", "float", "str", "choice", "list"]
 
 
@@ -75,9 +82,10 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("VERIFY_EMAIL_SMTP", "Verify before send", "bool", False, "Mail", "Optional MX/SMTP recipient probe before real sending."),
     SettingSpec("REQUIRE_EMAIL_SMTP_PASS", "Require SMTP mailbox pass", "bool", True, "Mail", "Only sends to recipients whose mailbox is positively confirmed by SMTP."),
     SettingSpec("REJECT_CATCH_ALL", "Reject catch-all domains", "bool", True, "Mail", "Blocks domains that accept random invented mailboxes because the exact recipient cannot be proven."),
-    SettingSpec("SKIP_EMAIL_DNS_CHECK", "Skip DNS verification", "bool", False, "Mail", "If checked, skips MX/A record checks but still validates syntax and deduplication."),
+    SettingSpec("SKIP_EMAIL_DNS_CHECK", "Skip DNS verification", "bool", False, "Mail", "If checked while Verify before send is off, skips local email validation entirely; deduplication still runs."),
     SettingSpec("VERIFY_EMAIL_SMTP_TIMEOUT", "Verify timeout", "float", 8.0, "Mail", "Timeout for recipient SMTP probe.", min_value=1, max_value=60),
-    SettingSpec("EXTERNAL_VALIDATION_SERVICE", "NeverBounce validation", "choice", "neverbounce", "Mail", "neverbounce = validates research leads before saving and checks again before rendering/sending; none = disabled.", ("neverbounce", "none")),
+    SettingSpec("EXTERNAL_VALIDATION_SERVICE", "NeverBounce validation", "choice", NEVERBOUNCE_SERVICE, "Mail", "neverbounce = enabled; none = disabled.", EXTERNAL_VALIDATION_SERVICES),
+    SettingSpec("EXTERNAL_VALIDATION_STAGE", "NeverBounce timing", "choice", VALIDATION_STAGE_RESEARCH, "Mail", "research = check each found lead before saving; send = check each recipient in its send thread directly before rendering/sending.", EXTERNAL_VALIDATION_STAGES),
     SettingSpec("RESEND_EXISTING", "Resend existing", "bool", False, "Mail", "Allows sending to addresses already present in output logs."),
     SettingSpec("SKIP_INVALID_CHECK", "Skip invalid check", "bool", True, "Mail", "If checked, ignores invalid_mails.csv so listed recipients can be sent again."),
     SettingSpec("ALLOW_EMPTY_ATTACHMENTS", "Allow empty attachments", "bool", False, "Mail", "Allows running a mode even when the attachment folder is empty."),
@@ -100,7 +108,7 @@ SETTINGS_SCHEMA: tuple[SettingSpec, ...] = (
 ENV_SCHEMA: tuple[SettingSpec, ...] = (
     SettingSpec("SMTP_USERNAME", "SMTP username", "str", "", "SMTP Secrets", "Login username for SMTP. Keep this in .env."),
     SettingSpec("SMTP_PASSWORD", "SMTP password", "str", "", "SMTP Secrets", "Login password for SMTP. Keep this in .env."),
-    SettingSpec("NEVERBOUNCE_API_KEY", "NeverBounce API key", "str", "", "Validation Secrets", "API key used to validate research leads before saving and again before sending."),
+    SettingSpec("NEVERBOUNCE_API_KEY", "NeverBounce API key", "str", "", "Validation Secrets", "API key used at the selected NeverBounce timing: research or send."),
     SettingSpec("GEMINI_API_KEY", "Gemini API key", "str", "", "AI Secrets", "Gemini API key. Keep this in .env."),
     SettingSpec("OPENAI_API_KEY", "OpenAI API key", "str", "", "AI Secrets", "OpenAI API key. Keep this in .env."),
 )

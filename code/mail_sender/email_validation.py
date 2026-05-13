@@ -10,12 +10,14 @@ import re
 import smtplib
 import socket
 import urllib.parse
+import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
 
 EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 DEFINITE_MAILBOX_REJECT_CODES = {550, 551, 553}
+NEVERBOUNCE_MAX_ATTEMPTS = 2
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,11 @@ def validate_email_address(
 
     Returns:
         EmailValidationResult: The result of the check.
+        :param skip_dns_check:
+        :param require_mailbox_confirmation:
+        :param reject_catch_all:
+        :param external_service:
+        :param external_api_key:
     """
     normalized = email.strip().lower()
     if not EMAIL_PATTERN.match(normalized):
@@ -212,30 +219,50 @@ def _validate_neverbounce(email: str, api_key: str, timeout: float, reject_catch
     """Calls the NeverBounce V4 API."""
     query = urllib.parse.urlencode({"key": api_key, "email": email})
     url = f"https://api.neverbounce.com/v4.2/single/check?{query}"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            if data.get("status") == "error":
-                message = data.get("message", "unknown error")
-                print(f"[ERROR] NeverBounce API error: {message}")
-                return EmailValidationResult(False, f"NeverBounce API error: {message}")
+    last_timeout: BaseException | None = None
+    for attempt in range(1, NEVERBOUNCE_MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                if data.get("status") == "error":
+                    message = data.get("message", "unknown error")
+                    print(f"[ERROR] NeverBounce API error: {message}")
+                    return EmailValidationResult(False, f"NeverBounce API error: {message}")
 
-            result = data.get("result", "").lower()
-            validation = _neverbounce_result_to_validation(result)
-            if result in {"catchall", "catch-all"} and reject_catch_all and validation.reason:
-                return EmailValidationResult(False, f"{validation.reason} (rejected by settings)")
-            return validation
+                result = data.get("result", "").lower()
+                validation = _neverbounce_result_to_validation(result)
+                if result in {"catchall", "catch-all"} and reject_catch_all:
+                    return EmailValidationResult(False, "NeverBounce: catchall (rejected by settings)")
+                return validation
 
-    except Exception as e:
-        print(f"[ERROR] NeverBounce connection failed: {e}")
-        return EmailValidationResult(False, f"NeverBounce connection failed: {e}")
+        except Exception as e:
+            if _is_timeout_error(e) and attempt < NEVERBOUNCE_MAX_ATTEMPTS:
+                last_timeout = e
+                print(f"[WARN] NeverBounce timeout for {email}; retrying once.")
+                continue
+            print(f"[ERROR] NeverBounce connection failed: {e}")
+            return EmailValidationResult(False, f"NeverBounce connection failed: {e}")
+
+    if last_timeout is not None:
+        print(f"[ERROR] NeverBounce connection failed: {last_timeout}")
+        return EmailValidationResult(False, f"NeverBounce connection failed: {last_timeout}")
     return EmailValidationResult(False, "NeverBounce: empty response")
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    """Return True for timeout exceptions raised directly or wrapped by urllib."""
+    if isinstance(exc, TimeoutError | socket.timeout):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, "reason", None)
+        return isinstance(reason, TimeoutError | socket.timeout)
+    return False
 
 
 def _neverbounce_result_to_validation(result: str) -> EmailValidationResult:
     """Map a NeverBounce result code to the sender's strict valid-or-invalid policy."""
     normalized = result.strip().lower()
-    if normalized == "valid":
+    if normalized in {"valid", "catchall", "catch-all"}:
         return EmailValidationResult(True)
     if not normalized:
         return EmailValidationResult(False, "NeverBounce: empty result")

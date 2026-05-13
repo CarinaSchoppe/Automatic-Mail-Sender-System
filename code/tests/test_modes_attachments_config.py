@@ -8,7 +8,7 @@ import pytest
 
 from mail_sender.attachments import list_attachments
 from mail_sender.config import ConfigError, load_smtp_config
-from mail_sender.modes import get_mode
+from mail_sender.modes import get_mode, mode_label_from_name, mode_name_from_label
 
 
 def test_modes_point_to_input_attachments_and_output(project: Path) -> None:
@@ -37,6 +37,17 @@ def test_modes_point_to_input_attachments_and_output(project: Path) -> None:
     assert custom.log_path == project / "output/send_custom_training_task.csv"
 
 
+def test_mode_name_and_label_helpers_cover_builtins_and_empty_values() -> None:
+    """Checks mode helper edge cases used by GUI custom task dropdowns."""
+    assert mode_name_from_label("PhD") == "PhD"
+    assert mode_name_from_label("Freelance German") == "Freelance_German"
+    assert mode_name_from_label("Freelance English") == "Freelance_English"
+    assert mode_label_from_name("phd") == "PhD"
+    assert mode_label_from_name("custom_task") == "custom task"
+    with pytest.raises(ValueError, match="Mode name cannot be empty"):
+        mode_name_from_label("  !!!  ")
+
+
 def test_list_attachments_filters_gitkeep_and_sorts(tmp_path: Path) -> None:
     """Prueft das Verhalten fuer list attachments filters gitkeep and sorts."""
     (tmp_path / ".gitkeep").write_text("", encoding="utf-8")
@@ -58,6 +69,7 @@ def test_list_attachments_filters_gitkeep_and_sorts(tmp_path: Path) -> None:
 def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prueft das Verhalten fuer load smtp config."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setattr("mail_sender.config._load_settings", lambda: {})
     for key in [
         "SMTP_HOST",
         "SMTP_PORT",
@@ -66,6 +78,9 @@ def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
         "SMTP_FROM_EMAIL",
         "SMTP_FROM_NAME",
         "SMTP_PASSWORD",
+        "EXTERNAL_VALIDATION_SERVICE",
+        "EXTERNAL_VALIDATION_STAGE",
+        "NEVERBOUNCE_API_KEY",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -74,6 +89,7 @@ def test_load_smtp_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.port == 465
     assert config.username == "info@carinaschoppe.com"
     assert config.password == ""
+    assert config.external_validation_stage == "research"
 
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setenv("SMTP_PORT", "2525")
@@ -112,17 +128,20 @@ def test_load_smtp_config_uses_selected_validation_service_key(monkeypatch: pyte
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_STAGE", "send")
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
 
     config = load_smtp_config(require_password=False)
 
     assert config.external_validation_service == "neverbounce"
     assert config.external_validation_api_key == "never-key"
+    assert config.external_validation_stage == "send"
 
 
 def test_load_smtp_config_defaults_to_neverbounce(monkeypatch: pytest.MonkeyPatch) -> None:
     """Checks that NeverBounce is the default validation provider."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setattr("mail_sender.config._load_settings", lambda: {})
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.delenv("EXTERNAL_VALIDATION_SERVICE", raising=False)
     monkeypatch.setenv("NEVERBOUNCE_API_KEY", "never-key")
@@ -143,15 +162,40 @@ def test_load_smtp_config_rejects_unknown_validation_service(monkeypatch: pytest
         load_smtp_config(require_password=False)
 
 
+def test_load_smtp_config_rejects_unknown_validation_stage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that mistyped validation timing values fail loudly."""
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_STAGE", "later")
+
+    with pytest.raises(ConfigError, match="EXTERNAL_VALIDATION_STAGE"):
+        load_smtp_config(require_password=False)
+
+
 def test_load_smtp_config_requires_neverbounce_key_for_real_send(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Checks that real sending does not silently skip selected NeverBounce validation."""
+    """Checks that send-stage validation does not silently skip NeverBounce."""
     monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
     monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_STAGE", "send")
     monkeypatch.delenv("NEVERBOUNCE_API_KEY", raising=False)
 
     with pytest.raises(ConfigError, match="NEVERBOUNCE_API_KEY"):
-        load_smtp_config(require_password=True)
+        load_smtp_config(require_password=False)
+
+
+def test_load_smtp_config_does_not_need_key_for_research_stage_sender(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that the sender does not require a key when NeverBounce already ran in research."""
+    monkeypatch.setattr("mail_sender.config.load_dotenv", lambda **_kwargs: None)
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_SERVICE", "neverbounce")
+    monkeypatch.setenv("EXTERNAL_VALIDATION_STAGE", "research")
+    monkeypatch.delenv("NEVERBOUNCE_API_KEY", raising=False)
+
+    config = load_smtp_config(require_password=True)
+
+    assert config.external_validation_stage == "research"
+    assert config.external_validation_api_key == ""
 
 
 def test_load_smtp_config_allows_disabling_external_validation(monkeypatch: pytest.MonkeyPatch) -> None:

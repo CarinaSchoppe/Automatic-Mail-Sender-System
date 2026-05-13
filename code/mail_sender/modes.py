@@ -5,21 +5,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
+from mail_sender.prompts import load_prompts
 
-class _LoadPrompts(Protocol):
-    """Callable shape for optional prompt loading."""
-
-    def __call__(self, path: Path = ...) -> dict[str, str]:
-        """Loads prompt labels from a TOML file."""
-
-try:
-    from mail_sender.prompts import load_prompts as _load_prompts_impl
-except ImportError:
-    load_prompts: _LoadPrompts | None = None
-else:
-    load_prompts = _load_prompts_impl
 
 MODE_NAMES = ["PhD", "Freelance_German", "Freelance_English"]
 _BUILT_IN_MODE_LABELS = {
@@ -145,9 +133,7 @@ def get_available_mode_names(base_dir: Path | None = None) -> list[str]:
     """Returns built-in mode names plus user-defined task names from prompts.toml."""
     mode_names = list(MODE_NAMES)
     prompts_path = (base_dir / "prompts.toml") if base_dir is not None else None
-    prompts = {}
-    if load_prompts is not None:
-        prompts = load_prompts(prompts_path) if prompts_path is not None else load_prompts()
+    prompts = load_prompts(prompts_path) if prompts_path is not None else load_prompts()
 
     seen = {mode_name_key(name) for name in mode_names}
     for label in prompts:

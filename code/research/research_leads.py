@@ -34,6 +34,16 @@ from mail_sender.email_validation import validate_email_address
 from mail_sender.modes import MailMode, get_available_mode_names, get_mode
 from mail_sender.recipients import Recipient, list_recipient_files, read_recipients
 from mail_sender.sent_log import append_invalid_email, read_logged_emails, read_logged_rows, read_known_output_emails
+from mail_sender.validation_policy import (
+    EXTERNAL_VALIDATION_DISABLED,
+    EXTERNAL_VALIDATION_SERVICES,
+    EXTERNAL_VALIDATION_STAGES,
+    NEVERBOUNCE_API_KEY,
+    NEVERBOUNCE_SERVICE,
+    VALIDATION_STAGE_RESEARCH,
+    normalize_validation_service,
+    normalize_validation_stage,
+)
 from research import parsing as _parsing
 from research.providers import (
     generate_with_gemini as _gemini_generate,
@@ -237,8 +247,16 @@ class ThreadSafeRecipientSink:
                 recipient.email,
                 verify_mailbox=self.config.self_verify_email_smtp,
                 smtp_timeout=self.config.self_request_timeout,
-                external_service=self.config.external_validation_service,
-                external_api_key=self.config.external_validation_api_key,
+                external_service=(
+                    self.config.external_validation_service
+                    if self.config.external_validation_stage == VALIDATION_STAGE_RESEARCH
+                    else EXTERNAL_VALIDATION_DISABLED
+                ),
+                external_api_key=(
+                    self.config.external_validation_api_key
+                    if self.config.external_validation_stage == VALIDATION_STAGE_RESEARCH
+                    else ""
+                ),
             )
             # Support both real and SimpleNamespace mocks
             is_valid = getattr(validation, "is_valid", False)
@@ -248,7 +266,11 @@ class ThreadSafeRecipientSink:
             return False
         if not is_valid:
             _verbose(self.config.verbose, f"Recipient {recipient.email} rejected: {reason}")
-            if self.config.external_validation_service == "neverbounce" and str(reason).startswith("NeverBounce:"):
+            if (
+                    self.config.external_validation_service == NEVERBOUNCE_SERVICE
+                    and self.config.external_validation_stage == VALIDATION_STAGE_RESEARCH
+                    and str(reason).startswith("NeverBounce:")
+            ):
                 append_invalid_email(self.mode.log_path.parent / "invalid_mails.csv", recipient, str(reason))
                 _verbose(self.config.verbose, f"NeverBounce rejected research lead {recipient.email}; logged to invalid_mails.csv.")
             return False
@@ -445,8 +467,13 @@ def default_config() -> ResearchConfig:
         self_crawl_depth=cast(int, _get("SELF_CRAWL_DEPTH", 2)),
         self_request_timeout=float(cast(float, _get("SELF_REQUEST_TIMEOUT", 10.0))),
         self_verify_email_smtp=cast(bool, _get("SELF_VERIFY_EMAIL_SMTP", False)),
-        external_validation_service=cast(str, _get("EXTERNAL_VALIDATION_SERVICE", "none")).strip().lower(),
-        external_validation_api_key=os.getenv("NEVERBOUNCE_API_KEY", "").strip(),
+        external_validation_service=normalize_validation_service(
+            cast(str, _get("EXTERNAL_VALIDATION_SERVICE", EXTERNAL_VALIDATION_DISABLED)),
+        ),
+        external_validation_api_key=os.getenv(NEVERBOUNCE_API_KEY, "").strip(),
+        external_validation_stage=normalize_validation_stage(
+            cast(str, _get("EXTERNAL_VALIDATION_STAGE", VALIDATION_STAGE_RESEARCH)),
+        ),
     )
 
 
@@ -506,8 +533,9 @@ def parse_args(argv: list[str]) -> ResearchConfig:
     parser.add_argument("--self-crawl-depth", type=int, default=env_config.self_crawl_depth, help="Maximum same-site link depth to crawl per result in self research.")
     parser.add_argument("--self-request-timeout", type=float, default=env_config.self_request_timeout, help="HTTP timeout in seconds for self research.")
     parser.add_argument("--self-verify-email-smtp", action="store_true", default=env_config.self_verify_email_smtp, help="Use optional SMTP mailbox probes for self-researched emails.")
-    parser.add_argument("--external-validation-service", default=env_config.external_validation_service, choices=["none", "neverbounce"], help="External validation service for research leads before saving.")
+    parser.add_argument("--external-validation-service", default=env_config.external_validation_service, choices=EXTERNAL_VALIDATION_SERVICES, help="External validation service for research leads before saving.")
     parser.add_argument("--external-validation-api-key", default=env_config.external_validation_api_key, help="API key for the selected external research validation service.")
+    parser.add_argument("--external-validation-stage", default=env_config.external_validation_stage, choices=EXTERNAL_VALIDATION_STAGES, help="Run NeverBounce during research before saving or during mail sending before each send.")
     parser.add_argument("--reasoning-effort", default=env_config.reasoning_effort, choices=["low", "middle", "high"], help="AI reasoning effort.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed AI research logging.")
     args = parser.parse_args(argv)
@@ -556,6 +584,7 @@ def parse_args(argv: list[str]) -> ResearchConfig:
         self_verify_email_smtp=args.self_verify_email_smtp,
         external_validation_service=args.external_validation_service,
         external_validation_api_key=args.external_validation_api_key,
+        external_validation_stage=args.external_validation_stage,
     )
 
 
@@ -583,7 +612,11 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
         raise ValueError("self_crawl_max_pages_per_site must be at least 1.")
     if config.self_crawl_depth < 0:
         raise ValueError("self_crawl_depth must be at least 0.")
-    if config.external_validation_service == "neverbounce" and not config.external_validation_api_key:
+    if (
+            config.external_validation_service == NEVERBOUNCE_SERVICE
+            and config.external_validation_stage == VALIDATION_STAGE_RESEARCH
+            and not config.external_validation_api_key
+    ):
         raise ValueError("NEVERBOUNCE_API_KEY is required when EXTERNAL_VALIDATION_SERVICE=neverbounce for research.")
 
     _info(
@@ -602,7 +635,7 @@ def run_research(config: ResearchConfig) -> tuple[Path | None, list[Recipient]]:
     _verbose(config.verbose, f"Upload attachment context to AI provider: {config.upload_attachments}")
     _verbose(config.verbose, f"Research context delivery: {config.research_context_delivery}")
     _verbose(config.verbose, f"Parallel research threads: {config.parallel_threads}")
-    _verbose(config.verbose, f"Research external validation: {config.external_validation_service}")
+    _verbose(config.verbose, f"Research external validation: {config.external_validation_service} at {config.external_validation_stage}")
     _verbose(config.verbose, f"Self research keywords: {list(config.self_search_keywords)}")
 
     mode = get_mode(config.mode_name, config.base_dir)
@@ -862,7 +895,7 @@ def _generate_and_process_response(
     _verbose(config.verbose, f"Thread {thread_label} AI prompt sent:\n{prompt}")
     # We use a placeholder for existing_emails because the sink handles the actual checking.
     # However, _needs_retry needs it for a quick heuristic.
-    raw_response = _generate_research_response(config, mode, prompt, attachments, set(), input_context, stop_event)
+    raw_response = _generate_research_response(config, prompt, attachments, set(), stop_event)
     if not raw_response:
         return 0
 
@@ -904,11 +937,9 @@ def _generate_and_process_response(
 
 def _generate_research_response(
         config: ResearchConfig,
-        mode: MailMode,
         prompt: str,
         attachments: list[Path],
         existing_emails: set[str],
-        input_context: str,
         stop_event: threading.Event | None = None,
 ) -> str | None | Any:
     """

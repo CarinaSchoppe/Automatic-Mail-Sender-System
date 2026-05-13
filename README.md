@@ -177,11 +177,18 @@ REJECT_CATCH_ALL = true
 
 With these settings, the sender only accepts recipients whose mailbox is positively confirmed by the recipient server and rejects catch-all domains that also accept random invented addresses. This is intentionally conservative: it reduces `recipient does not exist` bounces, but it may skip valid addresses when a server blocks verification or hides mailbox status.
 
-You can also use NeverBounce as the external validation gate. With `neverbounce` enabled, research leads are checked before they are saved into `input/<Mode>`, and the sender checks the filtered list again before any mail is rendered or sent.
+If `VERIFY_EMAIL_SMTP = false`, `REQUIRE_EMAIL_SMTP_PASS = false`, `REJECT_CATCH_ALL = false`, `SKIP_EMAIL_DNS_CHECK = true`, and NeverBounce is disabled, local email validation is skipped entirely. The sender still performs duplicate checks and sent/invalid CSV checks before rendering/sending.
+
+You can also use NeverBounce as the external validation gate. With `neverbounce` enabled, choose exactly where the single-address checks run:
+
+- `EXTERNAL_VALIDATION_STAGE = "research"` checks each newly discovered lead before it is saved into `input/<Mode>`.
+- `EXTERNAL_VALIDATION_STAGE = "send"` checks each filtered recipient inside its send thread directly before rendering or sending.
+
 This is the recommended setup when you want only externally confirmed addresses to enter or leave the system:
 
 ```toml
 EXTERNAL_VALIDATION_SERVICE = "neverbounce"
+EXTERNAL_VALIDATION_STAGE = "research"
 ```
 
 Put the NeverBounce secret in `.env` or in the GUI `.env` tab:
@@ -190,12 +197,12 @@ Put the NeverBounce secret in `.env` or in the GUI `.env` tab:
 NEVERBOUNCE_API_KEY=
 ```
 
-Use the API key from a NeverBounce Custom Integration. MailSenderSystem checks each final research/send recipient through NeverBounce single validation and only lets `valid` results proceed.
+Use the API key from a NeverBounce Custom Integration. MailSenderSystem checks each recipient through NeverBounce single validation, never through a bulk job, and only lets `valid` or `catchall` results proceed.
 
 Set `EXTERNAL_VALIDATION_SERVICE = "none"` only when you intentionally want to disable NeverBounce.
 In the GUI this setting is shown as `NeverBounce validation`: `neverbounce` means enabled, `none` means disabled. There is no extra checkbox.
 
-Research runs this check before a newly discovered lead is saved. The sender runs it again after research output has been loaded, after duplicate and already-invalid addresses have been removed, and immediately before rendering or sending any message. Only a NeverBounce `valid` result is accepted. Results such as `invalid`, `disposable`, `spamtrap`, `catchall`, `unknown`, API errors, or connection failures are treated as invalid, the mail is not rendered, the mail is not sent, and the address is written to `output/invalid_mails.csv` with the NeverBounce reason.
+With the `research` timing, research runs syntax, duplicate, MX/A, then NeverBounce before saving a lead. Invalid NeverBounce results are not counted toward the research target, so a target such as 500 means 500 deduplicated locally valid and NeverBounce-accepted saved leads. With the `send` timing, the sender first removes duplicates and already-invalid rows, then each send thread waits for its own NeverBounce response before rendering/sending that specific mail. NeverBounce `valid`, `catchall`, and `catch-all` results are accepted. Results such as `invalid`, `disposable`, `spamtrap`, `unknown`, API errors, or connection failures are treated as invalid, the mail is not rendered, the mail is not sent, and the address is written to `output/invalid_mails.csv` with the NeverBounce reason. If `REJECT_CATCH_ALL = true`, NeverBounce catch-all results are rejected by that stricter setting.
 
 Invalid addresses are skipped and written to:
 
@@ -204,6 +211,8 @@ output/invalid_mails.csv
 ```
 
 Future runs skip addresses already listed in `invalid_mails.csv`. The sender also checks all `.csv` files in `output` for already used addresses, not just the active mode workbook. This reduces false positives, but it is not full mailbox verification: an address can still bounce even if the domain DNS is valid.
+
+During real sending, an address is written to `output/send_*.csv` only after SMTP returns a clean accepted result. SMTP timeouts, rate limits such as `too many requests`, raised SMTP errors, render errors, or returned refused-recipient responses are treated as retryable send errors: they are printed as `[ERROR]`, are not written to `output/send_*.csv`, and are not written to `output/invalid_mails.csv`.
 
 ## Logs
 

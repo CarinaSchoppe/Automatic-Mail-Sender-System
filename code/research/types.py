@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from mail_sender.recipients import Recipient
+from mail_sender.validation_policy import EXTERNAL_VALIDATION_DISABLED, VALIDATION_STAGE_RESEARCH
 
 
 @dataclass(frozen=True)
@@ -44,8 +45,9 @@ class ResearchConfig:
     self_crawl_depth: int = 2
     self_request_timeout: float = 10.0
     self_verify_email_smtp: bool = False
-    external_validation_service: str = "none"
+    external_validation_service: str = EXTERNAL_VALIDATION_DISABLED
     external_validation_api_key: str = ""
+    external_validation_stage: str = VALIDATION_STAGE_RESEARCH
 
 
 @runtime_checkable

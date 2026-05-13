@@ -95,7 +95,9 @@ class SmtpMailer:
                 filename=attachment.name,
             )
 
-        self._server.send_message(message)
+        refused_recipients = self._server.send_message(message)
+        if refused_recipients:
+            raise smtplib.SMTPRecipientsRefused(refused_recipients)
 
 
 def guess_content_type(path: Path, fallback: tuple[str, str]) -> tuple[str, str]:

@@ -11,6 +11,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from mail_sender.validation_policy import (
+    EXTERNAL_VALIDATION_DISABLED,
+    EXTERNAL_VALIDATION_STAGES,
+    NEVERBOUNCE_API_KEY,
+    NEVERBOUNCE_SERVICE,
+    VALIDATION_STAGE_RESEARCH,
+    VALIDATION_STAGE_SEND,
+    normalize_validation_service,
+    normalize_validation_stage,
+)
+
 load_dotenv: Callable[..., Any]
 try:
     from dotenv import load_dotenv
@@ -25,8 +36,6 @@ except ImportError:  # pragma: no cover
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = PROJECT_ROOT / "settings.toml"
-NEVERBOUNCE_SERVICE = "neverbounce"
-NEVERBOUNCE_API_KEY = "NEVERBOUNCE_API_KEY"
 
 
 class ConfigError(RuntimeError):
@@ -47,8 +56,9 @@ class SmtpConfig:
     from_email: str
     from_name: str
     encryption: str = "ssl"
-    external_validation_service: str = "none"
+    external_validation_service: str = EXTERNAL_VALIDATION_DISABLED
     external_validation_api_key: str = ""
+    external_validation_stage: str = VALIDATION_STAGE_RESEARCH
 
 
 def _load_settings() -> dict:
@@ -103,8 +113,13 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
     password = os.getenv("SMTP_PASSWORD", "").strip()
 
     external_validation_service, external_validation_api_key = _select_external_validation_provider(
-        _get("EXTERNAL_VALIDATION_SERVICE", NEVERBOUNCE_SERVICE).lower(),
+        normalize_validation_service(_get("EXTERNAL_VALIDATION_SERVICE", NEVERBOUNCE_SERVICE)),
     )
+    external_validation_stage = normalize_validation_stage(
+        _get("EXTERNAL_VALIDATION_STAGE", VALIDATION_STAGE_RESEARCH),
+    )
+    if external_validation_stage not in EXTERNAL_VALIDATION_STAGES:
+        raise ConfigError("EXTERNAL_VALIDATION_STAGE must be one of: research, send.")
 
     if encryption != "ssl":
         raise ConfigError("Only SSL/SMTPS is supported right now. Set SMTP_ENCRYPTION=ssl.")
@@ -123,7 +138,11 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         missing.append("SMTP_FROM_EMAIL")
     if require_password and not password:
         missing.append("SMTP_PASSWORD")
-    if require_password and external_validation_service != "none" and not external_validation_api_key:
+    if (
+            external_validation_service != EXTERNAL_VALIDATION_DISABLED
+            and external_validation_stage == VALIDATION_STAGE_SEND
+            and not external_validation_api_key
+    ):
         missing.append(NEVERBOUNCE_API_KEY)
 
     if missing:
@@ -140,14 +159,15 @@ def load_smtp_config(require_password: bool) -> SmtpConfig:
         encryption=encryption,
         external_validation_service=external_validation_service,
         external_validation_api_key=external_validation_api_key,
+        external_validation_stage=external_validation_stage,
     )
 
 
 def _select_external_validation_provider(service: str) -> tuple[str, str]:
     """Return the active NeverBounce validation mode and its configured API key."""
-    normalized_service = service.strip().lower()
-    if normalized_service == "none":
-        return "none", ""
+    normalized_service = normalize_validation_service(service)
+    if normalized_service == EXTERNAL_VALIDATION_DISABLED:
+        return EXTERNAL_VALIDATION_DISABLED, ""
 
     if normalized_service != NEVERBOUNCE_SERVICE:
         raise ConfigError("EXTERNAL_VALIDATION_SERVICE must be one of: none, neverbounce.")

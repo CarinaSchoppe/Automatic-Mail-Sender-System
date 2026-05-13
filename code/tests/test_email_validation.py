@@ -248,11 +248,11 @@ def test_validate_email_address_checks_dns_before_external_service(monkeypatch) 
     """Checks that NeverBounce runs only after the MX/A gate."""
     events: list[str] = []
 
-    def fake_mx(domain: str) -> list[str]:
+    def fake_mx(_domain: str) -> list[str]:
         events.append("mx")
         return ["mx.example.com"]
 
-    def fake_external(email, service, api_key, timeout, reject_catch_all):
+    def fake_external(*_args, **_kwargs):
         events.append("external")
         return email_validation.EmailValidationResult(True)
 
@@ -306,7 +306,7 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
         def __exit__(self, *args):
             pass
 
-    def mock_urlopen(url, timeout=None):
+    def mock_urlopen(url, **_kwargs):
         if "neverbounce.com" in url:
             email = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("email", [""])[0]
             if email == "invalid@example.com":
@@ -344,7 +344,6 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
 
     for address, reason in (
             ("spamtrap@example.com", "NeverBounce: spamtrap"),
-            ("catchall@example.com", "NeverBounce: catchall"),
             ("unknown@example.com", "NeverBounce: unknown"),
             ("error@example.com", "NeverBounce API error: Invalid API key"),
     ):
@@ -355,6 +354,22 @@ def test_validate_email_address_uses_external_neverbounce(monkeypatch):
         )
         assert res.is_valid is False
         assert reason in res.reason
+
+    res = validate_email_address(
+        "catchall@example.com",
+        external_service="neverbounce",
+        external_api_key="fake_key",
+    )
+    assert res.is_valid is True
+
+    res = validate_email_address(
+        "catchall@example.com",
+        external_service="neverbounce",
+        external_api_key="fake_key",
+        reject_catch_all=True,
+    )
+    assert res.is_valid is False
+    assert res.reason == "NeverBounce: catchall (rejected by settings)"
 
 
 def test_validate_email_addresses_with_neverbounce_uses_single_check_flow(monkeypatch) -> None:
@@ -374,7 +389,7 @@ def test_validate_email_addresses_with_neverbounce_uses_single_check_flow(monkey
         def __exit__(self, *args) -> None:
             return None
 
-    def fake_urlopen(request, timeout=None):
+    def fake_urlopen(request, **_kwargs):
         url = request.full_url if hasattr(request, "full_url") else request
         method = request.get_method() if hasattr(request, "get_method") else "GET"
         requests.append((method, url))
@@ -401,8 +416,58 @@ def test_validate_email_addresses_with_neverbounce_uses_single_check_flow(monkey
     assert all("/single/check" in url for _method, url in requests)
 
 
-def test_neverbounce_only_valid_result_is_accepted() -> None:
-    """Checks that non-valid NeverBounce result names never pass the send gate."""
+def test_neverbounce_retries_once_after_timeout(monkeypatch, capsys) -> None:
+    """Checks that a timed-out NeverBounce single check is retried once."""
+    calls = {"count": 0}
+
+    class FakeResponse:
+        def read(self) -> bytes:
+            return json.dumps({"result": "valid"}).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+    def fake_urlopen(_url, **_kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise TimeoutError("slow")
+        return FakeResponse()
+
+    monkeypatch.setattr(email_validation.urllib.request, "urlopen", fake_urlopen)
+
+    result = email_validation._validate_neverbounce("retry@example.com", "never-key", 5.0)
+
+    assert result == email_validation.EmailValidationResult(True)
+    assert calls["count"] == 2
+    assert "retrying once" in capsys.readouterr().out
+
+
+def test_neverbounce_reports_timeout_after_retry_is_exhausted(monkeypatch) -> None:
+    """Checks that repeated NeverBounce timeouts stay invalid after the retry."""
+    calls = {"count": 0}
+
+    def fake_urlopen(_url, **_kwargs):
+        calls["count"] += 1
+        raise email_validation.urllib.error.URLError(TimeoutError("still slow"))
+
+    monkeypatch.setattr(email_validation.urllib.request, "urlopen", fake_urlopen)
+
+    result = email_validation._validate_neverbounce("timeout@example.com", "never-key", 5.0)
+
+    assert calls["count"] == 2
+    assert result == email_validation.EmailValidationResult(
+        False,
+        "NeverBounce connection failed: <urlopen error still slow>",
+    )
+
+
+def test_neverbounce_valid_and_catchall_results_are_accepted() -> None:
+    """Checks that only valid and catch-all NeverBounce result names pass the send gate."""
     assert email_validation._neverbounce_result_to_validation("valid").is_valid is True
-    for result in ["accepted", "invalid", "disposable", "spamtrap", "catchall", "unknown", ""]:
+    assert email_validation._neverbounce_result_to_validation("catchall").is_valid is True
+    assert email_validation._neverbounce_result_to_validation("catch-all").is_valid is True
+    for result in ["accepted", "invalid", "disposable", "spamtrap", "unknown", ""]:
         assert email_validation._neverbounce_result_to_validation(result).is_valid is False
